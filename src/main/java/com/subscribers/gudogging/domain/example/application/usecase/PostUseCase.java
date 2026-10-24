@@ -6,6 +6,7 @@ import com.subscribers.gudogging.domain.example.domain.entity.Post;
 import com.subscribers.gudogging.domain.example.domain.service.PostCreateService;
 import com.subscribers.gudogging.domain.example.domain.service.PostGetService;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +32,7 @@ public class PostUseCase {
             .toList();
     }
 
-    public PostResponse getPost(Long id) {
+    public PostResponse getPost(UUID id) {
         Post post = postGetService.getPost(id);
         return PostResponse.from(post);
     }

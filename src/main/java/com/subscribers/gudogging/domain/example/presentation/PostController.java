@@ -7,6 +7,7 @@ import com.subscribers.gudogging.domain.example.presentation.response.PostRespon
 import com.subscribers.gudogging.global.common.response.CommonResponse;
 import jakarta.validation.Valid;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -35,7 +36,7 @@ public class PostController {
     }
 
     @GetMapping("/{postId}")
-    public CommonResponse<PostResponse> getPost(@PathVariable Long postId) {
+    public CommonResponse<PostResponse> getPost(@PathVariable UUID postId) {
         PostResponse response = postUseCase.getPost(postId);
         return CommonResponse.success(PostResponseCode.POST_FOUND, response);
     }

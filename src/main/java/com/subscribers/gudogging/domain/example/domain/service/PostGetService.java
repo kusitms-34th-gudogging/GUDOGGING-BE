@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.example.application.exception.PostNotFou
 import com.subscribers.gudogging.domain.example.domain.entity.Post;
 import com.subscribers.gudogging.domain.example.domain.repository.PostRepository;
 import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -17,7 +18,7 @@ public class PostGetService {
         return postRepository.findAllByDeletedFalse();
     }
 
-    public Post getPost(Long id) {
+    public Post getPost(UUID id) {
         return postRepository.findByIdAndDeletedFalse(id)
             .orElseThrow(PostNotFoundException::new);
     }
