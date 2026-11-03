@@ -1,0 +1,26 @@
+# Post Entity
+# Last Updated: 2026-06-30
+
+entity: POST
+description: 게시글. 제목·본문·작성자명을 보유하는 기본 게시글 엔티티.
+table: posts
+domain: Post
+extends: BaseEntity
+
+columns:
+  - title:
+      type: VARCHAR(100)
+      nullable: false
+      description: "게시글 제목 (최대 100자)"
+  - content:
+      type: TEXT
+      nullable: false
+      description: "게시글 본문"
+  - author_name:
+      type: VARCHAR(50)
+      nullable: false
+      description: "작성자명 (최대 50자)"
+
+business_logic:
+  - "create(title, content, authorName): 정적 팩토리 메서드"
+  - "softDelete(): → BaseEntity 위임"

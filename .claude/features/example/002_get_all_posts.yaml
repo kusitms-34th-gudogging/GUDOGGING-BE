@@ -1,0 +1,88 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-06-30
+
+meta:
+  id: FEAT-002
+  title: 전체 게시글 조회
+  type: Feature
+  author: 1winhyun
+
+overview:
+  summary: >
+    전체 게시글 목록을 조회하는 기능.
+    FEAT-001의 계층 구조 예시를 Read 흐름으로 확장.
+  user_story: >
+    As a 팀원, I want to 전체 게시글 목록 API를 통해 Read 레이어 흐름을 확인하고,
+    so that 프로젝트의 조회 아키텍처 컨벤션을 빠르게 파악할 수 있다.
+  goals:
+    - Read 흐름(Controller → UseCase → DomainService → Repository) 예시 제공
+    - 삭제된 게시글 제외 조회 (Soft Delete 적용)
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/posts
+      summary: 전체 게시글 조회
+      auth: None (예시용 - 인증 불필요)
+      request:
+        dto: None
+      response:
+        dto: PostResponse
+        http_status: 200 OK
+        response_code: PostResponseCode.POSTS_FOUND
+        wrapper: CommonResponse<List<PostResponse>>
+        fields:
+          - name: id
+            type: UUID
+          - name: title
+            type: String
+          - name: content
+            type: String
+          - name: authorName
+            type: String
+          - name: createdAt
+            type: LocalDateTime
+
+  data_flow:
+    - step: 1
+      layer: Presentation (PostController)
+      action: "PostUseCase.getAllPosts() 호출"
+    - step: 2
+      layer: UseCase (PostUseCase.getAllPosts)
+      action: "PostGetService 호출 → List<PostResponse> 반환"
+      transaction: false (readOnly = true)
+    - step: 3
+      layer: Domain (PostGetService)
+      action: "PostRepository.findAllByDeletedFalse() 호출"
+    - step: 4
+      layer: Infrastructure (PostRepository)
+      action: "deleted = false 조건으로 전체 조회"
+
+  database:
+    entities:
+      - name: Post
+        action: Read
+        table: posts
+        notes: "deleted = false 조건 필수 (Soft Delete)"
+
+  validation_rules:
+    - "삭제된 게시글(deleted = true)은 결과에서 제외"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.example"
+  domain:
+    - "domain/example/domain/repository/PostRepository.java (findAllByDeletedFalse 추가)"
+    - "domain/example/domain/service/PostGetService.java"
+  application:
+    - "domain/example/application/usecase/PostUseCase.java (getAllPosts 추가 — Single Facade per domain)"
+  presentation:
+    - "domain/example/presentation/PostController.java (GET 엔드포인트 추가)"
+    - "domain/example/presentation/response/PostResponseCode.java (POSTS_FOUND 추가)"
+
+testing_strategy:
+  happy_path:
+    - "게시글이 존재하면 전체 목록이 반환된다"
+    - "게시글이 없으면 빈 리스트가 반환된다"
+  edge_cases:
+    - "삭제된 게시글은 목록에 포함되지 않는다"
