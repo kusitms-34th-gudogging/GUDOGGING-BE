@@ -1,0 +1,86 @@
+architecture:
+  intent: "Prioritize Maintainability & Testability. Clear separation of concerns."
+  pattern: Layered DDD
+  flow: Controller -> UseCase(Tx) -> Domain(Entity/Service) -> Repository
+  flow(external/infra): Controller -> UseCase -> Domain(Interface) <- [Implements] - Infrastructure/External
+  patterns:
+    - "Snapshot: Use for immutable history (Currently applied to -> subscription_checks.category, subscriptions.name/category copied from services)."
+    - Factory Method: Use static `create()` method in Entity.
+    - Rich Model: Encapsulate business logic in Entity methods.
+  layers:
+    presentation:
+      role: [ HTTP handling, "@Valid", UseCase 1:1 mapping ]
+      forbidden: [ Business logic, Direct Repo access ]
+    usecase:
+      role: [ Transaction boundary, DTO conversion, Orchestration ]
+      pattern: Single Facade per domain
+      naming: "{Domain}UseCase (e.g., SubscriptionUseCase) — ONE class per domain, all operations inside"
+    domain:
+      role: [ Pure business logic, State changes, Define Interfaces (Port) ]
+      rule:
+        - Entity holds logic (Rich Model, Tell Don't Ask)
+        - Service only for complex orchestration
+        - Interfaces defined here, implemented in Infra/External (DIP)
+        - separated by CRUD (default) or Feature (if complex)
+    external:
+      role: [ External APIs we cannot control (Third-party: Apple/Google OAuth, Gmail API, FCM, 스크린샷 분석 등), Implement Domain Interfaces ]
+    infrastructure:
+      role: [ Systems we control but outside application boundary (Redis, etc.), Implement Domain Interfaces ]
+  rules:
+    - UseCase: Single Facade per domain, DTO conversion here
+    - Entity: Contains business logic (Tell Don't Ask)
+    - DTO Conversion: MUST use Static Factory Method (static from())
+                        - Bad: return new ResponseDto(entity.getId(), entity.getName(), ...)
+                        - Good: return ResponseDto.from(entity)
+    - Signature: Pass WHOLE OBJECTS (Entity/DTO), not loose fields.
+                   - Bad: repo.exists(subscriptionId, targetBillingDate)
+                   - Good: repo.exists(subscription) or repo.exists(commandDto)
+  constraint:
+    - NO Layer Skipping: UseCase MUST NOT depend on Repository or Infrastructure directly.
+    - NO Horizontal Dependency: UseCase MUST NOT depend on other UseCases.
+    - NO Horizontal Dependency: Domain Service MUST NOT depend on other Domain Services.
+
+api:
+  intent: "Consistency & Predictability for clients. Standardized error handling."
+  base_url: /api/v1
+  response_wrapper: CommonResponse<T> { code, message, data }
+  error_response: >
+    Errors reuse CommonResponse<T> (same wrapper as success): { code, message, data }.
+    For validation errors (MethodArgumentNotValidException), data is a List<ErrorResponse>
+    where ErrorResponse = { errorField, errorMessage, inputValue }. Other errors set data to null.
+  methods: { GET: 200, POST: 201, PUT/PATCH: 200, DELETE: 204 }
+  naming:
+    url: kebab-case, plural (e.g., /subscriptions/{id}/checks)
+    dto: { Action }{ Resource }Request, {Resource}Response
+  error_codes:
+    global: 30001~30999 (Server), 40001~40099 (Client)
+    domains:
+      auth: "401xx — 소셜 로그인(Apple/Google), 토큰"
+      user: "402xx — 회원, 알림 설정, 푸시 토큰"
+    allocation: "그 외 도메인은 구현 시점에 403xx부터 순서대로 할당하고 여기에 추가"
+    note: "상세 코드 목록은 references/conventions/coding-style.yaml 참고. domain/example(Post)은 예시용이라 대역 정책에서 제외"
+
+
+entity:
+  intent: "Data Integrity & Encapsulation. Protect invariants within the Entity."
+  source_of_truth: docs/ERD.md
+  base:
+    BaseEntity (id: UUID (@GeneratedValue(strategy = GenerationType.UUID)), createdAt, updatedAt, deleted, deletedAt)
+  mapping:
+    - ManyToOne(Lazy)
+    - Use JPA relationships (@ManyToOne, @OneToMany, @ManyToMany) with FK constraints
+  table_rules:
+    - Table name: plural snake_case (e.g., subscriptions, subscription_checks)
+    - Store only user-generated / runtime-changing data. Fixed data (Category, 점검 문항, 해지 이유 선택지, 플랫폼 공통 해지 안내) -> Enum/상수
+    - Do NOT store computable values (월/연 환산 금액, 결제 예정액, D-day, 캘린더 결제일)
+  column_rules:
+    - Enum: @Enumerated(EnumType.STRING) (ORDINAL Forbidden)
+    - Boolean: prefix 'is_' (e.g., is_active), default value required
+    - Text: @Lob or columnDefinition="TEXT"
+    - String: Must specify length
+    - Money: 원 단위 Integer (INT)
+    - Date: '_on' suffix -> LocalDate (DATE), '_at' suffix -> LocalDateTime (DATETIME)
+  rules:
+    - Soft Delete required (use softDelete() method) — NO Hard Delete, no exceptions
+    - No equals/hashCode override
+    - No toDto() inside Entity

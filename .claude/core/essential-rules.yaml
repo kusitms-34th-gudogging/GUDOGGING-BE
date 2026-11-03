@@ -1,0 +1,49 @@
+project:
+  name: gudogging-BE
+  type: spring-boot-java
+  domain: subscription-management (구독 등록·결제 전 점검·해지 안내)
+  target: 구도깅 모바일 앱 클라이언트 (큐시즘 34기)
+  base_package: com.subscribers.gudogging
+
+stack:
+  java: 21
+  jdk: 21
+  spring_boot: 4.1.2
+  build: Gradle
+  persistence: Spring Data JPA (Hibernate)
+  db: MySQL
+  security: Spring Security
+  validation: Jakarta Bean Validation (spring-boot-starter-validation)
+  api_docs: springdoc-openapi 3.1.0 (Swagger UI)
+  lombok: true
+  test: JUnit 5 + Mockito + AssertJ (unit tests)
+
+constraints:
+  - NO field injection (@Autowired) -> Use @RequiredArgsConstructor on ALL @Service, @RestController classes
+  - Entity MUST have @Getter, @NoArgsConstructor(access = PROTECTED), @AllArgsConstructor(access = PRIVATE) -> NO @Setter (state changes via static factory method or domain methods only)
+  - NO Hard Delete (NO exceptions, incl. 회원 탈퇴 / Gmail 연결 해제) -> Use Soft Delete (softDelete() / deletedAt)
+  - NO Logic in Controller -> Delegate to UseCase
+  - NO Anemic Model -> Put logic in Entity (Tell Don't Ask)
+  - NO Alpha/Beta versions -> latest Stable only
+  - NO Duplicate Error Codes -> Search existing ErrorCode enums (grep "implements ErrorCodeInterface") before adding new codes
+  - Domain Service Isolation -> Service depends ONLY on Repository (No Service-to-Service calls)
+  - UseCase MUST NOT depend on Repository directly -> Always go through Domain Service
+  - UseCase Transaction -> @Transactional(readOnly = true) on class, @Transactional on write methods
+  - Performance -> Prefer `saveAll()` over loop `save()`. Avoid N+1 queries.
+  - Entity ID -> UUID (inherited from BaseEntity). NEVER declare Long/Auto-Increment IDs.
+  - MUST READ `references/conventions/coding-style.yaml` before implementing API Response or Exception Handling.
+  - MUST READ `docs/ERD.md` before implementing or changing entities.
+
+coding_style:
+  - Prefer final fields (immutability)
+  - Records or POJOs for DTOs
+  - Explicit null handling (Objects.requireNonNull, Optional, or @NonNull)
+  - Response DTO: Use static factory method `from(entity)` (No direct instantiation)
+
+notes:
+  - "domain/example (Post)는 계층 구조를 보여주는 예시용 API. 실제 도메인이 아니며 에러코드 대역 등 정책 판단에서 제외"
+
+commands:
+  build: ./gradlew build
+  test: ./gradlew test
+  run: ./gradlew bootRun
