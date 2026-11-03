@@ -24,7 +24,7 @@
 - `/feature`: New Feature (Immutable Spec)
 - `/fix`: Bug Fix (Root Cause Analysis)
 - `/refactor`: Code Improvement (No logic change)
-- `/docs`: Documentation Maintenance
+- `/docs`: Spec Writing from Requirements & Documentation Sync
 - `/review`: Multi-Perspective Code Review
 
 ## Agent Behavior (Protocol)
