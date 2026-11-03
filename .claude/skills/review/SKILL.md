@@ -180,7 +180,7 @@ gh pr diff 123
 **6. Test Coverage Gaps**
 - Missing test cases for edge cases
 - Untested error scenarios
-- Missing integration test scenarios
+- UseCase test scenarios missing (tests are written for UseCase ONLY — do NOT request Service/Entity/Repository/Controller tests)
 - Inadequate boundary testing
 
 **Output Format:**

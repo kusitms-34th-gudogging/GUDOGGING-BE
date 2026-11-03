@@ -64,7 +64,7 @@ Automate the bug fix workflow from context loading through root cause analysis t
 - Identify reproduction method
 
 **Step 4: Hypothesis Validation**
-- Write a failing test that reproduces the bug
+- Write a failing UseCase test that reproduces the bug
 - Run the test to confirm: `./gradlew test --tests "*{TestClass}*"`
 - Verify 100% reproducibility
 
@@ -143,9 +143,9 @@ Which strategy do you prefer?
 3. Run affected tests: `./gradlew test --tests "*{AffectedClass}*"`
 
 **Step 3: Regression Test**
-1. Add new test case:
+1. Add new test case to `{Domain}UseCaseTest` (UseCase tests ONLY — even if the bug is in a Domain Service or Entity, reproduce it through the UseCase):
    - Use JUnit 5 with @Test and @DisplayName
-   - Use Korean @DisplayName (e.g., "이미 대기 중인 회원인 경우")
+   - Use Korean @DisplayName (e.g., "같은 결제일에 다시 점검하면 기존 결과를 덮어쓴다")
    - Follow `references/conventions/testing-guide.yaml`
 2. Verify test fails before fix (confirms bug reproduction)
 3. Verify test passes after fix
@@ -192,10 +192,10 @@ Before completing fix:
 
 📝 Files Modified:
   - src/.../UseCase.java (lines 45-47)
-  - src/.../Test.java (added test case)
+  - src/test/.../application/usecase/{Domain}UseCaseTest.java (added test case)
 
 🧪 Tests:
-  - Added: "이미 대기 중인 회원인 경우"
+  - Added: "[Korean test scenario]"
   - All tests passed: ✅
 
 📚 Documentation:

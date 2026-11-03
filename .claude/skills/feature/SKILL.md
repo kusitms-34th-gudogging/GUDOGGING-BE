@@ -253,10 +253,17 @@ public enum {Name}ErrorCode implements ErrorCodeInterface {
 
 **Step 3: Write Tests**
 
+**Test Scope:**
+
+- **ONLY** write `{Domain}UseCaseTest` — NO Domain Service / Entity / Repository / Controller / DTO tests
+- Mock Domain Services the UseCase depends on (`@Mock`), inject the UseCase (`@InjectMocks`)
+- Entity logic is verified through UseCase test scenarios (do not mock Entities)
+- Location: `src/test/java/com/subscribers/gudogging/domain/{domain}/application/usecase/`
+
 **Test Structure:**
 
 - Use JUnit 5 with @ExtendWith(MockitoExtension.class) and @Nested
-- Use Korean @DisplayName (e.g., "부스 메뉴 주문 시 재고가 차감된다")
+- Use Korean @DisplayName (e.g., "다음 결제일이 과거면 예외를 던진다")
 - Follow AAA pattern (given / when / then)
 
 **Test Coverage:**
@@ -270,7 +277,7 @@ public enum {Name}ErrorCode implements ErrorCodeInterface {
 
 ```bash
 # Run specific tests
-./gradlew test --tests "*{FeatureName}*"
+./gradlew test --tests "*{Domain}UseCaseTest"
 
 # Full test suite
 ./gradlew test
@@ -279,7 +286,7 @@ public enum {Name}ErrorCode implements ErrorCodeInterface {
 **Step 2: Verification**
 
 1. Compile: `./gradlew compileJava`
-2. Run tests: `./gradlew test --tests "*{FeatureName}*"`
+2. Run tests: `./gradlew test --tests "*{Domain}UseCaseTest"`
 3. Build: `./gradlew build`
 4. Check code style (manual review against `coding-style.yaml`)
 
@@ -291,7 +298,7 @@ Before completing feature:
 - [ ] DTOs use Static Factory Method pattern
 - [ ] No layer skipping (Controller must call UseCase, not Repository)
 - [ ] No horizontal dependencies (Domain Service → Domain Service)
-- [ ] Tests written (happy path + edge cases + error cases)
+- [ ] UseCase tests written (happy path + edge cases + error cases) — no Service/Entity/other tests
 - [ ] All tests pass: `./gradlew test`
 - [ ] Build successful: `./gradlew build`
 - [ ] Code follows `essential-rules.yaml`
@@ -312,7 +319,7 @@ Before completing feature:
   - src/.../domain/{domain}/application/{Name}UseCase.java
   - src/.../domain/{domain}/domain/{Name}Service.java (if needed)
   - src/.../domain/{domain}/application/dto/{Name}Request.java, {Name}Response.java
-  - src/test/.../domain/{domain}/application/{Name}UseCaseTest.java
+  - src/test/.../domain/{domain}/application/usecase/{Name}UseCaseTest.java
 
 🧪 Test Results:
   - Test cases: [Number] (happy path + edge cases + error cases)

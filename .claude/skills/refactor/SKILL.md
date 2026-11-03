@@ -46,7 +46,7 @@ Improve code structure, readability, or performance without changing external be
 - Read target file(s) completely
 - Understand business logic flow
 - Identify dependencies (what calls this code? what does this code call?)
-- Check test coverage: `./gradlew test --tests "*{TargetClass}*"`
+- Check test coverage: `./gradlew test --tests "*{Domain}UseCaseTest"` (tests exist only at UseCase level)
 
 **Step 2: Identify Issues**
 
@@ -126,7 +126,7 @@ Which approach do you prefer?
 
 **IF** no tests exist:
 1. **STOP** refactoring
-2. Write tests first to capture current behavior
+2. Write `{Domain}UseCaseTest` first to capture current behavior (UseCase tests ONLY — cover Service/Entity changes through the UseCase that calls them)
 3. Follow `references/conventions/testing-guide.yaml`
 4. Verify tests pass with current code
 5. **THEN** proceed with refactoring
