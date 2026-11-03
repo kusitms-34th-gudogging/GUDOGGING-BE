@@ -154,49 +154,48 @@ Which approach do you prefer?
 **Extract Method:**
 ```java
 // Before
-void registerSubscription(Subscription subscription) {
+public PostResponse createPost(CreatePostRequest request) {
     // 20 lines of validation
-    // 15 lines of business logic
-    // 10 lines of notification
+    // 15 lines of entity creation & save
+    // 10 lines of response conversion
 }
 
 // After
-void registerSubscription(Subscription subscription) {
-    validateSubscription(subscription);
-    saveSubscription(subscription);
-    scheduleCheckNotification(subscription);
+public PostResponse createPost(CreatePostRequest request) {
+    validateCreateRequest(request);
+    Post saved = savePost(request);
+    return PostResponse.from(saved);
 }
 
-private void validateSubscription(Subscription subscription) { ... }
-private void saveSubscription(Subscription subscription) { ... }
-private void scheduleCheckNotification(Subscription subscription) { ... }
+private void validateCreateRequest(CreatePostRequest request) { ... }
+private Post savePost(CreatePostRequest request) { ... }
 ```
 
 **Introduce Constant:**
 ```java
 // Before
-if (status.equals("ACTIVE")) { ... }
+if (title.length() > 100) { ... }
 
 // After
-private static final String STATUS_ACTIVE = "ACTIVE";
-if (STATUS_ACTIVE.equals(status)) { ... }
+private static final int MAX_TITLE_LENGTH = 100;
+if (title.length() > MAX_TITLE_LENGTH) { ... }
 ```
 
 **Use Guard Clause:**
 ```java
 // Before
-void process(User user) {
-    if (user != null) {
-        if (user.isActive()) {
+void process(Post post) {
+    if (post != null) {
+        if (!post.isDeleted()) {
             // main logic
         }
     }
 }
 
 // After
-void process(User user) {
-    if (user == null) return;
-    if (!user.isActive()) return;
+void process(Post post) {
+    if (post == null) return;
+    if (post.isDeleted()) return;
     // main logic
 }
 ```
@@ -263,69 +262,64 @@ Before completing refactor:
 
 ## Example Invocation
 
+> 예시 API(`domain/example`, Post) 기준의 가상 시나리오입니다. 실제 코드 상태와 다를 수 있으며, 출력 형식과 흐름을 참고하는 용도입니다.
+
 ```
-User: "/refactor SubscriptionUseCase - 메서드가 너무 길어요"
+User: "/refactor PostErrorCode - Lombok 컨벤션 적용해줘"
 
 AI:
-🔧 Starting Refactoring: SubscriptionUseCase
+🔧 Starting Refactoring: PostErrorCode
 
 Phase 1: Context Loading
 - Reading CLAUDE.md, essential-rules.yaml, system-design.yaml...
-- Reading coding-style.yaml...
-- Reading SubscriptionUseCase.java...
+- Reading coding-style.yaml... (enum.error_code: @Getter + @AllArgsConstructor)
+- Reading PostErrorCode.java...
 
 Phase 2: Analysis
-- Found: registerSubscriptions method (87 lines)
+- Found: 수동 생성자 + getter 3개 (getCode, getStatus, getMessage)
 - Issues identified:
-  - Long method (87 lines, exceeds 30 line guideline)
-  - Multiple responsibilities (validation, creation, response conversion)
-  - Deep nesting (4 levels)
-- Test coverage: SubscriptionUseCaseTest.java exists ✅
+  - coding-style.yaml 컨벤션 불일치 (ErrorCode enum은 Lombok 사용)
+  - PostResponseCode와 작성 방식이 달라 일관성 부족
+- Test coverage: PostUseCaseTest.java exists ✅ (PostNotFoundException 시나리오 포함)
 
 Phase 3: Safety Verification
-- Running existing tests... ✅ PASSED (8/8)
-- Test coverage: Sufficient (covers main logic paths)
+- Running existing tests... ✅ PASSED (5/5)
+- Test coverage: Sufficient (에러 코드가 쓰이는 조회 실패 경로 포함)
 
 Phase 4: Refactor
-Strategy: Extract Method (break into 3 methods)
-- Extracting: validateRegisterRequest()
-- Extracting: createSubscriptions()
-- Extracting: buildRegisterResponse()
-- Updating registerSubscriptions() to orchestrate
+Strategy: Replace boilerplate with Lombok
+- Adding @Getter, @AllArgsConstructor
+- Removing manual constructor and @Override getters (ErrorCodeInterface는 Lombok getter로 구현)
 
 Incremental validation:
-- Step 1 (validateRegisterRequest): ✅ PASSED (8/8)
-- Step 2 (createSubscriptions): ✅ PASSED (8/8)
-- Step 3 (buildRegisterResponse): ✅ PASSED (8/8)
+- Step 1 (Lombok 적용): ✅ PASSED (5/5)
+- Step 2 (수동 코드 제거): ✅ PASSED (5/5)
 
 Final validation:
-- Full test suite... ✅ PASSED (35/35)
+- Full test suite... ✅ PASSED (5/5)
 - Build... ✅ SUCCESS
 
-✅ Refactoring Complete: SubscriptionUseCase
+✅ Refactoring Complete: PostErrorCode
 
-🎯 Goal: Improve readability by breaking long method into smaller, focused methods
+🎯 Goal: coding-style.yaml의 ErrorCode enum Lombok 컨벤션 적용
 
 📋 Changes Applied:
-  - Extract Method: validateRegisterRequest() (validation logic)
-  - Extract Method: createSubscriptions() (business logic)
-  - Extract Method: buildRegisterResponse() (response conversion)
-  - Simplified: registerSubscriptions() now orchestrates 3 methods
+  - Added: @Getter, @AllArgsConstructor
+  - Removed: 수동 생성자, getCode()/getStatus()/getMessage()
 
 📁 Files Modified:
-  - src/.../domain/subscription/application/usecase/SubscriptionUseCase.java (lines 45-132)
+  - src/.../domain/example/application/exception/PostErrorCode.java
 
 🧪 Tests:
-  - Existing tests: ✅ PASSED (8/8)
+  - Existing tests: ✅ PASSED (5/5)
   - New tests: 0 (behavior unchanged, no new tests needed)
 
 🏗️ Build: ✅ SUCCESS
 
 📊 Improvements:
-  - Code complexity: Reduced (87 lines → 4 methods of 10-25 lines each)
-  - Lines of code: Same (87 lines total, just reorganized)
-  - Readability: Significantly improved (clear method names, single responsibility)
-  - Maintainability: Improved (easier to modify individual steps)
+  - Lines of code: 37 → 21
+  - Consistency: PostResponseCode와 동일한 작성 방식
+  - Maintainability: 에러 코드 추가 시 enum 상수만 작성
 ```
 
 ## Troubleshooting

@@ -17,7 +17,7 @@ Automate the creation and maintenance of project documentation:
 
 - User asks to create or update documentation
 - User says "문서 생성", "문서 업데이트", "문서 동기화", "스펙 문서 작성"
-- User describes a feature not yet implemented and asks for a spec (e.g., `/docs 소셜 로그인 기능 스펙 문서 작성해줘`)
+- User describes a feature not yet implemented and asks for a spec (e.g., `/docs 게시글 수정 기능 스펙 문서 작성해줘`)
 - User invokes `/docs entity [EntityName]`
 - User invokes `/docs spec [FeatureName]`
 - User invokes `/docs update [FilePath]`
@@ -42,11 +42,11 @@ When the request is about a feature spec, decide which scenario applies:
 
 | Condition | Scenario |
 |---|---|
-| Feature is described in words and related code (Controller/UseCase) does NOT exist | **Scenario B-1: New Spec from Requirements** |
-| Related code already exists (implemented feature) | **Scenario B-2: Sync Spec with Code** |
+| The requested feature (its endpoint / UseCase method) does NOT exist yet — the domain's other classes may exist | **Scenario B-1: New Spec from Requirements** |
+| The requested feature is already implemented (endpoint / UseCase method exists) | **Scenario B-2: Sync Spec with Code** |
 | Unclear (e.g., partially implemented, or ambiguous whether to follow code or request) | **STOP and ASK** the user which one to follow |
 
-Check existence with Grep/Glob (e.g., `**/{Domain}Controller.java`, `**/{Domain}UseCase.java`).
+Check existence with Grep (e.g., the HTTP method + path in `{Domain}Controller`, the method name in `{Domain}UseCase`).
 
 ### Phase 2: Analysis & Extraction
 
@@ -65,7 +65,7 @@ Check existence with Grep/Glob (e.g., `**/{Domain}Controller.java`, `**/{Domain}
 
 **When:** User wants to update entity documentation
 
-**Input:** Entity class files (e.g., `Subscription.java`, `SubscriptionCheck.java`)
+**Input:** Entity class files (e.g., `Post.java`)
 
 **Output:** Update `references/data-model/domains/{domain}/{Entity}.yaml`
 
@@ -81,36 +81,30 @@ Check existence with Grep/Glob (e.g., `**/{Domain}Controller.java`, `**/{Domain}
 
 **Example:**
 ```yaml
-# references/data-model/domains/subscription/subscription.yaml
-entity: SUBSCRIPTION
-description: 사용자가 등록한 구독
-table: subscriptions
-domain: Subscription
+# references/data-model/domains/example/post.yaml
+entity: POST
+description: 게시글. 제목·본문·작성자명을 보유하는 기본 게시글 엔티티.
+table: posts
+domain: Post
 extends: BaseEntity
 
 columns:
-  - user_id:
-      type: BINARY(16) (UUID)
+  - title:
+      type: VARCHAR(100)
       nullable: false
-      description: "FK → users"
-  - name:
-      type: VARCHAR(30)
+      description: "게시글 제목 (최대 100자)"
+  - content:
+      type: TEXT
       nullable: false
-      description: "서비스명 (1~30자)"
-  - amount:
-      type: INT
+      description: "게시글 본문"
+  - author_name:
+      type: VARCHAR(50)
       nullable: false
-      description: "1회 결제 금액 (원 단위, 양의 정수)"
-
-relationships:
-  - type: ManyToOne
-    target: User
-  - type: OneToMany
-    target: SubscriptionCheck
+      description: "작성자명 (최대 50자)"
 
 business_logic:
-  - "create(...): 정적 팩토리 메서드"
-  - "cancel(): status = CANCELED, canceledOn = 오늘"
+  - "create(title, content, authorName): 정적 팩토리 메서드"
+  - "softDelete(): → BaseEntity 위임"
 ```
 
 **Scenario B-1: New Spec from Requirements (before implementation)**
@@ -209,10 +203,12 @@ Before completing documentation:
 
 ## Example Invocation
 
+> 예시 API(`domain/example`, Post) 기준의 가상 시나리오입니다. 실제 코드 상태와 다를 수 있으며, 출력 형식과 흐름을 참고하는 용도입니다.
+
 **New Spec from Requirements (B-1):**
 
 ```
-User: "/docs 사용자가 결제 전 알림 설정을 켜고 끌 수 있는 기능 스펙 문서 작성해줘"
+User: "/docs 게시글 제목과 본문을 수정하는 기능 스펙 문서 작성해줘"
 
 AI:
 📚 Starting Documentation: New Feature Spec
@@ -220,32 +216,34 @@ AI:
 Phase 1: Context Loading
 - Reading CLAUDE.md, essential-rules.yaml, system-design.yaml...
 - Reading spec-writing-guide.yaml, feature-spec.yaml template...
-- Reading docs/ERD.md (users)...
+- Reading references/data-model/domains/example/post.yaml...
 
 Phase 1.5: Select Scenario
-- No related Controller/UseCase found → Scenario B-1 (New Spec)
+- PostController exists, but no update endpoint / PostUseCase.updatePost not found → Scenario B-1 (New Spec)
 
 Phase 2: Requirement Analysis
-- Domain: User
-- API: PATCH /api/v1/users/me/notification-settings
-- Entity: User (check notification column)
+- Domain: Post (domain/example)
+- API: PATCH /api/v1/posts/{postId}
+- Entity: Post (title, content)
 
 Phase 3: Documentation
-- Creating: .claude/features/user/004_update_notification_setting.yaml (Status: Draft)
+- Highest existing spec: FEAT-003 → next: FEAT-004
+- Creating: .claude/features/example/004_update_post.yaml (Status: Draft)
 
 📋 API 동작 요약:
-  - PATCH /api/v1/users/me/notification-settings
-  - 로그인한 사용자의 결제 전 점검 알림 설정을 켜거나 끕니다.
-  - 응답: 변경된 알림 설정 값
+  - PATCH /api/v1/posts/{postId}
+  - 게시글의 제목과 본문을 수정합니다. (작성자명은 수정 불가)
+  - 존재하지 않거나 삭제된 게시글이면 POST_NOT_FOUND
+  - 응답: 수정된 게시글 정보 (PostResponse)
 
 생각하신 기능과 API 동작 방식이 맞나요?
-맞다면 `/feature .claude/features/user/004_update_notification_setting.yaml`로 구현을 진행하세요.
+맞다면 `/feature .claude/features/example/004_update_post.yaml`로 구현을 진행하세요.
 ```
 
 **Entity Docs from Code (A):**
 
 ```
-User: "/docs entity Subscription"
+User: "/docs entity Post"
 
 AI:
 📚 Starting Documentation Update: Entity Model
@@ -254,22 +252,22 @@ Phase 1: Context Loading
 - Reading CLAUDE.md, essential-rules.yaml, system-design.yaml...
 
 Phase 2: Analysis
-- Found: src/main/java/com/subscribers/gudogging/domain/subscription/domain/entity/Subscription.java
-- Extracting fields: name, category, amount, billingCycleInterval, nextBillingDate, status...
-- Extracting relationships: ManyToOne -> User, ManyToOne -> Service, OneToMany -> SubscriptionCheck...
-- Extracting constraints: nullable, length, @Enumerated(EnumType.STRING)...
+- Found: src/main/java/com/subscribers/gudogging/domain/example/domain/entity/Post.java
+- Extracting fields: title, content, authorName
+- Extracting relationships: none
+- Extracting constraints: length = 100, columnDefinition = "TEXT", length = 50, nullable = false
 
 Phase 3: Documentation
-- Updating: references/data-model/domains/subscription/subscription.yaml
+- Updating: references/data-model/domains/example/post.yaml
 - Format: YAML (following existing structure)
 
 📚 Documentation Update: Entity Model
 
 📄 Source Files Analyzed:
-  - src/main/java/com/subscribers/gudogging/domain/subscription/domain/entity/Subscription.java
+  - src/main/java/com/subscribers/gudogging/domain/example/domain/entity/Post.java
 
 📝 Documents Created/Modified:
-  - .claude/references/data-model/domains/subscription/subscription.yaml
+  - .claude/references/data-model/domains/example/post.yaml
 
 ✅ Status: SUCCESS
 ```

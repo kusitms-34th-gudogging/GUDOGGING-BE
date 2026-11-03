@@ -263,7 +263,7 @@ public enum {Name}ErrorCode implements ErrorCodeInterface {
 **Test Structure:**
 
 - Use JUnit 5 with @ExtendWith(MockitoExtension.class) and @Nested
-- Use Korean @DisplayName (e.g., "다음 결제일이 과거면 예외를 던진다")
+- Use Korean @DisplayName (e.g., "존재하지 않는 게시글을 수정하면 예외를 던진다")
 - Follow AAA pattern (given / when / then)
 
 **Test Coverage:**
@@ -333,66 +333,62 @@ Before completing feature:
 
 ## Example Invocation
 
+> 예시 API(`domain/example`, Post) 기준의 가상 시나리오입니다. 실제 코드 상태와 다를 수 있으며, 출력 형식과 흐름을 참고하는 용도입니다.
+
 ```
-User: "/feature 구독 점검 결과 저장"
+User: "/feature .claude/features/example/004_update_post.yaml 스펙대로 구현해줘"
 
 AI:
-🚀 Starting Feature Development: 구독 점검 결과 저장
+🚀 Starting Feature Development: 게시글 수정
 
 Phase 1: Context Loading
 - Reading CLAUDE.md, essential-rules.yaml, memory.md...
-- Identified Primary Domain: SubscriptionCheck
-- Identified Secondary Domains: Subscription
+- Identified Primary Domain: Post (domain/example)
 - Loading core/system-design.yaml...
-- Loading docs/ERD.md (subscription_checks, subscriptions)...
-- Loading references/data-model/domains/subscription-check/*.yaml... (없으면 ERD 기준)
+- Loading references/data-model/domains/example/post.yaml...
 - Loading references/conventions/coding-style.yaml...
 
 Phase 2: Feature Design
-- No spec file provided
-- Creating spec from template...
-
-[Shows draft spec]
-
-Should I proceed with this design?
-
-User: "Yes"
+- Spec file provided: .claude/features/example/004_update_post.yaml
+- Validating completeness (API contract, business logic, validations)... ✅
+- Skipping design phase
 
 Phase 3: Implementation
-- Implementing SubscriptionCheckController.java...
-- Implementing SubscriptionCheckUseCase.java...
-- Implementing SubscriptionCheckCreateService.java...
-- Creating CreateSubscriptionCheckRequest.java, SubscriptionCheckResponse.java (with Static Factory Method)...
-- Writing tests: SubscriptionCheckUseCaseTest.java...
-  - "유효한 점검 응답이 주어지면 점검 결과가 저장된다"
-  - "해지된 구독을 점검하면 예외가 발생한다"
-  - "같은 결제일에 다시 점검하면 기존 결과를 덮어쓴다"
+- Adding domain method: Post.update(title, content)
+- Adding PostUseCase.updatePost(postId, request) (@Transactional, PostGetService.getPost 재사용)
+- Adding PATCH /api/v1/posts/{postId} to PostController.java
+- Creating UpdatePostRequest.java, adding PostResponseCode.POST_UPDATED
+- Writing tests: PostUseCaseTest.java (UpdatePost @Nested)...
+  - "유효한 수정 요청이면 수정된 게시글 정보를 반환한다"
+  - "존재하지 않는 게시글을 수정하면 예외를 던진다"
+  - "삭제된 게시글을 수정하면 예외를 던진다"
 - Running tests... ✅ PASSED (3/3)
 - Running build... ✅ SUCCESS
 
-✅ Feature Implemented: 구독 점검 결과 저장
+✅ Feature Implemented: 게시글 수정
 
 📋 Specification:
-  - Primary Domain: SubscriptionCheck
-  - API Endpoint: POST /api/v1/subscriptions/{subscriptionId}/checks
-  - Business Logic: 구독 상태 확인 → 점수·단계 계산 → 점검 결과 저장(같은 결제일이면 덮어쓰기)
+  - Primary Domain: Post (domain/example)
+  - API Endpoint: PATCH /api/v1/posts/{postId}
+  - Business Logic: 게시글 조회(삭제 제외) → post.update() → PostResponse 반환
 
-📁 Files Created:
-  - src/.../domain/subscriptioncheck/presentation/SubscriptionCheckController.java
-  - src/.../domain/subscriptioncheck/application/usecase/SubscriptionCheckUseCase.java
-  - src/.../domain/subscriptioncheck/application/dto/request/CreateSubscriptionCheckRequest.java
-  - src/.../domain/subscriptioncheck/application/dto/response/SubscriptionCheckResponse.java
-  - src/test/.../domain/subscriptioncheck/application/usecase/SubscriptionCheckUseCaseTest.java
+📁 Files Created/Modified:
+  - src/.../domain/example/domain/entity/Post.java (update 메서드 추가)
+  - src/.../domain/example/application/usecase/PostUseCase.java (updatePost 추가)
+  - src/.../domain/example/application/dto/request/UpdatePostRequest.java (신규)
+  - src/.../domain/example/presentation/PostController.java (PATCH 엔드포인트 추가)
+  - src/.../domain/example/presentation/response/PostResponseCode.java (POST_UPDATED 추가)
+  - src/test/.../domain/example/application/usecase/PostUseCaseTest.java
 
 🧪 Test Results:
-  - Test cases: 3 (1 happy + 2 edge/error cases)
+  - Test cases: 3 (1 happy + 2 error cases)
   - Status: ✅ PASSED (3/3)
 
 🏗️ Build Status: ✅ SUCCESS
 
 📝 Notes:
-  - Static Factory Method used for SubscriptionCheckResponse.from(subscriptionCheck)
-  - Transaction boundary set in UseCase (@Transactional)
+  - Static Factory Method used for PostResponse.from(post)
+  - Transaction boundary set in UseCase (@Transactional), 변경 감지(dirty checking)로 저장
 ```
 
 ## Troubleshooting

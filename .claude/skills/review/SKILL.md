@@ -270,51 +270,54 @@ Before completing review:
 
 ## Example Invocation
 
+> 예시 API(`domain/example`, Post) 기준의 가상 시나리오입니다. 실제 코드 상태와 다를 수 있으며, 출력 형식과 흐름을 참고하는 용도입니다.
+
 ```
-User: "/review src/main/java/com/subscribers/gudogging/domain/subscription"
+User: "/review src/main/java/com/subscribers/gudogging/domain/example"
 
 AI:
-🔍 Starting Code Review: Subscription Domain
+🔍 Starting Code Review: Post Domain (example)
 
 Phase 1: Context Loading
 - Reading CLAUDE.md, essential-rules.yaml, system-design.yaml...
 - Reading memory.md for known issues...
-- Scanning files in src/.../domain/subscription...
-- Found: SubscriptionController.java, SubscriptionUseCase.java, RegisterSubscriptionsRequest.java, SubscriptionResponse.java
-- Loading corresponding tests...
-- Loading docs/ERD.md (subscriptions)...
+- Scanning files in src/.../domain/example...
+- Found: PostController.java, PostUseCase.java, PostCreateService.java, PostGetService.java, Post.java, CreatePostRequest.java, PostResponse.java, PostErrorCode.java
+- Loading corresponding tests... PostUseCaseTest.java
+- Loading references/data-model/domains/example/post.yaml...
 
 Phase 2: Code Quality Review
 
 🕵️‍♂️ Code Quality Review
 
 📋 Files Reviewed:
-  - src/main/java/com/subscribers/gudogging/domain/subscription/presentation/SubscriptionController.java
-  - src/main/java/com/subscribers/gudogging/domain/subscription/application/usecase/SubscriptionUseCase.java
-  - src/main/java/com/subscribers/gudogging/domain/subscription/application/dto/request/RegisterSubscriptionsRequest.java
-  - src/main/java/com/subscribers/gudogging/domain/subscription/application/dto/response/SubscriptionResponse.java
+  - src/main/java/com/subscribers/gudogging/domain/example/presentation/PostController.java
+  - src/main/java/com/subscribers/gudogging/domain/example/application/usecase/PostUseCase.java
+  - src/main/java/com/subscribers/gudogging/domain/example/domain/service/PostGetService.java
+  - src/main/java/com/subscribers/gudogging/domain/example/application/dto/response/PostResponse.java
+  - src/main/java/com/subscribers/gudogging/domain/example/application/exception/PostErrorCode.java
 
 ✅ Strengths:
-  - Layer architecture properly followed (Controller → UseCase → Domain Service)
-  - DTOs use Static Factory Method pattern correctly
-  - RESTful endpoint naming follows conventions (/api/v1/subscriptions)
+  - Layer architecture properly followed (Controller → PostUseCase → Domain Service → Repository)
+  - DTOs use Static Factory Method pattern correctly (PostResponse.from)
+  - RESTful endpoint naming follows conventions (/api/v1/posts)
 
 ⚠️ Issues Found:
 
 🔴 Critical (Must Fix):
-  1. Missing transaction boundary at SubscriptionUseCase.java:25
-     - Problem: @Transactional annotation missing on registerSubscriptions()
-     - Why: 일괄 등록은 전부 성공하거나 전부 실패해야 함 (부분 등록 방지)
-     - Fix: Add @Transactional to registerSubscriptions() method
+  1. Soft-deleted post returned at PostGetService.java:22
+     - Problem: getPost()가 findById()를 사용해 deleted = true 게시글도 조회됨
+     - Why: Soft Delete 규칙 위반 — 삭제된 데이터가 API로 노출
+     - Fix: findByIdAndDeletedFalse()로 변경
 
 🟡 Medium (Should Fix):
-  1. Loop save() at SubscriptionUseCase.java:32
-     - Problem: 구독마다 save() 호출
-     - Suggestion: Use saveAll() for batch insert (essential-rules Performance)
+  1. No ordering on list query at PostRepository.java:11
+     - Problem: findAllByDeletedFalse()에 정렬 기준 없음
+     - Suggestion: findAllByDeletedFalseOrderByCreatedAtDesc() 등 명시적 정렬
 
 🔵 Minor (Nice to Have):
-  1. Magic number at RegisterSubscriptionsRequest.java:15
-     - Suggestion: Extract validation constant (MAX_BILLING_CYCLE_INTERVAL = 31)
+  1. Lombok convention not applied at PostErrorCode.java:6
+     - Suggestion: 수동 생성자·getter 대신 @Getter + @AllArgsConstructor (coding-style.yaml)
 
 Phase 3: QA Review
 
@@ -323,73 +326,61 @@ Phase 3: QA Review
 🔍 Potential Bugs & Risks:
 
 🐛 High Risk (Likely to Cause Bugs):
-  1. No past-date validation at SubscriptionUseCase.java:35
-     - Scenario: nextBillingDate가 과거 날짜로 등록됨
-     - Impact: D-3/D-1 알림 배치·홈 집계 오작동
-     - Mitigation: Validate nextBillingDate >= today before creation
-
-  2. Service name editable for catalog subscription at Subscription.java:58
-     - Scenario: service_id가 있는 구독의 name 수정 요청
-     - Impact: 카탈로그와 이름 불일치 (ERD 규칙 위반)
-     - Mitigation: subscription.updateName()에서 service 존재 시 예외
+  1. Deleted post exposed via GET /api/v1/posts/{postId} (PostGetService.java:22)
+     - Scenario: 삭제된 게시글 ID로 단건 조회
+     - Impact: 클라이언트에 삭제된 게시글 노출
+     - Mitigation: 위 Critical 1 수정 + UseCase 테스트 추가
 
 ⚡ Medium Risk (Edge Case Issues):
-  1. Canceled subscription included in list at SubscriptionGetService.java:28
-     - Scenario: status = CANCELED 구독이 홈 결제 예정 목록에 노출
-     - Recommendation: status = ACTIVE 조건 추가
+  1. Whitespace not trimmed at CreatePostRequest.java:9
+     - Scenario: authorName = "  작성자  "
+     - Recommendation: 저장 전 trim 처리 여부 결정
 
 💡 Low Risk (Defensive Programming):
-  1. Null check missing at SubscriptionResponse.java:18
-     - Context: service(카탈로그)가 null인 직접 입력 구독의 logoUrl 접근
-     - Suggestion: Optional 처리 또는 null-safe 변환
+  1. Unstable list order at PostRepository.java:11
+     - Context: DB 실행 계획에 따라 목록 순서가 달라질 수 있음
+     - Suggestion: 정렬 기준 명시
 
-🧪 Test Coverage Analysis:
+🧪 Test Coverage Analysis (PostUseCaseTest):
   ✅ Covered:
-    - "유효한 요청이면 구독이 일괄 등록된다"
-    - "존재하지 않는 서비스 ID면 예외 발생"
+    - "유효한 요청으로 게시글을 생성하면 게시글 정보가 반환된다"
+    - "존재하지 않는 ID가 주어지면 예외를 던진다"
   ❌ Missing:
-    - Past nextBillingDate scenario
-    - billingCycleInterval 경계값 (0, 1, 31, 32)
-    - Canceled subscription filtering
-    - 카탈로그 구독 이름 수정 시도
+    - "삭제된 게시글을 조회하면 예외를 던진다"
+    - "게시글이 없으면 빈 리스트를 반환한다"
+    - title 100자 경계값 시나리오
 
 📊 Edge Cases to Consider:
-  - amount = 0 or negative
-  - billingCycleInterval out of range (1~31)
-  - nextBillingDate in the past
-  - 빈 등록 목록
-  - 직접 입력 구독 (service_id = NULL)
+  - title 정확히 100자 / 101자
+  - 존재하지 않는 UUID
+  - 삭제된 게시글
+  - 게시글이 0개인 목록 조회
 
 Phase 4: Action Items
 
 📋 Action Items Summary
 
 🔴 Critical (Must Fix Before Merge):
-  - [ ] Add @Transactional to SubscriptionUseCase.java:25
-  - [ ] Add past-date validation at SubscriptionUseCase.java:35
-  - [ ] Block name update for catalog subscriptions at Subscription.java:58
-  - [ ] Add test case: "다음 결제일이 과거면 예외 발생"
-  - [ ] Add test case: "카탈로그 구독 이름 수정 시 예외 발생"
+  - [ ] Use findByIdAndDeletedFalse() at PostGetService.java:22
+  - [ ] Add test case: "삭제된 게시글을 조회하면 예외를 던진다"
 
 🟡 Recommended (Should Address):
-  - [ ] Filter ACTIVE status at SubscriptionGetService.java:28
-  - [ ] Replace loop save() with saveAll() at SubscriptionUseCase.java:32
-  - [ ] Add test case: "해지된 구독은 결제 예정 목록에서 제외된다"
+  - [ ] Add explicit ordering at PostRepository.java:11
+  - [ ] Add test case: "게시글이 없으면 빈 리스트를 반환한다"
 
 🔵 Optional Improvements:
-  - [ ] Extract magic number to constant at RegisterSubscriptionsRequest.java:15
-  - [ ] Add null-safe handling at SubscriptionResponse.java:18
+  - [ ] Apply Lombok convention at PostErrorCode.java:6
+  - [ ] Decide trim policy for CreatePostRequest fields
 
 📈 Overall Assessment:
-  - Code Quality Score: Medium (architecture good, missing transaction)
-  - Bug Risk Level: High (date validation + catalog rule missing)
-  - Test Coverage: Needs Improvement (missing critical edge cases)
-  - Ready to Merge: No (critical issues must be fixed first)
+  - Code Quality Score: Good (architecture and DTO patterns followed)
+  - Bug Risk Level: High (soft-deleted data exposure)
+  - Test Coverage: Needs Improvement (deleted/empty scenarios missing)
+  - Ready to Merge: No (critical issue must be fixed first)
 
 💬 Reviewer Notes:
-  The layer architecture and DTO patterns are well-implemented. However, the
-  bulk registration lacks a transaction boundary and key ERD validation rules
-  (past billing date, catalog name lock) must be addressed before merge.
+  레이어 구조와 DTO 패턴은 컨벤션을 잘 따르고 있습니다. 다만 단건 조회에서
+  Soft Delete 조건이 빠져 삭제된 게시글이 노출되므로 머지 전에 수정이 필요합니다.
 
 🛠️ 발견된 이슈를 수정할까요?
 

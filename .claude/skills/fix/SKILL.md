@@ -145,7 +145,7 @@ Which strategy do you prefer?
 **Step 3: Regression Test**
 1. Add new test case to `{Domain}UseCaseTest` (UseCase tests ONLY — even if the bug is in a Domain Service or Entity, reproduce it through the UseCase):
    - Use JUnit 5 with @Test and @DisplayName
-   - Use Korean @DisplayName (e.g., "같은 결제일에 다시 점검하면 기존 결과를 덮어쓴다")
+   - Use Korean @DisplayName (e.g., "게시글을 생성하면 입력한 작성자명이 반환된다")
    - Follow `references/conventions/testing-guide.yaml`
 2. Verify test fails before fix (confirms bug reproduction)
 3. Verify test passes after fix
@@ -206,52 +206,52 @@ Before completing fix:
 
 ## Example Invocation
 
+> 예시 API(`domain/example`, Post) 기준의 가상 시나리오입니다. 실제 코드 상태와 다를 수 있으며, 출력 형식과 흐름을 참고하는 용도입니다.
+
 ```
-User: "/fix 같은 결제일에 구독 점검이 중복 저장되는 버그 수정"
+User: "/fix 게시글 생성 응답의 authorName에 본문 내용이 들어가는 버그 수정"
 
 AI:
-🔍 Starting Bug Fix: 구독 점검 중복 저장 방지
+🔍 Starting Bug Fix: 게시글 응답 작성자명 매핑 오류
 
 Phase 1: Context Loading
 - Reading memory.md... (checking Known Issues)
 - Reading CLAUDE.md, essential-rules.yaml...
 - Reading testing-guide.yaml...
-- Loading docs/ERD.md (subscription_checks) for entity structure...
+- Loading references/data-model/domains/example/post.yaml for entity structure...
 
 Phase 2: Root Cause Analysis
-- Analyzing SubscriptionCheckController.java → SubscriptionCheckUseCase.java → SubscriptionCheckCreateService.java → SubscriptionCheckRepository.java
-- Checking DB constraints... UNIQUE (subscription_id, target_billing_date)
+- Analyzing PostController.java → PostUseCase.java → PostCreateService.java → PostResponse.java
 
-🐛 Bug: 같은 결제 주기에 다시 점검하면 덮어쓰지 않고 새 행을 저장하려다 30003 DATA_INTEGRITY_ERROR 발생
-📍 Location: SubscriptionCheckUseCase.java:45
-🔍 Root Cause: 기존 점검 조회 없이 항상 새 엔티티 생성 (ERD: 재점검 시 최신 결과로 덮어씀)
-💡 Hypothesis: UseCase에서 (subscription, targetBillingDate) 기존 행 확인 로직 누락
-🎯 Fix Strategy: Domain Service에 기존 점검 조회 추가 → 있으면 subscriptionCheck.update(...), 없으면 create
-⚠️ Impact: 구독 점검 저장 API만 영향
-🧪 Reproduction: Test case "같은 결제일에 다시 점검하면 기존 결과를 덮어쓴다" 추가
+🐛 Bug: POST /api/v1/posts 응답의 authorName에 content 값이 들어감
+📍 Location: PostResponse.java:19
+🔍 Root Cause: PostResponse.from()에서 authorName 자리에 post.getContent()를 매핑
+💡 Hypothesis: DTO 변환 시 필드 순서 실수 (저장된 데이터는 정상, 응답 변환만 오류)
+🎯 Fix Strategy: PostResponse.from()의 매핑을 post.getAuthorName()으로 수정
+⚠️ Impact: PostResponse를 쓰는 모든 게시글 API 응답 (생성·목록·단건 조회)
+🧪 Reproduction: PostUseCaseTest에 "게시글을 생성하면 입력한 작성자명이 반환된다" 추가
 
 Phase 3: Fix & Test
-- Adding existing-check lookup in SubscriptionCheckGetService...
-- Adding test case: "같은 결제일에 다시 점검하면 기존 결과를 덮어쓴다"...
-- Running tests... ✅ PASSED (12 existing + 1 new)
+- Adding test case to PostUseCaseTest (CreatePost @Nested)... ❌ FAILED (bug reproduced)
+- Fixing mapping in PostResponse.java:19...
+- Running tests... ✅ PASSED (5 existing + 1 new)
 - Running build... ✅ SUCCESS
 - Updating memory.md...
 
-✅ Bug Fixed: 구독 점검 중복 저장 방지
+✅ Bug Fixed: 게시글 응답 작성자명 매핑 오류
 
-🐛 Bug: 같은 결제 주기 재점검 시 중복 저장 시도
-📍 Location: SubscriptionCheckUseCase.java:45
-🔍 Root Cause: UseCase에서 기존 점검 조회 누락
-🔧 Fix Applied: 기존 점검이 있으면 update, 없으면 create
+🐛 Bug: 게시글 응답의 authorName에 content 값이 들어감
+📍 Location: PostResponse.java:19
+🔍 Root Cause: PostResponse.from()의 필드 매핑 오류
+🔧 Fix Applied: post.getContent() → post.getAuthorName()
 
 📝 Files Modified:
-  - src/main/java/.../SubscriptionCheckUseCase.java (lines 45-52)
-  - src/main/java/.../SubscriptionCheckGetService.java (added lookup)
-  - src/test/java/.../SubscriptionCheckUseCaseTest.java (added test)
+  - src/main/java/.../domain/example/application/dto/response/PostResponse.java (line 19)
+  - src/test/java/.../domain/example/application/usecase/PostUseCaseTest.java (added test)
 
 🧪 Tests:
-  - Added: "같은 결제일에 다시 점검하면 기존 결과를 덮어쓴다"
-  - All tests passed: ✅ (13/13)
+  - Added: "게시글을 생성하면 입력한 작성자명이 반환된다"
+  - All tests passed: ✅ (6/6)
 
 📚 Documentation:
   - Updated: memory.md (removed from Known Issues)
