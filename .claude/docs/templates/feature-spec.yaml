@@ -60,6 +60,7 @@ technical_spec:
     - {Rule 2: e.g., "Cannot order if stock is 0"}
 
 testing_strategy:
+  # UseCase tests ONLY ({Domain}UseCaseTest) — no Domain Service / Entity tests
   happy_path:
     - {Scenario 1: Normal Case}
   edge_cases:

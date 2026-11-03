@@ -124,21 +124,15 @@ package_structure:
     - "domain/example/presentation/response/PostResponseCode.java"
 
 testing_strategy:
-  # happy_path / edge_cases: PostUseCaseTest (JUnit5 + Mockito, PostCreateService Mock)
-  # error_cases: CreatePostRequestValidationTest (Bean Validation - 검증은 UseCase 로직이 아닌 @Valid 계층)
+  # PostUseCaseTest only (JUnit5 + Mockito, PostCreateService Mock) — UseCase 테스트만 작성
+  # Request 검증(@NotBlank, @Size)은 @Valid 계층이라 별도 테스트하지 않음
   happy_path:
     - "유효한 요청으로 게시글을 생성하면 저장된 게시글 정보가 반환된다"
   edge_cases:
     - "title이 정확히 100자인 경우 정상 생성된다"
     - "content가 정확히 2000자인 경우 정상 생성된다"
-  error_cases:
-    - "title이 blank이면 위반이 발생한다"
-    - "content가 blank이면 위반이 발생한다"
-    - "authorName이 blank이면 위반이 발생한다"
-    - "모든 필드가 유효하면 위반이 없다"
   test_files:
     - "test/.../domain/example/application/usecase/PostUseCaseTest.java"
-    - "test/.../domain/example/application/dto/request/CreatePostRequestValidationTest.java"
 
 notes:
   - "이 기능은 예시용입니다. 실제 인증/권한 처리는 포함하지 않습니다."

@@ -85,7 +85,7 @@ feature_spec_template:
 
       validation_rules:
         - "Rule 1: e.g., 이름은 중복될 수 없다"
-        - "Rule 2: e.g., 재고가 0이면 주문 불가"
+        - "Rule 2: e.g., 다음 결제일은 과거 날짜일 수 없다"
 
     testing_strategy:
       happy_path:
@@ -177,4 +177,4 @@ best_practices:
     reason: Maintain clear data flow across layers
 
   - rule: Include testing strategy
-    reason: Define test scenarios during planning phase
+    reason: Define test scenarios during planning phase (UseCase test scenarios ONLY)
