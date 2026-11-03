@@ -16,7 +16,7 @@ stack:
   validation: Jakarta Bean Validation (spring-boot-starter-validation)
   api_docs: springdoc-openapi 3.1.0 (Swagger UI)
   lombok: true
-  test: JUnit 5 + Mockito + AssertJ (unit tests)
+  test: JUnit 5 + Mockito + AssertJ (UseCase unit tests ONLY)
 
 constraints:
   - NO field injection (@Autowired) -> Use @RequiredArgsConstructor on ALL @Service, @RestController classes
@@ -30,6 +30,7 @@ constraints:
   - UseCase MUST NOT depend on Repository directly -> Always go through Domain Service
   - UseCase Transaction -> @Transactional(readOnly = true) on class, @Transactional on write methods
   - Performance -> Prefer `saveAll()` over loop `save()`. Avoid N+1 queries.
+  - Tests -> Write tests for {Domain}UseCase ONLY (mock Domain Services). NO Domain Service / Entity / Repository / Controller / DTO tests
   - Entity ID -> UUID (inherited from BaseEntity). NEVER declare Long/Auto-Increment IDs.
   - MUST READ `references/conventions/coding-style.yaml` before implementing API Response or Exception Handling.
   - MUST READ `docs/ERD.md` before implementing or changing entities.

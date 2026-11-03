@@ -130,10 +130,11 @@ error_handling:
 testing:
   framework:
     runner: JUnit 5
-    style: unit tests with mocks
+    style: UseCase unit tests ONLY (mock Domain Services)
     mocking: Mockito
+    forbidden: Domain Service / Entity / Repository / Controller / DTO tests
   practices:
-    unit: "@ExtendWith(MockitoExtension.class)"
+    unit: "@ExtendWith(MockitoExtension.class) — target: {Domain}UseCase only"
     assertions: AssertJ (assertThat)
 
 best_practices:
