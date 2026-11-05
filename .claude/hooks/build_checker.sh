@@ -50,8 +50,8 @@ exit_code=0
 build_output=$(./gradlew classes testClasses --parallel --no-daemon --quiet 2>&1) || exit_code=$?
 
 if [[ $exit_code -ne 0 ]]; then
-    # Build failed - inject error into Claude's context
-    cat <<EOF
+    # Build failed - stderr + exit 2 → PostToolUse에서 Claude에게 전달됨
+    cat >&2 <<EOF
 
 ================================================================================
 ⚠️  SPRING BOOT BUILD FAILED - 즉시 수정이 필요합니다
@@ -66,7 +66,7 @@ $build_output
 🔧 액션: 위 에러를 분석하고 코드를 즉시 수정하세요.
 ================================================================================
 EOF
-    exit 0
+    exit 2
 else
     # Build successful - silent pass
     echo "✓ 스프링 부트 빌드 검증 통과" >&2
