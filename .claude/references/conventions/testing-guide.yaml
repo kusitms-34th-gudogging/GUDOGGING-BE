@@ -1,0 +1,256 @@
+# Testing Guide
+# Last Updated: 2026-11-03
+
+meta:
+  title: Testing Guide
+  type: Convention
+  scope: Testing standards and practices
+
+framework:
+  testing: JUnit 5
+  language: Korean test descriptions
+  strategy: UseCase unit tests ONLY, with mocked Domain Services (Mockito)
+
+test_scope:
+  target: "{Domain}UseCase ONLY — 테스트 코드는 무조건 UseCase에 대해서만 작성"
+  mock: UseCase가 의존하는 Domain Service (@Mock)
+  rationale: UseCase가 기능 단위 진입점이므로, UseCase 테스트로 Domain Service·Entity 로직까지 함께 검증
+  do_not_write:
+    - Domain Service tests (e.g., PostGetServiceTest)
+    - Entity / domain model tests
+    - Repository tests
+    - Controller tests
+    - DTO / Request validation tests
+    - Integration tests
+  note: "Entity 비즈니스 로직(Rich Model)은 별도 테스트 없이 UseCase 테스트 시나리오로 검증 (Entity는 mock하지 않고 실제 객체 사용)"
+
+test_structure:
+  style:
+    required: JUnit 5 with @Test, @DisplayName, @Nested
+    hierarchy:
+      class: 테스트 대상 UseCase (e.g., PostUseCaseTest)
+      nested: 테스트 대상 UseCase 메서드 (@Nested)
+      method: 기대 결과 (~한다, ~를 반환한다, ~예외를 던진다)
+
+    example: |
+      @ExtendWith(MockitoExtension.class)
+      @DisplayName("PostUseCase")
+      class PostUseCaseTest {
+
+          @Mock
+          private PostCreateService postCreateService;
+
+          @Mock
+          private PostGetService postGetService;
+
+          @InjectMocks
+          private PostUseCase postUseCase;
+
+          @Nested
+          @DisplayName("getPost")
+          class GetPost {
+
+              @Test
+              @DisplayName("존재하는 Post ID가 주어지면 PostResponse를 반환한다")
+              void returnsPostResponseWhenExists() {
+                  // given
+                  UUID postId = UUID.randomUUID();
+                  Post post = Post.create("테스트 제목", "테스트 본문", "작성자");
+                  given(postGetService.getPost(postId)).willReturn(post);
+
+                  // when
+                  PostResponse result = postUseCase.getPost(postId);
+
+                  // then
+                  assertThat(result.title()).isEqualTo("테스트 제목");
+              }
+
+              @Test
+              @DisplayName("존재하지 않는 ID가 주어지면 예외를 던진다")
+              void throwsWhenNotFound() {
+                  // given
+                  UUID postId = UUID.randomUUID();
+                  given(postGetService.getPost(postId)).willThrow(new PostNotFoundException());
+
+                  // when & then
+                  assertThatThrownBy(() -> postUseCase.getPost(postId))
+                      .isInstanceOf(ApplicationException.class);
+              }
+          }
+      }
+
+test_annotations:
+  unit:
+    annotation: "@ExtendWith(MockitoExtension.class)"
+    use_for: UseCase layer tests ONLY
+    composition:
+      - "@ExtendWith(MockitoExtension.class)"
+      - "@Mock for Domain Services the UseCase depends on"
+      - "@InjectMocks for the target UseCase"
+
+    benefits:
+      - Fast execution (no Spring context)
+      - Verifies feature-level behavior at the transaction boundary
+      - Easy to control mock responses
+      - Clear single-responsibility tests
+
+coding_patterns:
+  constructor_injection:
+    do: |
+      @ExtendWith(MockitoExtension.class)
+      class SomeUseCaseTest {
+          @Mock
+          private SomeGetService someGetService;
+
+          @InjectMocks
+          private SomeUseCase someUseCase;
+      }
+    dont: |
+      @Autowired
+      private SomeUseCase someUseCase;
+
+  test_data:
+    pattern: |
+      @Test
+      @DisplayName("유효한 생성 요청이 주어지면 저장된 Post 정보를 반환한다")
+      void createPost() {
+          // given
+          CreatePostRequest request = new CreatePostRequest("테스트 제목", "테스트 본문", "작성자");
+          given(postCreateService.createPost(any(Post.class)))
+              .willAnswer(invocation -> invocation.getArgument(0));
+
+          // when
+          PostResponse result = postUseCase.createPost(request);
+
+          // then
+          assertThat(result.title()).isEqualTo("테스트 제목");
+      }
+    rules:
+      - Create entities via static factory method (Entity.create(...)) — constructors are private
+      - Use UUID.randomUUID() for IDs (BaseEntity id is UUID, never Long literals like 1L)
+      - Mock Domain Services only — never mock Entities
+      - Clear, descriptive variable names
+      - given/when/then structure
+      - One assertion theme per test
+
+  assertions:
+    use: AssertJ (fluent style)
+    examples:
+      - assertThat(result).isNotNull()
+      - assertThat(result.name()).isEqualTo("유튜브 프리미엄")
+      - assertThat(result.amount()).isGreaterThan(0)
+      - assertThatThrownBy(() -> ...).isInstanceOf(ApplicationException.class)
+
+    common_assertions:
+      - isEqualTo: equality
+      - isNotNull: null check
+      - isGreaterThan: comparison
+      - isInstanceOf: type check
+      - assertThatThrownBy: exception
+
+    forbidden:
+      - assertEquals(expected, actual)  # use AssertJ instead
+      - assertNotNull(value)             # use AssertJ instead
+
+file_naming:
+  pattern: "{Domain}UseCaseTest.java"
+  examples:
+    - PostUseCaseTest.java
+    - UserUseCaseTest.java
+    - SubscriptionUseCaseTest.java
+  rule: Class name MUST match file name
+  suffix: Use "Test" (not "Spec")
+
+directory_structure:
+  path: src/test/java/com/subscribers/gudogging/
+  layout: |
+    domain/
+      {domain}/
+        application/
+          usecase/
+            {Domain}UseCaseTest.java
+
+  rules:
+    - Mirror main package structure (application/usecase only)
+    - UseCase tests ONLY
+    - No domain/service, domain/entity, repository, presentation test directories
+
+best_practices:
+  - rule: UseCase tests only
+    description: Test each UseCase in isolation, mocking its Domain Services with Mockito
+    benefit: Fast, reliable, feature-level coverage without duplicated lower-layer tests
+
+  - rule: Test isolation
+    description: Each test method is independent — no shared mutable state
+
+  - rule: Clear test intent
+    description: Korean @DisplayName, @Nested hierarchy (one @Nested per UseCase method)
+    implementation: One scenario per @Test method
+
+  - rule: Simple test code
+    description: Keep test methods concise, one assertion theme per test
+    implementation: Avoid complex logic in tests — if setup is complex, extract helper
+
+  - rule: AAA pattern
+    description: Always structure as given / when / then
+
+forbidden:
+  - "Domain Service tests (UseCase tests only)"
+  - "Entity / domain model tests (verify via UseCase tests)"
+  - "Repository tests"
+  - "Controller layer tests"
+  - "DTO / Request validation tests"
+  - "Integration tests (unit tests only)"
+  - "English test names (use Korean @DisplayName)"
+  - "JUnit 4 (use JUnit 5)"
+  - "Field injection in tests (use @Mock / @InjectMocks)"
+  - "H2 or TestContainers (no DB tests — mock the Domain Services)"
+
+example_unit_test: |
+  @ExtendWith(MockitoExtension.class)
+  @DisplayName("PostUseCase")
+  class PostUseCaseTest {
+
+      @Mock
+      private PostCreateService postCreateService;
+
+      @Mock
+      private PostGetService postGetService;
+
+      @InjectMocks
+      private PostUseCase postUseCase;
+
+      @Nested
+      @DisplayName("getAllPosts")
+      class GetAllPosts {
+
+          @Test
+          @DisplayName("게시글이 존재하면 전체 목록을 반환한다")
+          void returnsAllPosts() {
+              // given
+              Post post1 = Post.create("제목1", "본문1", "작성자1");
+              Post post2 = Post.create("제목2", "본문2", "작성자2");
+              given(postGetService.getAllPosts()).willReturn(List.of(post1, post2));
+
+              // when
+              List<PostResponse> result = postUseCase.getAllPosts();
+
+              // then
+              assertThat(result).hasSize(2);
+              assertThat(result.get(0).title()).isEqualTo("제목1");
+          }
+
+          @Test
+          @DisplayName("게시글이 없으면 빈 리스트를 반환한다")
+          void returnsEmptyList() {
+              // given
+              given(postGetService.getAllPosts()).willReturn(List.of());
+
+              // when
+              List<PostResponse> result = postUseCase.getAllPosts();
+
+              // then
+              assertThat(result).isEmpty();
+          }
+      }
+  }

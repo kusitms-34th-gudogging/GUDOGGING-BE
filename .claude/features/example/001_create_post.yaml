@@ -1,0 +1,142 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-06-30
+
+meta:
+  id: FEAT-001
+  title: 예시용 게시글 생성
+  type: Feature
+  author: 1winhyun
+
+overview:
+  summary: >
+    팀원들에게 프로젝트의 계층 구조(Controller → UseCase → Domain → Repository)를
+    보여주기 위한 샘플 Post 도메인 게시글 생성 기능.
+  user_story: >
+    As a 팀원, I want to 게시글 생성 API를 통해 전체 레이어 흐름을 확인하고,
+    so that 프로젝트의 아키텍처 컨벤션을 빠르게 파악할 수 있다.
+  goals:
+    - Layered DDD 패턴의 실제 구현 예시 제공
+    - CommonResponse, ErrorCode, Static Factory Method 등 공통 인프라 활용 예시 제공
+    - 신규 팀원 온보딩 기준 코드로 활용
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/posts
+      summary: 게시글 생성
+      auth: None (예시용 - 인증 불필요)
+      request:
+        dto: CreatePostRequest
+        fields:
+          - name: title
+            type: String
+            required: true
+            validation: "@NotBlank, @Size(max = 100)"
+          - name: content
+            type: String
+            required: true
+            validation: "@NotBlank, @Size(max = 2000)"
+          - name: authorName
+            type: String
+            required: true
+            validation: "@NotBlank, @Size(max = 50)"
+      response:
+        dto: PostResponse
+        http_status: 201 Created
+        wrapper: CommonResponse<PostResponse>
+        fields:
+          - name: id
+            type: UUID
+          - name: title
+            type: String
+          - name: content
+            type: String
+          - name: authorName
+            type: String
+          - name: createdAt
+            type: LocalDateTime
+
+  data_flow:
+    - step: 1
+      layer: Presentation (PostController)
+      action: "@Valid로 요청 검증 후 PostUseCase.createPost(request) 호출"
+    - step: 2
+      layer: UseCase (PostUseCase)
+      action: "Post 엔티티 생성 → PostCreateService 위임 → PostResponse.from() 변환 후 반환"
+      transaction: true
+    - step: 3
+      layer: Domain (Post Entity)
+      action: "Post.create(title, content, authorName) 정적 팩토리 메서드로 생성"
+    - step: 4
+      layer: Domain Service (PostCreateService)
+      action: "PostRepository.save() 호출 (UseCase는 Repository 직접 의존 금지, Domain Service 경유)"
+    - step: 5
+      layer: Infrastructure (PostRepository)
+      action: "JpaRepository.save()로 DB 저장"
+
+  database:
+    entities:
+      - name: Post
+        action: Create
+        table: posts
+        fields:
+          - column: id (PK, UUID)
+          - column: title (VARCHAR(100), NOT NULL)
+          - column: content (TEXT, NOT NULL)
+          - column: author_name (VARCHAR(50), NOT NULL)
+          - column: created_at
+          - column: updated_at
+          - column: deleted (BOOLEAN, DEFAULT false)
+          - column: deleted_at (NULLABLE)
+        notes: BaseEntity 상속 (id, createdAt, updatedAt, deleted, deletedAt)
+
+  error_codes:
+    domain_range: "402xx (예시용 API라 도메인 에러코드 대역 정책에서 제외)"
+    codes:
+      - code: 40201
+        enum: PostErrorCode.POST_TITLE_BLANK
+        status: 400 Bad_Request
+        message: "게시글 제목은 비어 있을 수 없습니다."
+        trigger: title이 blank인 경우
+        note: >
+          예시용 선언. 실제 blank 검증은 @Valid → GlobalExceptionHandler가
+          INVALID_ARGUMENT(40001)로 처리하므로 현재 코드상 직접 호출처는 없음.
+
+  validation_rules:
+    - "title: 비어 있으면 안 됨, 최대 100자"
+    - "content: 비어 있으면 안 됨, 최대 2000자"
+    - "authorName: 비어 있으면 안 됨, 최대 50자"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.example"
+  domain:
+    - "domain/example/domain/entity/Post.java"
+    - "domain/example/domain/repository/PostRepository.java"
+    - "domain/example/domain/service/PostCreateService.java"
+  application:
+    - "domain/example/application/usecase/PostUseCase.java"
+    - "domain/example/application/dto/request/CreatePostRequest.java"
+    - "domain/example/application/dto/response/PostResponse.java"
+    - "domain/example/application/exception/PostErrorCode.java"
+  presentation:
+    - "domain/example/presentation/PostController.java"
+    - "domain/example/presentation/response/PostResponseCode.java"
+
+testing_strategy:
+  # PostUseCaseTest only (JUnit5 + Mockito, PostCreateService Mock) — UseCase 테스트만 작성
+  # Request 검증(@NotBlank, @Size)은 @Valid 계층이라 별도 테스트하지 않음
+  happy_path:
+    - "유효한 요청으로 게시글을 생성하면 저장된 게시글 정보가 반환된다"
+  edge_cases:
+    - "title이 정확히 100자인 경우 정상 생성된다"
+    - "content가 정확히 2000자인 경우 정상 생성된다"
+  test_files:
+    - "test/.../domain/example/application/usecase/PostUseCaseTest.java"
+
+notes:
+  - "이 기능은 예시용입니다. 실제 인증/권한 처리는 포함하지 않습니다."
+  - "BaseEntity 상속 및 Soft Delete(softDelete()) 메서드도 예시로 포함합니다."
+  - "PostResponse.from(post) Static Factory Method 패턴을 반드시 준수합니다."
+  - "UseCase는 PostUseCase 단일 Facade이며, Repository 직접 의존 금지 → PostCreateService(Domain Service)를 경유합니다."
+  - "content는 @Column(columnDefinition = \"TEXT\")로 매핑됩니다."
