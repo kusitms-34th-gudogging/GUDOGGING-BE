@@ -3,7 +3,7 @@
 # Last Updated: 2026-06-30
 
 meta:
-  id: FEAT-002
+  id: EXAMPLE-002
   title: 전체 게시글 조회
   type: Feature
   author: 1winhyun
@@ -11,7 +11,7 @@ meta:
 overview:
   summary: >
     전체 게시글 목록을 조회하는 기능.
-    FEAT-001의 계층 구조 예시를 Read 흐름으로 확장.
+    EXAMPLE-001의 계층 구조 예시를 Read 흐름으로 확장.
   user_story: >
     As a 팀원, I want to 전체 게시글 목록 API를 통해 Read 레이어 흐름을 확인하고,
     so that 프로젝트의 조회 아키텍처 컨벤션을 빠르게 파악할 수 있다.

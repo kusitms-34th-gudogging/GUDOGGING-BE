@@ -3,7 +3,7 @@
 # Last Updated: YYYY-MM-DD
 
 meta:
-  id: FEAT-{Number}
+  id: {DOMAIN}-{Number}  # 도메인별 번호 (예: AUTH-001)
   title: {Feature Name}
   type: Feature
   author: {User/Agent}

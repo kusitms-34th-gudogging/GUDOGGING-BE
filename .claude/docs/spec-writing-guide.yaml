@@ -13,6 +13,11 @@ format:
 document_structure:
   template_location: .claude/docs/templates/feature-spec.yaml
   output_location: ".claude/features/{domain}/{number}_{feature_name}.yaml"
+  rules:
+    - "API 1개 = 스펙 문서 1개 (한 문서에 여러 API 금지)"
+    - "도메인별 디렉터리(features/{domain}/)에 저장"
+    - "번호는 도메인별로 001부터 매김 — 파일명 {number}와 meta.id {DOMAIN}-{Number}가 같은 번호 (예: features/auth/001_google_login.yaml ↔ AUTH-001)"
+    - "다른 스펙에 의존하면 meta.depends_on에 ID 명시 (예: AUTH-001)"
 
 writing_principles:
   concise:
@@ -33,7 +38,7 @@ feature_spec_template:
   structure:
     meta:
       fields:
-        - id: "FEAT-{Number}"
+        - id: "{DOMAIN}-{Number}"
         - title: "{Feature Name}"
         - type: "Feature"
         - author: "{User/Agent}"
@@ -100,7 +105,7 @@ feature_spec_template:
     # Last Updated: YYYY-MM-DD
 
     meta:
-      id: FEAT-{Number}
+      id: {DOMAIN}-{Number}
       title: {Feature Name}
       type: Feature
       author: {User/Agent}

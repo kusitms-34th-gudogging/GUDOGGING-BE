@@ -119,7 +119,7 @@ business_logic:
 1. Analyze the request: domain, API operations, inputs/outputs, business rules
 2. Check related tables in `docs/ERD.md` and existing domain docs — reuse exact entity/column names
 3. If key behavior is ambiguous (e.g., API flow, auth requirement, duplicate handling), **ASK** before writing — do not guess
-4. Decide numbering: find the highest `FEAT-{Number}` in `.claude/features/**` and use the next number for both `meta.id` and file name prefix
+4. Split & number: **one API = one spec file**. If the request has several APIs, write one spec per API (link with `meta.depends_on`). Number per domain: find the highest number in `.claude/features/{domain}/` and use the next one for both the file name prefix and `meta.id` (`{DOMAIN}-{Number}`, e.g., `AUTH-001`). A new domain starts at 001
 5. Write the spec using `.claude/docs/templates/feature-spec.yaml`, following `docs/spec-writing-guide.yaml`:
    - API: `/api/v1`, kebab-case plural URLs, `{Action}{Resource}Request` / `{Resource}Response`, `CommonResponse<T>`
    - Data flow: Controller → `{Domain}UseCase` → Domain Service → Repository
@@ -227,7 +227,7 @@ Phase 2: Requirement Analysis
 - Entity: Post (title, content)
 
 Phase 3: Documentation
-- Highest existing spec: FEAT-003 → next: FEAT-004
+- Highest existing spec in features/example/: EXAMPLE-003 → next: EXAMPLE-004
 - Creating: .claude/features/example/004_update_post.yaml (Status: Draft)
 
 📋 API 동작 요약:
