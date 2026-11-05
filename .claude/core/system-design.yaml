@@ -30,11 +30,13 @@ architecture:
     - UseCase: Single Facade per domain, DTO conversion here
     - Entity: Contains business logic (Tell Don't Ask)
     - DTO Conversion: MUST use Static Factory Method (static from())
-                        - Bad: return new ResponseDto(entity.getId(), entity.getName(), ...)
-                        - Good: return ResponseDto.from(entity)
+      examples:
+        - "Bad: return new ResponseDto(entity.getId(), entity.getName(), ...)"
+        - "Good: return ResponseDto.from(entity)"
     - Signature: Pass WHOLE OBJECTS (Entity/DTO), not loose fields.
-                   - Bad: repo.exists(subscriptionId, targetBillingDate)
-                   - Good: repo.exists(subscription) or repo.exists(commandDto)
+      examples:
+        - "Bad: repo.exists(subscriptionId, targetBillingDate)"
+        - "Good: repo.exists(subscription) or repo.exists(commandDto)"
   constraint:
     - NO Layer Skipping: UseCase MUST NOT depend on Repository or Infrastructure directly.
     - NO Horizontal Dependency: UseCase MUST NOT depend on other UseCases.
@@ -51,7 +53,7 @@ api:
   methods: { GET: 200, POST: 201, PUT/PATCH: 200, DELETE: 204 }
   naming:
     url: kebab-case, plural (e.g., /subscriptions/{id}/checks)
-    dto: { Action }{ Resource }Request, {Resource}Response
+    dto: "{Action}{Resource}Request, {Resource}Response"
   error_codes:
     global: 30001~30999 (Server), 40001~40099 (Client)
     domains:
@@ -65,7 +67,7 @@ entity:
   intent: "Data Integrity & Encapsulation. Protect invariants within the Entity."
   source_of_truth: docs/ERD.md
   base:
-    BaseEntity (id: UUID (@GeneratedValue(strategy = GenerationType.UUID)), createdAt, updatedAt, deleted, deletedAt)
+    "BaseEntity (id: UUID (@GeneratedValue(strategy = GenerationType.UUID)), createdAt, updatedAt, deleted, deletedAt)"
   mapping:
     - ManyToOne(Lazy)
     - Use JPA relationships (@ManyToOne, @OneToMany, @ManyToMany) with FK constraints
@@ -74,12 +76,12 @@ entity:
     - Store only user-generated / runtime-changing data. Fixed data (Category, 점검 문항, 해지 이유 선택지, 플랫폼 공통 해지 안내) -> Enum/상수
     - Do NOT store computable values (월/연 환산 금액, 결제 예정액, D-day, 캘린더 결제일)
   column_rules:
-    - Enum: @Enumerated(EnumType.STRING) (ORDINAL Forbidden)
+    - "Enum: @Enumerated(EnumType.STRING) (ORDINAL Forbidden)"
     - Boolean: prefix 'is_' (e.g., is_active), default value required
-    - Text: @Lob or columnDefinition="TEXT"
+    - 'Text: @Lob or columnDefinition="TEXT"'
     - String: Must specify length
     - Money: 원 단위 Integer (INT)
-    - Date: '_on' suffix -> LocalDate (DATE), '_at' suffix -> LocalDateTime (DATETIME)
+    - "Date: '_on' suffix -> LocalDate (DATE), '_at' suffix -> LocalDateTime (DATETIME)"
   rules:
     - Soft Delete required (use softDelete() method) — NO Hard Delete, no exceptions
     - No equals/hashCode override
