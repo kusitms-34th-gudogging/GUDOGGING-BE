@@ -12,12 +12,12 @@ payload=$(cat)
 
 # Extract tool name and file path using jq or fallback to grep
 if command -v jq &> /dev/null; then
-    tool_name=$(echo "$payload" | jq -r '.tool.name // empty')
-    file_path=$(echo "$payload" | jq -r '.tool.parameters.file_path // empty')
+    tool_name=$(echo "$payload" | jq -r '.tool_name // empty')
+    file_path=$(echo "$payload" | jq -r '.tool_input.file_path // empty')
 else
     # Fallback to basic grep if jq is not available
-    tool_name=$(echo "$payload" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
-    file_path=$(echo "$payload" | grep -o '"file_path":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+    tool_name=$(echo "$payload" | grep -o '"tool_name" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "")
+    file_path=$(echo "$payload" | grep -o '"file_path" *: *"[^"]*"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/' || echo "")
 fi
 
 # Only run for Edit/Write/NotebookEdit tools
