@@ -39,6 +39,7 @@ class AuthUseCaseTest {
     private static final String ID_TOKEN = "google-id-token";
     private static final String SUB = "google-sub-123";
     private static final String EMAIL = "user@gmail.com";
+    private static final String NAME = "홍길동";
     private static final String ACCESS_TOKEN = "access-token";
     private static final String REFRESH_TOKEN = "refresh-token";
     private static final long REFRESH_EXPIRATION_SECONDS = 1_209_600L;
@@ -77,8 +78,8 @@ class AuthUseCaseTest {
         @DisplayName("기존 회원이면 isNewUser = false를 반환하고 회원을 생성하지 않는다")
         void returnsExistingUserWithoutCreating() {
             // given
-            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL);
-            User existingUser = User.create(SocialProvider.GOOGLE, SUB, EMAIL);
+            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, NAME);
+            User existingUser = User.create(SocialProvider.GOOGLE, SUB, EMAIL, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
             given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.of(existingUser));
             givenTokensIssued();
@@ -94,10 +95,10 @@ class AuthUseCaseTest {
         }
 
         @Test
-        @DisplayName("신규 회원이면 GOOGLE·sub·email로 회원을 생성하고 isNewUser = true를 반환한다")
+        @DisplayName("신규 회원이면 GOOGLE·sub·email·name으로 회원을 생성하고 isNewUser = true를 반환한다")
         void createsNewUser() {
             // given
-            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL);
+            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
             given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.empty());
             given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
@@ -113,6 +114,7 @@ class AuthUseCaseTest {
             assertThat(created.getSocialProvider()).isEqualTo(SocialProvider.GOOGLE);
             assertThat(created.getSocialId()).isEqualTo(SUB);
             assertThat(created.getEmail()).isEqualTo(EMAIL);
+            assertThat(created.getName()).isEqualTo(NAME);
             assertThat(response.isNewUser()).isTrue();
         }
 
@@ -120,8 +122,8 @@ class AuthUseCaseTest {
         @DisplayName("발급한 Refresh Token을 만료시간과 함께 저장한다")
         void savesRefreshToken() {
             // given
-            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL);
-            User existingUser = User.create(SocialProvider.GOOGLE, SUB, EMAIL);
+            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, NAME);
+            User existingUser = User.create(SocialProvider.GOOGLE, SUB, EMAIL, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
             given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.of(existingUser));
             givenTokensIssued();
@@ -156,7 +158,7 @@ class AuthUseCaseTest {
         @DisplayName("ID Token에 email이 없어도 email = null로 가입된다")
         void createsUserWithoutEmail() {
             // given
-            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, null);
+            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, null, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
             given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.empty());
             given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
@@ -169,6 +171,26 @@ class AuthUseCaseTest {
             ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
             verify(userCreateService).createUser(userCaptor.capture());
             assertThat(userCaptor.getValue().getEmail()).isNull();
+            assertThat(response.isNewUser()).isTrue();
+        }
+
+        @Test
+        @DisplayName("ID Token에 name이 없어도 name = null로 가입된다")
+        void createsUserWithoutName() {
+            // given
+            GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, null);
+            given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
+            given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.empty());
+            given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+            givenTokensIssued();
+
+            // when
+            LoginResponse response = authUseCase.loginWithGoogle(request);
+
+            // then
+            ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+            verify(userCreateService).createUser(userCaptor.capture());
+            assertThat(userCaptor.getValue().getName()).isNull();
             assertThat(response.isNewUser()).isTrue();
         }
     }

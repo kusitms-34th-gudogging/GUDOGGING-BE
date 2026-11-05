@@ -37,12 +37,17 @@ public class User extends BaseEntity {
     @Column(name = "email", length = 255)
     private String email;
 
-    public static User create(SocialProvider socialProvider, String socialId, String email) {
-        return new User(socialProvider, socialId, email);
+    @Column(name = "name", length = 100)
+    private String name;
+
+
+    public static User create(SocialProvider socialProvider, String socialId, String email, String name) {
+        return new User(socialProvider, socialId, email, name);
     }
 
     public void withdraw() {
         softDelete();
+        this.name = null;
         this.socialId = WITHDRAWN_SOCIAL_ID_PREFIX + getId();
         this.email = null;
     }

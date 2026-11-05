@@ -34,7 +34,7 @@ public class AuthUseCase {
         Optional<User> existingUser = userGetService.findUserBySocialAccount(googleUserInfo);
         boolean isNewUser = existingUser.isEmpty();
         User user = existingUser.orElseGet(() -> userCreateService.createUser(
-            User.create(SocialProvider.GOOGLE, googleUserInfo.sub(), googleUserInfo.email())
+            User.create(SocialProvider.GOOGLE, googleUserInfo.sub(), googleUserInfo.email(), googleUserInfo.name())
         ));
 
         String accessToken = jwtProvider.createAccessToken(user.getId());

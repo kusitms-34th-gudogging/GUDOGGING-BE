@@ -23,6 +23,7 @@ public class GoogleIdTokenVerifierAdapter implements GoogleTokenVerifier {
     private static final String JWK_SET_URI = "https://www.googleapis.com/oauth2/v3/certs";
     private static final Set<String> ISSUERS = Set.of("accounts.google.com", "https://accounts.google.com");
     private static final String EMAIL_CLAIM = "email";
+    private static final String NAME_CLAIM = "name";
 
     private final JwtDecoder jwtDecoder;
 
@@ -41,7 +42,11 @@ public class GoogleIdTokenVerifierAdapter implements GoogleTokenVerifier {
     public GoogleUserInfo verify(String idToken) {
         try {
             Jwt jwt = jwtDecoder.decode(idToken);
-            return new GoogleUserInfo(jwt.getSubject(), jwt.getClaimAsString(EMAIL_CLAIM));
+            return new GoogleUserInfo(
+                jwt.getSubject(),
+                jwt.getClaimAsString(EMAIL_CLAIM),
+                jwt.getClaimAsString(NAME_CLAIM)
+            );
         } catch (JwtException e) {
             throw new InvalidGoogleIdTokenException();
         }
