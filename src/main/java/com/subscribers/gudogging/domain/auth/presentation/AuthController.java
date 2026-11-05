@@ -35,6 +35,13 @@ public class AuthController {
             - accessToken (String): API 호출 시 Authorization: Bearer 헤더에 넣는 토큰 (유효기간 1시간)
             - refreshToken (String): Access Token 재발급용 토큰 (유효기간 14일)
             - isNewUser (boolean): 이번 요청으로 가입했으면 true (온보딩 화면으로 이동), 기존 회원이면 false (홈으로 이동)
+
+            **로컬 테스트 방법** (앱 없이 ID Token 발급)
+            1. [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) 접속 → 우측 상단 톱니바퀴 → "Use your own OAuth credentials" 체크 → 서버 `GOOGLE_CLIENT_IDS`에 등록한 Web 클라이언트 ID·Secret 입력
+            2. Step 1 입력칸에 `openid email profile` 입력 → Authorize APIs → Google 로그인
+            3. Step 2에서 Exchange authorization code for tokens → 응답의 `id_token` 값 복사
+            4. 이 API의 idToken에 붙여넣고 실행 (`id_token`은 1시간 후 만료되므로 만료 시 3번 재실행)
+            5. 응답의 accessToken을 Swagger 우측 상단 Authorize에 입력하면 인증이 필요한 API 호출 가능
             """
     )
     @PostMapping("/google")
