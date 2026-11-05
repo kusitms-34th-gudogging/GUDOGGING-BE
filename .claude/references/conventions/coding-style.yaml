@@ -22,6 +22,7 @@ java_style:
   naming:
     classes: PascalCase (e.g., SubscriptionGetService)
     methods: camelCase (e.g., findSubscriptionById)
+    service_methods: "동사 + 대상 명사 필수 — 무엇을 다루는지 이름에 드러낸다 (Good: createUser, findUserBySocialAccount, saveRefreshToken / Bad: create, save, findBySocialAccount). Entity 정적 팩토리 create()는 예외"
     variables: camelCase
     constants: UPPER_SNAKE_CASE (e.g., MAX_BILLING_CYCLE_INTERVAL)
     packages: lowercase (no underscores)
