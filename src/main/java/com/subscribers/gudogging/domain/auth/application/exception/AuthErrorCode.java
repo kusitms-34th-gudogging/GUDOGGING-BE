@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 public enum AuthErrorCode implements ErrorCodeInterface {
 
     INVALID_GOOGLE_ID_TOKEN(40101, HttpStatus.UNAUTHORIZED, "유효하지 않은 Google 인증 정보입니다."),
+    INVALID_REFRESH_TOKEN(40102, HttpStatus.UNAUTHORIZED, "유효하지 않거나 만료된 리프레시 토큰입니다."),
     EXPIRED_ACCESS_TOKEN(40103, HttpStatus.UNAUTHORIZED, "액세스 토큰이 만료되었습니다."),
     INVALID_ACCESS_TOKEN(40104, HttpStatus.UNAUTHORIZED, "유효하지 않은 액세스 토큰입니다.");
 
