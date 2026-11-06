@@ -1,7 +1,9 @@
 package com.subscribers.gudogging.domain.auth.presentation;
 
 import com.subscribers.gudogging.domain.auth.application.dto.request.GoogleLoginRequest;
+import com.subscribers.gudogging.domain.auth.application.dto.request.ReissueTokenRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.response.LoginResponse;
+import com.subscribers.gudogging.domain.auth.application.dto.response.TokenResponse;
 import com.subscribers.gudogging.domain.auth.application.usecase.AuthUseCase;
 import com.subscribers.gudogging.domain.auth.presentation.response.AuthResponseCode;
 import com.subscribers.gudogging.global.common.response.CommonResponse;
@@ -27,15 +29,15 @@ public class AuthController {
         description = """
             **기능**
             앱이 Google Sign-In SDK로 받은 ID Token을 검증해 로그인합니다. 처음 로그인한 Google 계정이면 자동으로 가입합니다.
-
+            
             **요청값**
             - idToken (String, 필수): Google Sign-In SDK로 받은 ID Token
-
+            
             **응답값**
             - accessToken (String): API 호출 시 Authorization: Bearer 헤더에 넣는 토큰 (유효기간 1시간)
             - refreshToken (String): Access Token 재발급용 토큰 (유효기간 14일)
             - isNewUser (boolean): 이번 요청으로 가입했으면 true (온보딩 화면으로 이동), 기존 회원이면 false (홈으로 이동)
-
+            
             **로컬 테스트 방법** (앱 없이 ID Token 발급)
             1. [OAuth 2.0 Playground](https://developers.google.com/oauthplayground) 접속 → 우측 상단 톱니바퀴 → "Use your own OAuth credentials" 체크 → 서버 `GOOGLE_CLIENT_IDS`에 등록한 Web 클라이언트 ID·Secret 입력
             2. Step 1 입력칸에 `openid email profile` 입력 → Authorize APIs → Google 로그인
@@ -48,5 +50,27 @@ public class AuthController {
     public CommonResponse<LoginResponse> loginWithGoogle(@RequestBody @Valid GoogleLoginRequest request) {
         LoginResponse response = authUseCase.loginWithGoogle(request);
         return CommonResponse.success(AuthResponseCode.LOGIN_SUCCESS, response);
+    }
+
+    @Operation(
+        summary = "토큰 재발급",
+        description = """
+            **기능**
+            Refresh Token으로 새 Access Token과 Refresh Token을 발급합니다. Access Token이 만료됐을 때(40103) 호출합니다.
+            재발급하면 이전 Refresh Token은 무효가 되므로, 응답의 refreshToken으로 교체해 저장해야 합니다.
+            Refresh Token이 만료됐거나 이미 사용한 토큰이면 40102 에러를 반환합니다. 이 경우 다시 로그인해야 합니다.
+            
+            **요청값**
+            - refreshToken (String, 필수): 로그인 또는 이전 재발급 응답으로 받은 Refresh Token
+            
+            **응답값**
+            - accessToken (String): 새 Access Token (유효기간 1시간)
+            - refreshToken (String): 새 Refresh Token (유효기간 14일)
+            """
+    )
+    @PostMapping("/reissue")
+    public CommonResponse<TokenResponse> reissueToken(@RequestBody @Valid ReissueTokenRequest request) {
+        TokenResponse response = authUseCase.reissueToken(request);
+        return CommonResponse.success(AuthResponseCode.TOKEN_REISSUED, response);
     }
 }

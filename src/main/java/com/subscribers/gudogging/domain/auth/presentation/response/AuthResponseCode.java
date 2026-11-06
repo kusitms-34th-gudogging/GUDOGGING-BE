@@ -9,7 +9,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum AuthResponseCode implements ResponseCodeInterface {
 
-    LOGIN_SUCCESS(200, HttpStatus.OK, "로그인되었습니다.");
+    LOGIN_SUCCESS(200, HttpStatus.OK, "로그인되었습니다."),
+    TOKEN_REISSUED(200, HttpStatus.OK, "토큰이 재발급되었습니다.");
 
     private final int code;
     private final HttpStatus status;

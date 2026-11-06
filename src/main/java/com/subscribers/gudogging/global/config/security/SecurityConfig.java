@@ -28,7 +28,8 @@ public class SecurityConfig {
         "/swagger-ui/**",
         "/swagger-ui.html",
         "/v3/api-docs/**",
-        "/api/v1/auth/google"
+        "/api/v1/auth/google",
+        "/api/v1/auth/reissue"
     };
 
     private final JwtProvider jwtProvider;
