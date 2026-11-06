@@ -9,4 +9,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     Optional<User> findBySocialProviderAndSocialIdAndDeletedFalse(SocialProvider socialProvider, String socialId);
+
+    Optional<User> findByIdAndDeletedFalse(UUID id);
 }

@@ -5,6 +5,7 @@ import com.subscribers.gudogging.domain.user.domain.entity.SocialProvider;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.repository.UserRepository;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -19,5 +20,9 @@ public class UserGetService {
             SocialProvider.GOOGLE,
             googleUserInfo.sub()
         );
+    }
+
+    public Optional<User> findUserById(UUID userId) {
+        return userRepository.findByIdAndDeletedFalse(userId);
     }
 }
