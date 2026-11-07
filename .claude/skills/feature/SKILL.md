@@ -187,10 +187,12 @@ public class {Name}UseCase {
 **Controller:**
 
 - Create in `src/main/java/com/subscribers/gudogging/domain/{domain}/presentation/`
-- **MUST** apply `@RestController`, `@RequiredArgsConstructor`
+- **MUST** apply `@RestController`, `@RequiredArgsConstructor`, `@Tag`
+- **MUST** apply `@Operation` on every handler — `description` MUST contain **기능** / **요청값** / **응답값** (see `references/conventions/coding-style.yaml` → swagger)
 - Delegate to UseCase (1:1 mapping) — no business logic
 
 ```java
+@Tag(name = "{Name}", description = "{도메인} 관련 API")
 @RestController
 @RequestMapping("/api/v1/{resources}")
 @RequiredArgsConstructor
@@ -198,6 +200,19 @@ public class {Name}Controller {
 
     private final {Name}UseCase {name}UseCase;
 
+    @Operation(
+        summary = "{기능 요약}",
+        description = """
+            **기능**
+            {무엇을 하는 API인지, 동작 조건·제약}
+
+            **요청값**
+            - {field} ({Type}, 필수|선택): {설명}
+
+            **응답값**
+            - {field} ({Type}): {설명}
+            """
+    )
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CommonResponse<{Name}Response> create{Name}(@RequestBody @Valid Create{Name}Request request) {

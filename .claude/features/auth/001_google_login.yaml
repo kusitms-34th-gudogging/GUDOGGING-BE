@@ -1,0 +1,236 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-05
+
+meta:
+  id: AUTH-001
+  title: 구글 로그인
+  type: Feature
+  author: 1winhyun
+
+overview:
+  summary: >
+    모바일 앱이 Google Sign-In SDK로 받은 ID Token을 서버가 검증하고,
+    기존 회원이면 로그인·신규면 가입 처리 후 Access/Refresh Token을 발급한다. (L-01)
+  user_story: >
+    As a 앱 사용자, I want to Google 계정으로 로그인하기를,
+    so that 별도 회원가입 없이 구독 관리 기능을 이용할 수 있다.
+  goals:
+    - Google ID Token 서버 검증 (서명·iss·aud·exp)
+    - 신규 계정 자동 가입, 기존 계정 로그인 (social_provider + social_id 기준)
+    - Access Token(단기) + Refresh Token(장기, Redis 저장) 발급
+    - 이후 API 요청을 Authorization Bearer Access Token으로 인증 (JWT 필터 도입)
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/auth/google
+      summary: 구글 로그인
+      auth: None (공개)
+      request:
+        dto: GoogleLoginRequest
+        fields:
+          - name: idToken
+            type: String
+            required: true
+            validation: "@NotBlank"
+            description: "앱이 Google Sign-In SDK로 받은 ID Token"
+      response:
+        dto: LoginResponse
+        http_status: 200 OK
+        wrapper: CommonResponse<LoginResponse>
+        response_code: AuthResponseCode.LOGIN_SUCCESS (200, "로그인되었습니다.")
+        fields:
+          - name: accessToken
+            type: String
+          - name: refreshToken
+            type: String
+          - name: isNewUser
+            type: boolean
+            description: "이번 요청에서 가입했으면 true → 앱이 O-01(온보딩)로, false면 홈(H-01)으로 이동"
+
+  data_flow:
+    login:
+      - step: 1
+        layer: Presentation (AuthController)
+        action: "@Valid GoogleLoginRequest 검증 → AuthUseCase.loginWithGoogle(request)"
+      - step: 2
+        layer: UseCase (AuthUseCase)
+        action: "ID Token 검증 → 회원 조회/가입 → 토큰 발급 → Refresh 저장 → LoginResponse.of(tokens, isNewUser)"
+        transaction: true
+      - step: 3
+        layer: External (GoogleTokenVerifier 구현체)
+        action: "Google JWKS 공개키로 서명 검증 + iss + aud + exp 확인 → GoogleUserInfo(sub, email, name) 반환. 실패 시 InvalidGoogleIdTokenException"
+      - step: 4
+        layer: Domain Service (UserGetService)
+        action: "UserGetService.findUserBySocialAccount(googleUserInfo) — social_provider = GOOGLE, social_id = sub, deleted = false 조회 (Optional)"
+      - step: 5
+        layer: Domain (User) + Domain Service (UserCreateService)
+        action: "조회 결과 없으면 User.create(GOOGLE, sub, email, name) → UserCreateService.createUser(user), isNewUser = true"
+      - step: 6
+        layer: Global (JwtProvider)
+        action: "Access Token(sub = userId, type = ACCESS) / Refresh Token(sub = userId, type = REFRESH) 발급"
+      - step: 7
+        layer: Domain Service (RefreshTokenService) → Infrastructure (RedisRefreshTokenRepository)
+        action: "RefreshTokenService.saveRefreshToken(refreshToken) → Redis SET refresh:{userId} = refreshToken (TTL = Refresh 만료시간). 기존 값은 덮어씀 (회원당 1개)"
+    authentication:
+      - step: 1
+        layer: Global (JwtAuthenticationFilter)
+        action: "Authorization: Bearer {accessToken} 파싱 → 서명·만료·type = ACCESS 확인 → SecurityContext에 userId(UUID) Principal 설정 (DB 조회 없음)"
+      - step: 2
+        layer: Global (JwtAuthenticationEntryPoint)
+        action: "보호 API 인증 실패 시 401 + CommonResponse 포맷 에러 응답. 필터가 남긴 예외로 코드 분기 (만료 40103 / 위조·형식 40104 / 토큰 없음 40005)"
+
+  token:
+    library: "jjwt (최신 안정 버전 — 구현 시 확인)"
+    algorithm: "HMAC (jwt.secret Base64 디코딩, 32바이트 이상)"
+    claims:
+      - "sub: userId (UUID 문자열)"
+      - "type: ACCESS | REFRESH (Access/Refresh 혼용 방지)"
+      - "iat, exp"
+    expiration:
+      access: "1시간 (jwt.access-expiration-seconds = 3600)"
+      refresh: "14일 (jwt.refresh-expiration-seconds = 1209600)"
+    refresh_storage:
+      store: Redis
+      key: "refresh:{userId}"
+      value: refreshToken
+      ttl: Refresh 만료시간과 동일
+
+  google_id_token_verification:
+    library: "spring-security-oauth2-jose (NimbusJwtDecoder, Boot 관리 버전) — JWKS 캐싱 포함"
+    jwk_set_uri: https://www.googleapis.com/oauth2/v3/certs
+    checks:
+      - "서명 (Google 공개키)"
+      - "iss: accounts.google.com 또는 https://accounts.google.com"
+      - "aud: google.client-ids 중 하나 (iOS / Android 클라이언트 ID)"
+      - "exp: 만료 전"
+    extracted:
+      - "sub → users.social_id"
+      - "email → users.email (nullable)"
+      - "name → users.name (nullable, profile scope 필요)"
+
+  database:
+    entities:
+      - name: User
+        action: Read / Create
+        table: users
+        fields:
+          - column: social_provider (VARCHAR(10), NOT NULL) — GOOGLE
+          - column: social_id (VARCHAR(255), NOT NULL) — Google sub
+          - column: email (VARCHAR(255), NULL)
+          - column: name (VARCHAR(100), NULL) — Google name
+        constraints: "UNIQUE (social_provider, social_id)"
+        notes: "엔티티 정의는 references/data-model/domains/user/user.yaml 기준"
+    redis:
+      - key: "refresh:{userId}"
+        action: Create / Update
+
+  error_codes:
+    domain_range: "401xx (auth)"
+    codes:
+      - code: 40101
+        enum: AuthErrorCode.INVALID_GOOGLE_ID_TOKEN
+        status: 401 Unauthorized
+        message: "유효하지 않은 Google 인증 정보입니다."
+        trigger: "ID Token 서명·iss·aud·exp 검증 실패"
+      - code: 40103
+        enum: AuthErrorCode.EXPIRED_ACCESS_TOKEN
+        status: 401 Unauthorized
+        message: "액세스 토큰이 만료되었습니다."
+        trigger: "JwtAuthenticationEntryPoint — Access Token 만료 (앱은 이 코드를 받으면 AUTH-002 재발급 호출)"
+      - code: 40104
+        enum: AuthErrorCode.INVALID_ACCESS_TOKEN
+        status: 401 Unauthorized
+        message: "유효하지 않은 액세스 토큰입니다."
+        trigger: "JwtAuthenticationEntryPoint — 서명 오류·형식 오류·type 불일치"
+    reserved:
+      - "40102 INVALID_REFRESH_TOKEN — AUTH-002(토큰 재발급)에서 사용"
+    reused_global:
+      - "40001 INVALID_ARGUMENT — idToken blank (@Valid)"
+      - "40005 UNAUTHORIZED — 보호 API에 토큰 없이 접근"
+
+  security_config:
+    permit_urls_add:
+      - /api/v1/auth/google
+    filter: "JwtAuthenticationFilter를 UsernamePasswordAuthenticationFilter 앞에 new로 등록 (@Component 금지 — 서블릿 필터 이중 등록 방지)"
+    entry_point: JwtAuthenticationEntryPoint
+
+  configuration:
+    dependencies_add:
+      - "spring-boot-starter-data-redis (Boot 관리)"
+      - "spring-security-oauth2-jose (Boot 관리)"
+      - "io.jsonwebtoken:jjwt-api / jjwt-impl / jjwt-jackson (최신 안정 버전)"
+    properties: |
+      google:
+        client-ids: ${GOOGLE_CLIENT_IDS}   # iOS, Android 클라이언트 ID (콤마 구분)
+      jwt:
+        secret: ${JWT_SECRET}              # Base64, 디코딩 후 32바이트 이상
+        access-expiration-seconds: 3600
+        refresh-expiration-seconds: 1209600
+      spring:
+        data:
+          redis:
+            host: ${REDIS_HOST}
+            port: ${REDIS_PORT}
+
+  validation_rules:
+    - "idToken: blank 불가"
+    - "ID Token의 aud가 설정된 client-id 목록에 없으면 거절"
+    - "회원 식별은 (social_provider, social_id)로만 한다. email로 식별하지 않음"
+    - "Refresh Token은 회원당 1개. 새 로그인 시 이전 Refresh Token은 무효"
+    - "Refresh Token으로 API 인증 불가 (필터에서 type = ACCESS 검사)"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  auth:
+    - "domain/auth/presentation/AuthController.java"
+    - "domain/auth/presentation/response/AuthResponseCode.java"
+    - "domain/auth/application/usecase/AuthUseCase.java"
+    - "domain/auth/application/dto/request/GoogleLoginRequest.java"
+    - "domain/auth/application/dto/response/LoginResponse.java"
+    - "domain/auth/application/exception/AuthErrorCode.java"
+    - "domain/auth/application/exception/InvalidGoogleIdTokenException.java"
+    - "domain/auth/domain/GoogleTokenVerifier.java (interface, Port) + GoogleUserInfo (record)"
+    - "domain/auth/domain/repository/RefreshTokenRepository.java (interface, Port)"
+    - "domain/auth/domain/service/RefreshTokenService.java"
+    - "domain/auth/external/GoogleIdTokenVerifierAdapter.java (GoogleTokenVerifier 구현)"
+    - "domain/auth/infrastructure/RedisRefreshTokenRepository.java (RefreshTokenRepository 구현)"
+  user:
+    - "domain/user/domain/entity/User.java"
+    - "domain/user/domain/entity/SocialProvider.java"
+    - "domain/user/domain/repository/UserRepository.java"
+    - "domain/user/domain/service/UserGetService.java"
+    - "domain/user/domain/service/UserCreateService.java"
+  global:
+    - "global/security/jwt/JwtProvider.java (발급·파싱)"
+    - "global/security/jwt/JwtAuthenticationFilter.java"
+    - "global/security/jwt/JwtAuthenticationEntryPoint.java"
+    - "global/config/security/SecurityConfig.java (수정)"
+    - "global/config/redis/RedisConfig.java"
+
+testing_strategy:
+  # AuthUseCaseTest only (JUnit5 + Mockito)
+  # Mock: GoogleTokenVerifier, UserGetService, UserCreateService, RefreshTokenService, JwtProvider
+  happy_path:
+    - "loginWithGoogle: 기존 회원이면 isNewUser = false, UserCreateService는 호출되지 않는다"
+    - "loginWithGoogle: 신규 회원이면 GOOGLE·sub·email·name으로 User를 생성하고 isNewUser = true를 반환한다"
+    - "loginWithGoogle: 발급한 Refresh Token을 RefreshTokenService에 저장한다"
+  edge_cases:
+    - "loginWithGoogle: ID Token 검증에 실패하면 INVALID_GOOGLE_ID_TOKEN 예외를 던지고 User를 생성하지 않는다"
+    - "loginWithGoogle: ID Token에 email이 없어도 email = null로 가입된다"
+    - "loginWithGoogle: ID Token에 name이 없어도 name = null로 가입된다"
+  test_files:
+    - "test/.../domain/auth/application/usecase/AuthUseCaseTest.java"
+
+notes:
+  - "로그인 방식: 모바일 앱이므로 웹 리다이렉트(OAuth2 Client + 1회용 code) 대신 ID Token 검증 방식 채택. spring-boot-starter-oauth2-client 불필요"
+  - "토큰 재발급은 AUTH-002에서 정의. JwtProvider·RefreshTokenService는 이 스펙에서 만들고 AUTH-002가 재사용"
+  - "Apple 로그인은 범위 외. 같은 구조(Verifier Port + POST /api/v1/auth/apple)로 추가 예정"
+  - "로그아웃(E-06), 회원 탈퇴(E-08)는 범위 외 — 별도 스펙에서 refresh:{userId} 삭제 처리"
+  - "Refresh Token이 회원당 1개라 마지막으로 로그인한 기기 한 대만 세션 유지 (ERD의 단일 기기 전제와 동일)"
+  - "[가정] 재로그인 시 email·name 변경분은 반영하지 않음 (가입 시점 값 유지)"
+  - "[가정] 응답 HTTP 상태는 200 OK. 리소스 생성이 아니라 토큰 발급이므로 POST 기본값(201) 대신 200 사용"
+  - "[가정] 동시 가입 경합 시 UNIQUE 위반 → DATA_INTEGRITY_ERROR(30003). ID Token당 1회 요청이라 실제 발생은 드묾"
+  - "[가정] 탈퇴 회원의 Access Token은 만료(최대 1시간) 전까지 필터를 통과함. 각 UseCase의 회원 조회(deleted = false)가 방어선"
+  - "@CurrentUserId 등 컨트롤러 userId 주입 편의 기능은 첫 보호 API 구현 시 추가"
