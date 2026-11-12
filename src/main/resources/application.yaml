@@ -1,6 +1,9 @@
 spring:
   application:
     name: gudogging
+  config:
+    # 로컬 실행 시 프로젝트 루트의 .env 를 읽음 (없으면 무시 → CI/서버는 OS 환경변수 사용)
+    import: optional:file:.env[.properties]
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/gudogging}
     username: ${DB_USER:root}
