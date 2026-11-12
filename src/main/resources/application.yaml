@@ -22,7 +22,7 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
-server-uri: http://localhost:8080
+server-uri: ${SERVER_URI:http://localhost:8080}
 
 google:
   client-ids: ${GOOGLE_CLIENT_IDS}
