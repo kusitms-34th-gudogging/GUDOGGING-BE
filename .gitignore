@@ -36,3 +36,6 @@ out/
 ### VS Code ###
 .vscode/
 .claude/memory.md
+
+### Env ###
+.env
