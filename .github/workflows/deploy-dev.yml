@@ -50,13 +50,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Copy compose file to server
+      - name: Copy compose & nginx config to server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEV_HOST }}
           username: ${{ secrets.DEV_USER }}
           key: ${{ secrets.DEV_SSH_KEY }}
-          source: docker-compose.dev.yml
+          source: docker-compose.dev.yml,nginx/dev/conf.d/dev-api.conf
           target: /home/ubuntu/gudogging
 
       - name: Deploy & health check
@@ -79,10 +79,13 @@ jobs:
             docker compose -f docker-compose.dev.yml pull app
             docker compose -f docker-compose.dev.yml up -d
             docker logout ghcr.io
+            docker exec gudogging-nginx nginx -s reload || true
 
-            # 헬스체크: 최대 약 150초 (최초 배포 시 MySQL 초기화 시간 포함)
+            # 헬스체크: Nginx(HTTPS) 경유, DB·Redis 연결 포함. 최대 약 150초
             for i in $(seq 1 30); do
-              code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/v3/api-docs || true)
+              code=$(curl -sk -o /dev/null -w '%{http_code}' \
+                --resolve dev-api.gudogging.com:443:127.0.0.1 \
+                https://dev-api.gudogging.com/actuator/health || true)
               if [ "$code" = "200" ]; then
                 echo "Health check passed ($i)"
                 docker image prune -f
