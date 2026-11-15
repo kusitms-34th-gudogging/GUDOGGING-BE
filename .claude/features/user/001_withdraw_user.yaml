@@ -1,6 +1,6 @@
 # Feature Specification
 # Status: Draft
-# Last Updated: 2026-11-07
+# Last Updated: 2026-11-15
 
 meta:
   id: USER-001
@@ -33,14 +33,15 @@ technical_spec:
       request:
         dto: 없음 (userId는 Access Token에서 — @AuthenticationPrincipal UUID userId)
       response:
-        http_status: 204 No Content
-        body: 없음
-        note: "system-design.yaml api.methods DELETE: 204 기준. 응답 본문이 없으므로 CommonResponse 미사용"
+        http_status: 200 OK
+        body: "CommonResponse<Void> { code: 200, message: \"회원 탈퇴되었습니다.\", data: null }"
+        response_code: "UserResponseCode.USER_WITHDRAWN (200, HttpStatus.OK, \"회원 탈퇴되었습니다.\")"
+        note: "모든 API를 CommonResponse { code, message, data } 형식으로 통일 (system-design.yaml api.methods DELETE: 200)"
 
   data_flow:
     - step: 1
       layer: Presentation (UserController)
-      action: "@AuthenticationPrincipal UUID userId → UserUseCase.withdrawUser(userId) → 204"
+      action: "@AuthenticationPrincipal UUID userId → UserUseCase.withdrawUser(userId) → CommonResponse.success(UserResponseCode.USER_WITHDRAWN)"
     - step: 2
       layer: UseCase (UserUseCase)
       action: "회원 조회 → (Apple이면) revoke → user.withdraw() → Refresh Token 삭제"
@@ -117,6 +118,7 @@ package_structure:
     - "domain/user/application/usecase/UserUseCase.java (신규)"
     - "domain/user/application/exception/UserErrorCode.java (신규)"
     - "domain/user/application/exception/UserNotFoundException.java (신규)"
+    - "domain/user/presentation/response/UserResponseCode.java (신규)"
     - "domain/user/domain/entity/User.java (수정 — withdraw()에서 appleRefreshToken NULL)"
   auth:
     - "domain/auth/domain/repository/RefreshTokenRepository.java (수정)"

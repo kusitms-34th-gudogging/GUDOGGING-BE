@@ -50,7 +50,8 @@ api:
     Errors reuse CommonResponse<T> (same wrapper as success): { code, message, data }.
     For validation errors (MethodArgumentNotValidException), data is a List<ErrorResponse>
     where ErrorResponse = { errorField, errorMessage, inputValue }. Other errors set data to null.
-  methods: { GET: 200, POST: 201, PUT/PATCH: 200, DELETE: 204 }
+  methods: { GET: 200, POST: 201, PUT/PATCH: 200, DELETE: 200 }
+  no_content_rule: "응답 데이터가 없어도 204를 쓰지 않고 CommonResponse<Void>(data = null)를 반환 — CommonResponse.success(ResponseCode)"
   naming:
     url: kebab-case, plural (e.g., /subscriptions/{id}/checks)
     dto: "{Action}{Resource}Request, {Resource}Response"
