@@ -8,13 +8,21 @@ import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.subscribers.gudogging.domain.auth.application.dto.request.AppleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.GoogleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.ReissueTokenRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.response.LoginResponse;
 import com.subscribers.gudogging.domain.auth.application.dto.response.TokenResponse;
+import com.subscribers.gudogging.domain.auth.application.exception.AppleServerException;
 import com.subscribers.gudogging.domain.auth.application.exception.AuthErrorCode;
+import com.subscribers.gudogging.domain.auth.application.exception.InvalidAppleAuthorizationCodeException;
+import com.subscribers.gudogging.domain.auth.application.exception.InvalidAppleIdTokenException;
 import com.subscribers.gudogging.domain.auth.application.exception.InvalidGoogleIdTokenException;
 import com.subscribers.gudogging.domain.auth.application.exception.InvalidRefreshTokenException;
+import com.subscribers.gudogging.domain.auth.domain.AppleAuthClient;
+import com.subscribers.gudogging.domain.auth.domain.AppleTokenVerifier;
+import com.subscribers.gudogging.domain.auth.domain.AppleTokens;
+import com.subscribers.gudogging.domain.auth.domain.AppleUserInfo;
 import com.subscribers.gudogging.domain.auth.domain.GoogleTokenVerifier;
 import com.subscribers.gudogging.domain.auth.domain.GoogleUserInfo;
 import com.subscribers.gudogging.domain.auth.domain.RefreshToken;
@@ -53,6 +61,12 @@ class AuthUseCaseTest {
     private GoogleTokenVerifier googleTokenVerifier;
 
     @Mock
+    private AppleTokenVerifier appleTokenVerifier;
+
+    @Mock
+    private AppleAuthClient appleAuthClient;
+
+    @Mock
     private UserGetService userGetService;
 
     @Mock
@@ -86,7 +100,8 @@ class AuthUseCaseTest {
             GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, NAME);
             User existingUser = User.create(SocialProvider.GOOGLE, SUB, EMAIL, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
-            given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.of(existingUser));
+            given(userGetService.findUserBySocialAccount(SocialProvider.GOOGLE, SUB)).willReturn(
+                Optional.of(existingUser));
             givenTokensIssued();
 
             // when
@@ -105,7 +120,7 @@ class AuthUseCaseTest {
             // given
             GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
-            given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.empty());
+            given(userGetService.findUserBySocialAccount(SocialProvider.GOOGLE, SUB)).willReturn(Optional.empty());
             given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
             givenTokensIssued();
 
@@ -130,7 +145,8 @@ class AuthUseCaseTest {
             GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, NAME);
             User existingUser = User.create(SocialProvider.GOOGLE, SUB, EMAIL, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
-            given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.of(existingUser));
+            given(userGetService.findUserBySocialAccount(SocialProvider.GOOGLE, SUB)).willReturn(
+                Optional.of(existingUser));
             givenTokensIssued();
 
             // when
@@ -165,7 +181,7 @@ class AuthUseCaseTest {
             // given
             GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, null, NAME);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
-            given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.empty());
+            given(userGetService.findUserBySocialAccount(SocialProvider.GOOGLE, SUB)).willReturn(Optional.empty());
             given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
             givenTokensIssued();
 
@@ -185,7 +201,7 @@ class AuthUseCaseTest {
             // given
             GoogleUserInfo googleUserInfo = new GoogleUserInfo(SUB, EMAIL, null);
             given(googleTokenVerifier.verify(ID_TOKEN)).willReturn(googleUserInfo);
-            given(userGetService.findUserBySocialAccount(googleUserInfo)).willReturn(Optional.empty());
+            given(userGetService.findUserBySocialAccount(SocialProvider.GOOGLE, SUB)).willReturn(Optional.empty());
             given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
             givenTokensIssued();
 
@@ -197,6 +213,262 @@ class AuthUseCaseTest {
             verify(userCreateService).createUser(userCaptor.capture());
             assertThat(userCaptor.getValue().getName()).isNull();
             assertThat(response.isNewUser()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("loginWithApple")
+    class LoginWithApple {
+
+        private static final String IDENTITY_TOKEN = "apple-identity-token";
+        private static final String AUTHORIZATION_CODE = "apple-authorization-code";
+        private static final String APPLE_SUB = "apple-sub-001";
+        private static final String APPLE_EMAIL = "abc123@privaterelay.appleid.com";
+        private static final String APPLE_NAME = "김애플";
+        private static final String APPLE_REFRESH_TOKEN = "apple-refresh-token";
+
+        private final AppleUserInfo appleUserInfo = new AppleUserInfo(APPLE_SUB, APPLE_EMAIL);
+
+        private AppleLoginRequest requestWithName(String name) {
+            return new AppleLoginRequest(IDENTITY_TOKEN, AUTHORIZATION_CODE, name);
+        }
+
+        private void givenAppleVerifiedAndExchanged(AppleUserInfo userInfo) {
+            given(appleTokenVerifier.verify(IDENTITY_TOKEN)).willReturn(userInfo);
+            given(appleAuthClient.issueTokens(AUTHORIZATION_CODE))
+                .willReturn(new AppleTokens(userInfo.sub(), APPLE_REFRESH_TOKEN));
+        }
+
+        private void givenExistingUser(User user) {
+            given(userGetService.findUserBySocialAccount(SocialProvider.APPLE, APPLE_SUB)).willReturn(
+                Optional.of(user));
+        }
+
+        private void givenNewUser() {
+            given(userGetService.findUserBySocialAccount(SocialProvider.APPLE, APPLE_SUB)).willReturn(Optional.empty());
+            given(userCreateService.createUser(any(User.class))).willAnswer(invocation -> invocation.getArgument(0));
+        }
+
+        private void givenTokensIssued() {
+            given(jwtProvider.createAccessToken(any())).willReturn(ACCESS_TOKEN);
+            given(jwtProvider.createRefreshToken(any())).willReturn(REFRESH_TOKEN);
+            given(jwtProvider.getRefreshExpirationSeconds()).willReturn(REFRESH_EXPIRATION_SECONDS);
+        }
+
+        private User captureCreatedUser() {
+            ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+            verify(userCreateService).createUser(userCaptor.capture());
+            return userCaptor.getValue();
+        }
+
+        private void assertLoginFailed(AppleLoginRequest request, AuthErrorCode errorCode) {
+            assertThatThrownBy(() -> authUseCase.loginWithApple(request))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(errorCode);
+            verify(userCreateService, never()).createUser(any());
+            verify(jwtProvider, never()).createAccessToken(any());
+            verify(refreshTokenService, never()).saveRefreshToken(any());
+        }
+
+        @Test
+        @DisplayName("기존 회원이면 isNewUser = false를 반환하고 회원을 생성하지 않는다")
+        void returnsExistingUserWithoutCreating() {
+            // given
+            User existingUser = User.create(SocialProvider.APPLE, APPLE_SUB, APPLE_EMAIL, APPLE_NAME);
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenExistingUser(existingUser);
+            givenTokensIssued();
+
+            // when
+            LoginResponse response = authUseCase.loginWithApple(requestWithName(null));
+
+            // then
+            assertThat(response.isNewUser()).isFalse();
+            assertThat(response.accessToken()).isEqualTo(ACCESS_TOKEN);
+            assertThat(response.refreshToken()).isEqualTo(REFRESH_TOKEN);
+            verify(userCreateService, never()).createUser(any());
+        }
+
+        @Test
+        @DisplayName("신규 회원이면 APPLE·sub·email·name으로 회원을 생성하고 isNewUser = true를 반환한다")
+        void createsNewUser() {
+            // given
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenNewUser();
+            givenTokensIssued();
+
+            // when
+            LoginResponse response = authUseCase.loginWithApple(requestWithName(APPLE_NAME));
+
+            // then
+            User created = captureCreatedUser();
+            assertThat(created.getSocialProvider()).isEqualTo(SocialProvider.APPLE);
+            assertThat(created.getSocialId()).isEqualTo(APPLE_SUB);
+            assertThat(created.getEmail()).isEqualTo(APPLE_EMAIL);
+            assertThat(created.getName()).isEqualTo(APPLE_NAME);
+            assertThat(response.isNewUser()).isTrue();
+        }
+
+        @Test
+        @DisplayName("신규 회원이면 교환한 Apple refresh token이 회원에 저장된다")
+        void savesAppleRefreshTokenForNewUser() {
+            // given
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenNewUser();
+            givenTokensIssued();
+
+            // when
+            authUseCase.loginWithApple(requestWithName(APPLE_NAME));
+
+            // then
+            assertThat(captureCreatedUser().getAppleRefreshToken()).isEqualTo(APPLE_REFRESH_TOKEN);
+        }
+
+        @Test
+        @DisplayName("기존 회원이면 Apple refresh token을 새로 교환한 값으로 교체한다")
+        void replacesAppleRefreshTokenForExistingUser() {
+            // given
+            User existingUser = User.create(SocialProvider.APPLE, APPLE_SUB, APPLE_EMAIL, APPLE_NAME);
+            existingUser.updateAppleRefreshToken("old-apple-refresh-token");
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenExistingUser(existingUser);
+            givenTokensIssued();
+
+            // when
+            authUseCase.loginWithApple(requestWithName(null));
+
+            // then
+            assertThat(existingUser.getAppleRefreshToken()).isEqualTo(APPLE_REFRESH_TOKEN);
+        }
+
+        @Test
+        @DisplayName("발급한 Refresh Token을 만료시간과 함께 저장한다")
+        void savesRefreshToken() {
+            // given
+            User existingUser = User.create(SocialProvider.APPLE, APPLE_SUB, APPLE_EMAIL, APPLE_NAME);
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenExistingUser(existingUser);
+            givenTokensIssued();
+
+            // when
+            authUseCase.loginWithApple(requestWithName(null));
+
+            // then
+            ArgumentCaptor<RefreshToken> tokenCaptor = ArgumentCaptor.forClass(RefreshToken.class);
+            verify(refreshTokenService).saveRefreshToken(tokenCaptor.capture());
+            RefreshToken saved = tokenCaptor.getValue();
+            assertThat(saved.token()).isEqualTo(REFRESH_TOKEN);
+            assertThat(saved.timeToLive()).isEqualTo(Duration.ofSeconds(REFRESH_EXPIRATION_SECONDS));
+        }
+
+        @Test
+        @DisplayName("identityToken 검증에 실패하면 INVALID_APPLE_ID_TOKEN 예외를 던지고 Apple 인가 코드를 교환하지 않는다")
+        void throwsWhenIdentityTokenInvalid() {
+            // given
+            given(appleTokenVerifier.verify(IDENTITY_TOKEN)).willThrow(new InvalidAppleIdTokenException());
+
+            // when & then
+            assertLoginFailed(requestWithName(null), AuthErrorCode.INVALID_APPLE_ID_TOKEN);
+            verify(appleAuthClient, never()).issueTokens(any());
+        }
+
+        @Test
+        @DisplayName("authorizationCode 교환이 거절되면 INVALID_APPLE_AUTHORIZATION_CODE 예외를 던지고 회원 생성·토큰 발급을 하지 않는다")
+        void throwsWhenAuthorizationCodeInvalid() {
+            // given
+            given(appleTokenVerifier.verify(IDENTITY_TOKEN)).willReturn(appleUserInfo);
+            given(appleAuthClient.issueTokens(AUTHORIZATION_CODE))
+                .willThrow(new InvalidAppleAuthorizationCodeException());
+
+            // when & then
+            assertLoginFailed(requestWithName(APPLE_NAME), AuthErrorCode.INVALID_APPLE_AUTHORIZATION_CODE);
+        }
+
+        @Test
+        @DisplayName("Apple 서버 오류면 APPLE_SERVER_ERROR 예외를 던지고 회원 생성·토큰 발급을 하지 않는다")
+        void throwsWhenAppleServerError() {
+            // given
+            given(appleTokenVerifier.verify(IDENTITY_TOKEN)).willReturn(appleUserInfo);
+            given(appleAuthClient.issueTokens(AUTHORIZATION_CODE)).willThrow(new AppleServerException());
+
+            // when & then
+            assertLoginFailed(requestWithName(APPLE_NAME), AuthErrorCode.APPLE_SERVER_ERROR);
+        }
+
+        @Test
+        @DisplayName("교환 결과 sub가 identityToken sub와 다르면 INVALID_APPLE_AUTHORIZATION_CODE 예외를 던진다")
+        void throwsWhenSubMismatch() {
+            // given
+            given(appleTokenVerifier.verify(IDENTITY_TOKEN)).willReturn(appleUserInfo);
+            given(appleAuthClient.issueTokens(AUTHORIZATION_CODE))
+                .willReturn(new AppleTokens("other-apple-sub", APPLE_REFRESH_TOKEN));
+
+            // when & then
+            assertLoginFailed(requestWithName(APPLE_NAME), AuthErrorCode.INVALID_APPLE_AUTHORIZATION_CODE);
+            verify(userGetService, never()).findUserBySocialAccount(any(), any());
+        }
+
+        @Test
+        @DisplayName("name 없이 요청하면 신규 회원은 name = null로 가입된다")
+        void createsUserWithoutName() {
+            // given
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenNewUser();
+            givenTokensIssued();
+
+            // when
+            authUseCase.loginWithApple(requestWithName(null));
+
+            // then
+            assertThat(captureCreatedUser().getName()).isNull();
+        }
+
+        @Test
+        @DisplayName("공백 name으로 요청하면 신규 회원은 name = null로 가입된다")
+        void createsUserWithBlankNameAsNull() {
+            // given
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenNewUser();
+            givenTokensIssued();
+
+            // when
+            authUseCase.loginWithApple(requestWithName("   "));
+
+            // then
+            assertThat(captureCreatedUser().getName()).isNull();
+        }
+
+        @Test
+        @DisplayName("identityToken에 email이 없어도 email = null로 가입된다")
+        void createsUserWithoutEmail() {
+            // given
+            givenAppleVerifiedAndExchanged(new AppleUserInfo(APPLE_SUB, null));
+            givenNewUser();
+            givenTokensIssued();
+
+            // when
+            LoginResponse response = authUseCase.loginWithApple(requestWithName(APPLE_NAME));
+
+            // then
+            assertThat(captureCreatedUser().getEmail()).isNull();
+            assertThat(response.isNewUser()).isTrue();
+        }
+
+        @Test
+        @DisplayName("기존 회원이 name을 보내도 name은 바뀌지 않는다")
+        void doesNotChangeNameForExistingUser() {
+            // given
+            User existingUser = User.create(SocialProvider.APPLE, APPLE_SUB, APPLE_EMAIL, APPLE_NAME);
+            givenAppleVerifiedAndExchanged(appleUserInfo);
+            givenExistingUser(existingUser);
+            givenTokensIssued();
+
+            // when
+            authUseCase.loginWithApple(requestWithName("새이름"));
+
+            // then
+            assertThat(existingUser.getName()).isEqualTo(APPLE_NAME);
         }
     }
 
