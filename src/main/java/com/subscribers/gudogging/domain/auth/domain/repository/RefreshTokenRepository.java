@@ -9,4 +9,6 @@ public interface RefreshTokenRepository {
     void save(RefreshToken refreshToken);
 
     Optional<String> findByUserId(UUID userId);
+
+    void deleteByUserId(UUID userId);
 }
