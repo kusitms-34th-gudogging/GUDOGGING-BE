@@ -24,6 +24,16 @@ spring:
 
 server-uri: ${SERVER_URI:http://localhost:8080}
 
+# 헬스체크 (배포 후 확인 / 롤백 기준). health 만 노출, 상세 정보는 숨김
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
 google:
   client-ids: ${GOOGLE_CLIENT_IDS}
 

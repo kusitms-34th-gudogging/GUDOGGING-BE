@@ -29,7 +29,8 @@ public class SecurityConfig {
         "/swagger-ui.html",
         "/v3/api-docs/**",
         "/api/v1/auth/google",
-        "/api/v1/auth/reissue"
+        "/api/v1/auth/reissue",
+        "/actuator/health"
     };
 
     private final JwtProvider jwtProvider;
