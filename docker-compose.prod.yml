@@ -1,0 +1,41 @@
+# 운영 앱 서버용 (Spring Boot + Nginx HTTPS + Certbot). 서버의 /home/ubuntu/gudogging 에서 .env 와 함께 실행.
+# 배포는 deploy-prod.yml 이 APP_IMAGE 를 지정해 pull / up 한다. DB·Redis 는 운영 DB 서버(사설 IP)에 있음.
+#
+# 최초 1회 인증서 발급 (Nginx 가 뜨기 전, 80 포트가 비어 있을 때):
+#   docker run --rm -p 80:80 -v ./certbot/conf:/etc/letsencrypt certbot/certbot \
+#     certonly --standalone -d api.gudogging.com --agree-tos --register-unsafely-without-email --non-interactive
+
+services:
+  app:
+    image: ${APP_IMAGE:-ghcr.io/kusitms-34th-gudogging/gudogging-be:prod}
+    container_name: gudogging-app
+    restart: unless-stopped
+    env_file: .env
+    # 외부 포트 없음: Nginx 를 통해서만 접근
+    expose:
+      - "8080"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: gudogging-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    # 6시간마다 reload → 갱신된 인증서 반영
+    command: ["/bin/sh", "-c", "while :; do sleep 6h; nginx -s reload; done & exec nginx -g 'daemon off;'"]
+
+  certbot:
+    image: certbot/certbot
+    container_name: gudogging-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 12시간마다 갱신 시도 (만료 30일 전부터 실제 갱신). webroot 방식이라 Nginx 를 멈추지 않음
+    # 비대화형 갱신 시 certbot 이 수 분간 무작위 대기 후 요청하는 것은 정상 동작
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --non-interactive --quiet; sleep 12h & wait $${!}; done"]

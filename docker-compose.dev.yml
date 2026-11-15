@@ -1,0 +1,87 @@
+# 개발 서버용 (app + MySQL + Redis + Nginx HTTPS 한 서버). 서버의 /home/ubuntu/gudogging 에서 .env 와 함께 실행.
+# 배포는 deploy-dev.yml 이 APP_IMAGE 를 지정해 pull / up 한다.
+# 수동 실행: docker compose -f docker-compose.dev.yml up -d
+#
+# 최초 1회 인증서 발급 (Nginx 가 뜨기 전, 80 포트가 비어 있을 때):
+#   docker run --rm -p 80:80 -v ./certbot/conf:/etc/letsencrypt certbot/certbot \
+#     certonly --standalone -d dev-api.gudogging.com --agree-tos --register-unsafely-without-email --non-interactive
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: gudogging-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: Asia/Seoul
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+09:00
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # 127.0.0.1(TCP)로 확인: 최초 초기화 중 임시 서버(네트워크 비활성)를 healthy 로 오인하지 않도록
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: gudogging-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  app:
+    image: ${APP_IMAGE:-ghcr.io/kusitms-34th-gudogging/gudogging-be:dev}
+    container_name: gudogging-app
+    restart: unless-stopped
+    env_file: .env
+    # 외부 포트 없음: Nginx 를 통해서만 접근
+    expose:
+      - "8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: gudogging-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/dev/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+    # 6시간마다 reload → 갱신된 인증서 반영
+    command: ["/bin/sh", "-c", "while :; do sleep 6h; nginx -s reload; done & exec nginx -g 'daemon off;'"]
+
+  certbot:
+    image: certbot/certbot
+    container_name: gudogging-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    # 12시간마다 갱신 시도 (만료 30일 전부터 실제 갱신). 비대화형 갱신 시 수 분간 무작위 대기는 정상 동작
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --non-interactive --quiet; sleep 12h & wait $${!}; done"]
+
+volumes:
+  mysql-data:
+  redis-data:
