@@ -1,0 +1,37 @@
+# BaseEntity
+# Last Updated: 2026-11-03
+
+entity: BASE_ENTITY
+description: 모든 엔티티가 상속하는 공통 베이스 엔티티. id, 생성/수정 일시, 소프트 삭제 필드를 제공합니다.
+table: "(공통 상속 — 별도 테이블 없음)"
+
+columns:
+  - id:
+      type: BINARY(16) (UUID)
+      nullable: false
+      pk: true
+      description: "PK (UUID, @GeneratedValue(strategy = GenerationType.UUID))"
+  - deleted:
+      type: BOOLEAN
+      nullable: false
+      default: false
+      description: 소프트 삭제 여부. true이면 삭제된 레코드로 간주.
+  - created_at:
+      type: DATETIME
+      nullable: false
+      description: 레코드 생성 일시 (자동 설정)
+  - updated_at:
+      type: DATETIME
+      nullable: false
+      description: 레코드 최종 수정 일시 (자동 갱신)
+  - deleted_at:
+      type: DATETIME
+      nullable: true
+      description: 소프트 삭제 일시. deleted = true 시 설정.
+
+business_logic:
+  - "softDelete(): deleted = true, deletedAt = now() 설정"
+
+constraints:
+  - "모든 조회 쿼리는 deleted = false 필터링 필수"
+  - "Hard Delete 금지 (예외 없음) — softDelete() 메서드만 사용"

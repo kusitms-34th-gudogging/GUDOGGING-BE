@@ -1,0 +1,46 @@
+# User Entity
+# Last Updated: 2026-11-05
+# Source: docs/ERD.md 4.1 users (v0.2) + essential-rules 반영 (Soft Delete)
+
+entity: USER
+description: 회원. Apple/Google 소셜 로그인으로 가입합니다.
+table: users
+domain: User
+extends: BaseEntity
+
+columns:
+  - social_provider:
+      type: VARCHAR(10)
+      nullable: false
+      enum: SocialProvider
+      description: "소셜 로그인 제공자. @Enumerated(EnumType.STRING) (L-01)"
+  - social_id:
+      type: VARCHAR(255)
+      nullable: false
+      description: "소셜 제공자의 사용자 식별자 (Google: sub, Apple: sub). 탈퇴 시 익명화"
+  - email:
+      type: VARCHAR(255)
+      nullable: true
+      description: "소셜 계정 이메일 (E-01 표시). Apple은 비공개 relay 주소일 수 있음. 탈퇴 시 NULL"
+  - name:
+      type: VARCHAR(100)
+      nullable: true
+      description: "소셜 계정 사용자 이름 (Google: name 클레임). 제공되지 않으면 NULL. 탈퇴 시 NULL"
+
+enums:
+  SocialProvider:
+    - APPLE
+    - GOOGLE
+
+constraints:
+  - "UNIQUE (social_provider, social_id)"
+  - "회원 조회는 항상 deleted = false 조건 (예: findBySocialProviderAndSocialIdAndDeletedFalse)"
+
+business_logic:
+  - "create(socialProvider, socialId, email, name): 정적 팩토리 메서드"
+  - "withdraw(): 회원 탈퇴(E-08). softDelete() 호출 + socialId = 'withdrawn_{id}', email = null, name = null"
+
+notes:
+  - "탈퇴 처리(익명화): ERD는 물리 삭제를 권장하지만 Hard Delete 금지 규칙에 따라 Soft Delete로 처리. UNIQUE는 유지하고, 탈퇴 시 social_id를 'withdrawn_{id}'로 덮어써 같은 소셜 계정의 재가입이 새 행으로 생성되도록 함"
+  - "name: ERD 4.1에는 없는 컬럼. 구글 로그인 시 사용자 이름 저장 요청으로 추가 (2026-11-05)"
+  - "탈퇴 시 연관 데이터(subscriptions, subscription_checks, gmail_connections)의 Soft Delete 처리는 회원 탈퇴 기능 스펙에서 정의"

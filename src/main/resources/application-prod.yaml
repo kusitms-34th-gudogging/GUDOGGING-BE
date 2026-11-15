@@ -1,0 +1,27 @@
+# 운영 프로필 (SPRING_PROFILES_ACTIVE=prod). application.yaml 위에 덮어씀.
+spring:
+  jpa:
+    show-sql: false
+    hibernate:
+      # 운영 DB가 비어 있는 최초 1회만 JPA_DDL_AUTO=update 로 띄워 테이블 생성 후, validate 로 되돌릴 것
+      ddl-auto: ${JPA_DDL_AUTO:validate}
+  data:
+    redis:
+      password: ${REDIS_PASSWORD:}
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  forward-headers-strategy: framework   # Nginx(HTTPS) 뒤에서 X-Forwarded-* 인식
+  shutdown: graceful
+
+server-uri: ${SERVER_URI}
+
+# Swagger는 운영에서 기본 비활성 (필요 시 SWAGGER_ENABLED=true)
+swagger:
+  enabled: ${SWAGGER_ENABLED:false}
+springdoc:
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
