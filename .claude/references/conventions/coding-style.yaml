@@ -1,5 +1,5 @@
 # Coding Style Guide
-# Last Updated: 2026-11-12
+# Last Updated: 2026-11-15
 
 meta:
   title: Coding Style Guide
@@ -142,7 +142,7 @@ error_handling:
   domain_error_codes:
     global:   "30001~30999 (Server), 40001~40099 (Client) — 30001: INTERNAL_SERVER_ERROR | 30002: JSON_PROCESSING | 30003: DATA_INTEGRITY_ERROR | 40001: INVALID_ARGUMENT | 40002: JSON_PARSE_ERROR | 40003: RESOURCE_NOT_FOUND | 40004: METHOD_NOT_ALLOWED | 40005: UNAUTHORIZED | 40006: DUPLICATE_RESOURCE"
     auth:     "401xx — 40101: INVALID_GOOGLE_ID_TOKEN | 40102: INVALID_REFRESH_TOKEN | 40103: EXPIRED_ACCESS_TOKEN | 40104: INVALID_ACCESS_TOKEN | 40105: INVALID_APPLE_ID_TOKEN | 40106: INVALID_APPLE_AUTHORIZATION_CODE | 40107: APPLE_SERVER_ERROR (502)"
-    user:     "402xx — (미할당)"
+    user:     "402xx — 40201: USER_NOT_FOUND (404)"
     others:   "403xx~ — 도메인 구현 시점에 순서대로 할당"
     example:  "domain/example(Post)은 예시용 API — 대역 정책에서 제외 (현재 40201/40202 사용, 실제 도메인 구현 시 무시)"
   rule: "새 에러코드 추가 시 이 목록과 system-design.yaml domains 섹션을 반드시 업데이트할 것"

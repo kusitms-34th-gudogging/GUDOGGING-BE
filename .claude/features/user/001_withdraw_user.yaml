@@ -1,0 +1,147 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-07
+
+meta:
+  id: USER-001
+  title: 회원 탈퇴
+  type: Feature
+  author: 1winhyun
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, RefreshTokenService
+    - AUTH-003   # users.apple_refresh_token, AppleAuthClient.revokeRefreshToken, APPLE_SERVER_ERROR
+
+overview:
+  summary: >
+    로그인한 회원이 탈퇴를 요청하면, Apple 회원은 Apple 토큰을 먼저 revoke하고
+    회원을 Soft Delete + 익명화한 뒤 서버 Refresh Token을 삭제한다. (E-08 최종 확인 → E-09 완료 / E-10 실패)
+  user_story: >
+    As a 로그인한 회원, I want to 앱에서 회원 탈퇴하기를,
+    so that 내 계정 정보가 삭제되고 소셜 계정 연동도 끊긴다.
+  goals:
+    - 회원 Soft Delete + 개인정보 익명화 (기존 User.withdraw() 사용)
+    - Apple 회원은 Apple /auth/revoke로 연동 해제 (App Store 계정 삭제 요건)
+    - 서버 Refresh Token 삭제 → 재발급 불가 (세션 종료)
+    - 처리 중 하나라도 실패하면 탈퇴 실패 → 앱은 E-10 화면
+
+technical_spec:
+  api:
+    - method: DELETE
+      path: /api/v1/users/me
+      summary: 회원 탈퇴
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        dto: 없음 (userId는 Access Token에서 — @AuthenticationPrincipal UUID userId)
+      response:
+        http_status: 204 No Content
+        body: 없음
+        note: "system-design.yaml api.methods DELETE: 204 기준. 응답 본문이 없으므로 CommonResponse 미사용"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (UserController)
+      action: "@AuthenticationPrincipal UUID userId → UserUseCase.withdrawUser(userId) → 204"
+    - step: 2
+      layer: UseCase (UserUseCase)
+      action: "회원 조회 → (Apple이면) revoke → user.withdraw() → Refresh Token 삭제"
+      transaction: true
+    - step: 3
+      layer: Domain Service (UserGetService)
+      action: "UserGetService.findUserById(userId) — deleted = false. 없으면 UserNotFoundException"
+    - step: 4
+      layer: External (AppleAuthClient 구현체, AUTH-003)
+      action: >
+        user.getSocialProvider() == APPLE이고 appleRefreshToken != null이면
+        AppleAuthClient.revokeRefreshToken(appleRefreshToken) → POST https://appleid.apple.com/auth/revoke
+        (token_type_hint = refresh_token). 실패 시 AppleServerException → 탈퇴 중단 (DB·Redis 변경 없음)
+    - step: 5
+      layer: Domain (User)
+      action: "user.withdraw() — softDelete() + socialId = 'withdrawn_{id}', email = null, name = null, appleRefreshToken = null (Dirty Checking)"
+    - step: 6
+      layer: Domain Service (RefreshTokenService) → Infrastructure (RedisRefreshTokenRepository)
+      action: "RefreshTokenService.deleteRefreshToken(userId) → Redis DEL refresh:{userId}"
+
+  processing_order:
+    reason: >
+      revoke를 DB 변경보다 먼저 실행 → revoke 실패 시 아무것도 바뀌지 않아 그대로 재시도 가능.
+      Apple revoke는 이미 무효화된 토큰에도 200을 반환하므로, revoke 성공 후 DB/Redis 단계에서 실패해 롤백되어도 재시도해도 안전함.
+
+  database:
+    entities:
+      - name: User
+        action: Read / Update (Soft Delete)
+        table: users
+        fields:
+          - column: "deleted = true, deleted_at = now (BaseEntity.softDelete)"
+          - column: "social_id = 'withdrawn_{id}'"
+          - column: "email = NULL, name = NULL, apple_refresh_token = NULL"
+        notes: "Hard Delete 금지 규칙. UNIQUE(social_provider, social_id) 유지 → 같은 소셜 계정으로 재가입 시 새 행"
+    redis:
+      - key: "refresh:{userId}"
+        action: Delete
+
+  error_codes:
+    domain_range: "402xx (user)"
+    codes:
+      - code: 40201
+        enum: UserErrorCode.USER_NOT_FOUND
+        status: 404 Not Found
+        message: "회원을 찾을 수 없습니다."
+        trigger: "Access Token의 userId에 해당하는 회원이 없거나 이미 탈퇴함 (탈퇴 후 만료 전 Access Token으로 재요청)"
+    reused:
+      - "40107 AuthErrorCode.APPLE_SERVER_ERROR (502) — Apple revoke 실패 (AUTH-003 정의)"
+      - "40005 UNAUTHORIZED / 40103 EXPIRED_ACCESS_TOKEN / 40104 INVALID_ACCESS_TOKEN — 인증 실패 (AUTH-001)"
+
+  changes_to_existing_code:
+    - target: "User.withdraw()"
+      change: "appleRefreshToken = null 추가 (AUTH-003에서 필드 추가)"
+    - target: "RefreshTokenRepository / RedisRefreshTokenRepository"
+      change: "deleteByUserId(UUID userId) 추가"
+    - target: "RefreshTokenService"
+      change: "deleteRefreshToken(UUID userId) 추가"
+
+  security_config:
+    note: "변경 없음 — anyRequest().authenticated()로 보호됨"
+
+  validation_rules:
+    - "본인만 탈퇴 가능 — userId는 경로/본문이 아닌 Access Token에서만 받는다"
+    - "Apple 회원은 revoke 성공해야 탈퇴 진행. 실패 시 회원 정보·Refresh Token 모두 그대로"
+    - "Google 회원은 revoke 호출 없음"
+    - "Apple 회원인데 appleRefreshToken이 NULL이면(AUTH-003 이전 데이터 등) revoke를 건너뛰고 탈퇴 진행 + WARN 로그"
+    - "Hard Delete 금지 — Soft Delete + 익명화"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  user:
+    - "domain/user/presentation/UserController.java (신규)"
+    - "domain/user/application/usecase/UserUseCase.java (신규)"
+    - "domain/user/application/exception/UserErrorCode.java (신규)"
+    - "domain/user/application/exception/UserNotFoundException.java (신규)"
+    - "domain/user/domain/entity/User.java (수정 — withdraw()에서 appleRefreshToken NULL)"
+  auth:
+    - "domain/auth/domain/repository/RefreshTokenRepository.java (수정)"
+    - "domain/auth/infrastructure/RedisRefreshTokenRepository.java (수정)"
+    - "domain/auth/domain/service/RefreshTokenService.java (수정)"
+
+testing_strategy:
+  # UserUseCaseTest only (JUnit5 + Mockito)
+  # Mock: UserGetService, AppleAuthClient, RefreshTokenService
+  happy_path:
+    - "withdrawUser: Google 회원이면 revoke를 호출하지 않고 탈퇴 처리(deleted = true, socialId 익명화, email·name = null)한 뒤 Refresh Token을 삭제한다"
+    - "withdrawUser: Apple 회원이면 저장된 appleRefreshToken으로 revoke한 뒤 탈퇴 처리하고 appleRefreshToken = null, Refresh Token을 삭제한다"
+  edge_cases:
+    - "withdrawUser: 회원이 없거나 이미 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 revoke·Refresh Token 삭제를 하지 않는다"
+    - "withdrawUser: Apple revoke가 APPLE_SERVER_ERROR로 실패하면 회원은 탈퇴되지 않고(deleted = false) Refresh Token도 삭제하지 않는다"
+    - "withdrawUser: Apple 회원인데 appleRefreshToken이 null이면 revoke 없이 탈퇴 처리한다"
+  test_files:
+    - "test/.../domain/user/application/usecase/UserUseCaseTest.java (신규)"
+
+notes:
+  - "Apple 근거: TN3194 — /auth/revoke가 사용자 개입 없이 토큰을 무효화하는 유일한 방법, 유효한 refresh/access token 필요. 탈퇴 시 revoke에 쓴 토큰도 삭제해야 함 → appleRefreshToken = NULL"
+  - "revoke 후 Apple이 사용자에게 연동 해제 이메일을 보낼 수 있음 — 앱 탈퇴 안내(E-07)에 문구 추가 검토 (기획 확인)"
+  - "범위 외: 구독(subscriptions)·점검(subscription_checks)·Gmail 연결(gmail_connections) Soft Delete — 해당 엔티티 구현 시 이 UseCase에 추가. 기능명세서 E-07/E-08의 '등록 구독 데이터 삭제'는 그때 충족"
+  - "범위 외: Google 토큰 revoke (서버가 Google refresh token을 보관하지 않으며 App Store 요건은 Sign in with Apple 대상)"
+  - "범위 외: 탈퇴 사유 입력 (기능명세서 E-06~E-10에 없음)"
+  - "[가정] 탈퇴 후 Access Token은 만료(최대 1시간)까지 필터를 통과하지만, 각 UseCase의 회원 조회(deleted = false)에서 막힘 (AUTH-001 가정과 동일)"
+  - "[가정] Apple revoke(외부 호출)는 DB 쓰기 전에 끝나지만 트랜잭션 안에서 실행됨 (AUTH-003 타임아웃 read 5초로 제한)"
+  - "@CurrentUserId 같은 별도 어노테이션 없이 Spring Security @AuthenticationPrincipal UUID 사용 (JwtAuthenticationFilter가 principal = userId(UUID)로 설정)"
