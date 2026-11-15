@@ -31,7 +31,7 @@ technical_spec:
       summary: 회원 탈퇴
       auth: Required (Authorization Bearer Access Token)
       request:
-        dto: 없음 (userId는 Access Token에서 — @AuthenticationPrincipal UUID userId)
+        dto: 없음 (userId는 Access Token에서 — @CurrentUserId UUID userId)
       response:
         http_status: 200 OK
         body: "CommonResponse<Void> { code: 200, message: \"회원 탈퇴되었습니다.\", data: null }"
@@ -41,7 +41,7 @@ technical_spec:
   data_flow:
     - step: 1
       layer: Presentation (UserController)
-      action: "@AuthenticationPrincipal UUID userId → UserUseCase.withdrawUser(userId) → CommonResponse.success(UserResponseCode.USER_WITHDRAWN)"
+      action: "@CurrentUserId UUID userId → UserUseCase.withdrawUser(userId) → CommonResponse.success(UserResponseCode.USER_WITHDRAWN)"
     - step: 2
       layer: UseCase (UserUseCase)
       action: "회원 조회 → (Apple이면) revoke → user.withdraw() → Refresh Token 삭제"
@@ -146,4 +146,4 @@ notes:
   - "범위 외: 탈퇴 사유 입력 (기능명세서 E-06~E-10에 없음)"
   - "[가정] 탈퇴 후 Access Token은 만료(최대 1시간)까지 필터를 통과하지만, 각 UseCase의 회원 조회(deleted = false)에서 막힘 (AUTH-001 가정과 동일)"
   - "[가정] Apple revoke(외부 호출)는 DB 쓰기 전에 끝나지만 트랜잭션 안에서 실행됨 (AUTH-003 타임아웃 read 5초로 제한)"
-  - "@CurrentUserId 같은 별도 어노테이션 없이 Spring Security @AuthenticationPrincipal UUID 사용 (JwtAuthenticationFilter가 principal = userId(UUID)로 설정)"
+  - "컨트롤러 userId 주입은 @CurrentUserId UUID userId 사용 (global/security/annotation, CurrentUserIdArgumentResolver가 SecurityContext의 principal(UUID)을 꺼냄). 이 스펙과 함께 추가"

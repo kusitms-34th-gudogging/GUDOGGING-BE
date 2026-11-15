@@ -3,11 +3,11 @@ package com.subscribers.gudogging.domain.user.presentation;
 import com.subscribers.gudogging.domain.user.application.usecase.UserUseCase;
 import com.subscribers.gudogging.domain.user.presentation.response.UserResponseCode;
 import com.subscribers.gudogging.global.common.response.CommonResponse;
+import com.subscribers.gudogging.global.security.annotation.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -37,7 +37,7 @@ public class UserController {
             """
     )
     @DeleteMapping("/me")
-    public CommonResponse<Void> withdrawUser(@AuthenticationPrincipal UUID userId) {
+    public CommonResponse<Void> withdrawUser(@CurrentUserId UUID userId) {
         userUseCase.withdrawUser(userId);
         return CommonResponse.success(UserResponseCode.USER_WITHDRAWN);
     }

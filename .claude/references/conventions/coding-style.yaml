@@ -67,6 +67,7 @@ spring_boot:
   controller:
     annotation: "@RestController"
     response: CommonResponse<T> wrapper
+    current_user: "로그인 회원 ID는 @CurrentUserId UUID userId로 받는다 (@AuthenticationPrincipal·SecurityContextHolder 직접 사용 금지). 경로·본문·쿼리로 userId를 받지 않는다. 토큰 없으면 40005 UNAUTHORIZED. Swagger에는 숨겨짐"
     dto: Record or POJO for all Request/Response
     swagger:
       class: "@Tag(name = \"{Domain}\", description = \"{도메인} 관련 API\") — MUST apply to all @RestController classes"
