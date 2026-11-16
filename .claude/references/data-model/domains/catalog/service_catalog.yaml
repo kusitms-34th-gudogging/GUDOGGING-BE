@@ -1,0 +1,88 @@
+# ServiceCatalog Entity
+# Last Updated: 2026-11-16
+# Source: docs/ERD.md v1.1 §4.3 services
+
+entity: SERVICE_CATALOG
+description: 사전 등록 서비스 (서비스 DB). 구독 등록 시 서비스 목록·검색(A-02), 카테고리 기본값(A-03), 웹·직접 결제 해지 안내(X-04/X-05)에 사용하는 마스터 데이터. 운영자가 관리합니다.
+table: services
+domain: Catalog
+extends: BaseEntity
+
+columns:
+  - name:
+      type: VARCHAR(50)
+      nullable: false
+      description: "서비스명 (예: 넷플릭스)"
+  - name_en:
+      type: VARCHAR(50)
+      nullable: true
+      description: "영문 서비스명 (예: Netflix). 한/영 서비스명 매핑 검색 (A-02)"
+  - search_keywords:
+      type: VARCHAR(255)
+      nullable: true
+      description: "별칭·검색 키워드, 쉼표로 구분 (예: '넷플,netflix')"
+  - category:
+      type: VARCHAR(30)
+      nullable: false
+      enum: Category
+      description: "카테고리. @Enumerated(EnumType.STRING). A-03 카테고리 기본값"
+  - logo_url:
+      type: VARCHAR(500)
+      nullable: true
+      description: "서비스 로고 URL. NULL이면 클라이언트 기본 이미지"
+  - object_particle:
+      type: VARCHAR(1)
+      nullable: true
+      description: "목적격 조사('을'/'를') 지정값. 영문으로 끝나는 서비스명에만 사용 (X-06). NULL이면 '를'"
+  - cancel_url:
+      type: VARCHAR(500)
+      nullable: true
+      description: "웹·직접 결제 해지 페이지 링크. NULL이면 해지 링크 없음 안내(X-05)"
+  - cancel_guide:
+      type: TEXT
+      nullable: true
+      description: "웹·직접 결제 해지 경로 3단계 (줄바꿈으로 구분). NULL이면 기본 안내 문구 사용"
+  - cancel_notice:
+      type: VARCHAR(255)
+      nullable: true
+      description: "해지 주의사항 한 줄 (예: '해지해도 남은 기간까지는 혜택을 쓸 수 있어요')"
+  - sort_order:
+      type: INT
+      nullable: false
+      default: 0
+      description: "A-02 '전체' 목록 노출 순서 (오름차순)"
+  - is_active:
+      type: BOOLEAN
+      nullable: false
+      default: true
+      description: "서비스 목록 노출 여부"
+
+enums:
+  Category:
+    shared_by: "Subscription, SubscriptionCheck (catalog 도메인에 정의하고 공용으로 사용)"
+    values:
+      - VIDEO_OTT: "영상·OTT"
+      - MUSIC: "음악"
+      - SHOPPING_DELIVERY: "쇼핑·배달 멤버십"
+      - EDUCATION: "교육·학습"
+      - PRODUCTIVITY_AI: "생산성·AI"
+      - ENTERTAINMENT: "엔터테인먼트"
+      - ETC: "기타 — 직접 입력 서비스와 카테고리가 없는 서비스의 기본값"
+
+indexes:
+  - "idx_services_name (name)"
+  - "idx_services_category (category)"
+
+constraints:
+  - "조회는 항상 deleted = false AND is_active = true 조건"
+
+business_logic:
+  - "없음 — 운영자가 SQL로 관리하는 마스터 데이터 (정적 팩토리·도메인 메서드 없음)"
+
+notes:
+  - "클래스명: 스프링 @Service 어노테이션과 이름이 겹치지 않도록 ServiceCatalog로 명명 (테이블명은 services 유지, @Table(name = \"services\"))"
+  - "운영자가 SQL로 관리하는 마스터 데이터. 생성/수정 API는 MVP 범위 아님 (정적 팩토리 메서드 불필요)"
+  - "요금제·기본 가격은 다루지 않음. 결제 금액은 사용자가 직접 입력 (ERD 10.1 #7)"
+  - "검색은 서비스 수가 적어 전체 목록을 메모리에 올려 애플리케이션에서 처리 (초성 검색 포함)"
+  - "사용자가 이미 등록한(ACTIVE) 서비스는 A-02 목록에서 제외"
+  - "서비스 검색(A-02: 부분 일치·초성·한/영·카테고리명), 목적격 조사 선택(X-06), 해지 링크 유무 분기(X-04/X-05)는 기능 구현 시 추가"

@@ -1,0 +1,85 @@
+# Notification Entity
+# Last Updated: 2026-11-16
+# Source: docs/ERD.md v1.1 §4.7 notifications, §5.7 NotificationType, §7 배치
+
+entity: NOTIFICATION
+description: 발송한 푸시 알림 이력. 받은 푸시 문구를 그대로 저장해 알림 목록(H-04)에 보여주고, 탭하면 읽음 처리합니다.
+table: notifications
+domain: Notification
+extends: BaseEntity
+
+relationships:
+  - user:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: User
+      join_column: user_id
+      nullable: false
+  - subscription:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: Subscription
+      join_column: subscription_id
+      nullable: false
+      description: "탭했을 때 이동할 대상 구독. D-3 묶음 알림은 금액이 가장 큰 구독"
+
+columns:
+  - user_id:
+      type: BINARY(16)
+      nullable: false
+      fk: users.id
+      description: "수신 회원 FK"
+  - subscription_id:
+      type: BINARY(16)
+      nullable: false
+      fk: subscriptions.id
+      description: "대상 구독 FK"
+  - type:
+      type: VARCHAR(30)
+      nullable: false
+      enum: NotificationType
+      description: "알림 종류. @Enumerated(EnumType.STRING)"
+  - target_billing_on:
+      type: DATE
+      nullable: false
+      description: "알림 기준 결제일 (대상 구독의 결제일). 중복 발송 방지 키"
+  - title:
+      type: VARCHAR(100)
+      nullable: false
+      description: "푸시 제목 (발송 문구 그대로)"
+  - body:
+      type: VARCHAR(255)
+      nullable: false
+      description: "푸시 본문 (발송 문구 그대로)"
+  - is_read:
+      type: BOOLEAN
+      nullable: false
+      default: false
+      description: "읽음 여부. 탭하면 true. 홈 알림 아이콘의 점 표시"
+  - sent_at:
+      type: DATETIME
+      nullable: false
+      description: "발송 일시"
+
+enums:
+  NotificationType:
+    - CHECK_REMINDER: "결제 3일 전 점검 알림 (N-01). 탭 → 구독 점검 1/4"
+    - BILLING_REMINDER: "결제 1일 전 알림 (N-02 기본). 탭 → 구독 상세(M-03)"
+    - CANCEL_CONFIRM: "결제 1일 전 해지 확인 알림 (N-02). 탭 → 구독 상세 + 해지 완료 확인 모달(X-06)"
+
+indexes:
+  - "idx_notifications_user_sent (user_id, sent_at)"
+
+constraints:
+  - "UNIQUE (subscription_id, type, target_billing_on) — uk_notifications_subscription_type_billing (배치 재실행 시 중복 발송 방지)"
+  - "조회는 항상 deleted = false AND sent_at >= now − 30일 조건"
+
+business_logic:
+  - "create(user, subscription, type, targetBillingOn, title, body, sentAt): 정적 팩토리. isRead = false"
+  - "read(): isRead = true (알림 목록에서 탭)"
+  - "softDelete(): 구독 삭제·회원 탈퇴 시 → BaseEntity 위임"
+
+notes:
+  - "30일 보관은 조회 조건으로만 처리, 정리 배치 없음 (ERD 10.1 #15)"
+  - "'오늘' / '이전 알림' 구분은 sent_at 기준으로 클라이언트에서 처리"
+  - "발송 배치 (매일 09:00, ERD 7장): D-3 = is_steady_use = false, 이번 주기 미점검, users.is_check_notification_enabled = true, push_token 있음 → 회원별로 7일 안에 결제될 미점검 구독을 묶어 1건. D-1 = 내일 결제인 모든 ACTIVE 구독, 서비스마다 1건 (이번 주기 최근 점검이 CANCEL이면 CANCEL_CONFIRM)"
+  - "문구 — D-3 여러 건: '{서비스명} 외 N건, {합계}원 결제 예정' / 1건: '{서비스명} {금액}원 결제 예정', 본문 '7일 안에 빠져나갈 구독료를 확인하세요.' · BILLING_REMINDER: '내일 {서비스명} {금액}원이 결제돼요' / '해지 안 했다면 오늘이 마지막 해지 기회예요.' · CANCEL_CONFIRM: '{서비스명}, 해지하셨나요?' / '아직이라면 내일 {금액}원이 결제돼요. 오늘 해지하세요.'"
+  - "종류 태그 문구(결제 3일 전 / 결제 1일 전)는 기능 구현 시 응답 DTO에서 처리"

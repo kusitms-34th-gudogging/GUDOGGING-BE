@@ -1,0 +1,89 @@
+# SubscriptionCheck Entity
+# Last Updated: 2026-11-16 (엔티티 구현 반영)
+# Source: docs/ERD.md v1.1 §4.5 subscription_checks, §5.5 점검 문항, §6.4 점검 결과
+
+entity: SUBSCRIPTION_CHECK
+description: 결제 전 구독 점검 기록. 3문항 응답(이용도·만족도·다음 달 계획)과 메모, 점검 결과에서 고른 결정(유지/해지)을 보유합니다. 활용도와 결과 단계는 저장하지 않고 점수로 계산합니다.
+table: subscription_checks
+domain: Check
+extends: BaseEntity
+
+relationships:
+  - subscription:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: Subscription
+      join_column: subscription_id
+      nullable: false
+
+columns:
+  - subscription_id:
+      type: BINARY(16)
+      nullable: false
+      fk: subscriptions.id
+      description: "구독 FK"
+  - target_billing_on:
+      type: DATE
+      nullable: false
+      description: "점검 대상 결제일 (점검 시점의 subscription.nextBillingOn). '이번 결제 주기 점검 여부' 판단 기준"
+  - category:
+      type: VARCHAR(30)
+      nullable: false
+      enum: Category
+      description: "점검 당시 카테고리 스냅샷 (catalog/service_catalog.yaml 참고). 문항·선택지 문구를 다시 보여줄 때 사용"
+  - usage_score:
+      type: TINYINT
+      nullable: false
+      description: "1/4 이용도 응답 (1~5), 가중치 40%"
+  - satisfaction_score:
+      type: TINYINT
+      nullable: false
+      description: "2/4 만족도 응답 (1~5), 가중치 25%"
+  - plan_score:
+      type: TINYINT
+      nullable: false
+      description: "3/4 다음 달 계획 응답 (1~5), 가중치 35%"
+  - memo:
+      type: VARCHAR(100)
+      nullable: true
+      description: "4/4 메모 (선택, 최대 100자). 공백만 입력하면 NULL. 다음 점검 때 '지난 메모'로 표시. 점수에 반영하지 않음"
+  - decision:
+      type: VARCHAR(10)
+      nullable: true
+      enum: CheckDecision
+      description: "점검 결과(K-80)에서 고른 결정. @Enumerated(EnumType.STRING). 결정 전에는 NULL"
+  - cancel_reason_text:
+      type: VARCHAR(100)
+      nullable: true
+      description: "해지 이유(K-90) '직접 입력' 내용 (최대 100자). CancelReason.CUSTOM을 고른 경우에만 값 있음"
+
+enums:
+  CheckDecision:
+    - KEEP: "유지하기 — 결정 저장 후 홈으로 이동"
+    - CANCEL: "해지하기 — 해지 이유(K-90)로 이동"
+
+constants:
+  weights: "이용도 40 · 만족도 25 · 계획 35 (기획 확정, 코드 상수)"
+  plan_cap: "계획 = 1점이면 활용도 최대 59%"
+  questions: "문항 문구 · 보조 문구 · 선택지 · 메모 placeholder · 예시 메모 칩은 Category별 상수 (ERD 5.5, CHK-001~008 원문)"
+
+indexes:
+  - "idx_subscription_checks_subscription_target (subscription_id, target_billing_on)"
+
+constraints:
+  - "usage_score, satisfaction_score, plan_score 1~5 / memo, cancel_reason_text 최대 100자 — 요청 DTO에서 검증 (엔티티는 검증하지 않음)"
+  - "UNIQUE 없음 — 같은 결제 주기 재점검은 새 행으로 쌓고 가장 최근 행 기준 (ERD 10.1 #4)"
+  - "조회는 항상 deleted = false 조건"
+
+business_logic:
+  - "create(subscription, targetBillingOn, category, usageScore, satisfactionScore, planScore, memo): 정적 팩토리. K-70 '결과 보기' 시 저장"
+  - "keep(): decision = KEEP (K-80 '유지하기')"
+  - "cancel(cancelReasonText): decision = CANCEL (K-90). 선택한 이유 목록은 SubscriptionCheckCancelReason으로 별도 저장"
+  - "softDelete(): 구독 삭제·회원 탈퇴 시 → BaseEntity 위임"
+
+
+notes:
+  - "M-03 '지난 점검'은 오늘 기준 최근 90일 기록의 문항별 소수 평균으로 활용도를 계산하고, 표시 문구는 평균을 반올림한 점수 사용. 계획 평균을 반올림한 값이 1이면 보정 적용 (ERD 6.4) — 여러 기록을 다루므로 도메인 서비스 또는 값 객체에서 계산"
+  - "점검 도중 임시 응답(K-11 이어서 진행)은 서버에 저장하지 않음 — 클라이언트 로컬"
+  - "D-1 해지 확인 알림(CANCEL_CONFIRM) 대상: 이번 주기 최근 점검이 decision = CANCEL인데 구독이 아직 ACTIVE"
+  - "홈 '내 구독 사용 현황': 가장 최근 점검의 활용도 < 60%이고 decision != KEEP인 구독"
+  - "활용도·결과 단계·영향 문항 계산(ERD 6.4)과 memo 공백 → null 처리는 기능 구현 시 추가. 계산·검색·표시 로직은 엔티티에 두지 않음 — 해당 기능 스펙 구현 시 추가 (2026-11-16 결정, 기존 User/Post 방식)"
