@@ -13,6 +13,7 @@ import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 
 @Entity
 @Table(
@@ -46,12 +47,31 @@ public class User extends BaseEntity {
     @Column(name = "apple_refresh_token", length = 512)
     private String appleRefreshToken;
 
+    @Column(name = "push_token", length = 255)
+    private String pushToken;
+
+    @ColumnDefault("true")
+    @Column(name = "is_check_notification_enabled", nullable = false)
+    private boolean isCheckNotificationEnabled = true;
+
     public static User create(SocialProvider socialProvider, String socialId, String email, String name) {
-        return new User(socialProvider, socialId, email, name, null);
+        return new User(socialProvider, socialId, email, name, null, null, true);
     }
 
     public void updateAppleRefreshToken(String appleRefreshToken) {
         this.appleRefreshToken = appleRefreshToken;
+    }
+
+    public void updatePushToken(String pushToken) {
+        this.pushToken = pushToken;
+    }
+
+    public void clearPushToken() {
+        this.pushToken = null;
+    }
+
+    public void changeCheckNotification(boolean enabled) {
+        this.isCheckNotificationEnabled = enabled;
     }
 
     public void withdraw() {
@@ -60,6 +80,7 @@ public class User extends BaseEntity {
         this.socialId = WITHDRAWN_SOCIAL_ID_PREFIX + getId();
         this.email = null;
         this.appleRefreshToken = null;
+        this.pushToken = null;
     }
 
 }

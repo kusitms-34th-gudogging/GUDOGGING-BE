@@ -1,0 +1,134 @@
+# Subscription Entity
+# Last Updated: 2026-11-16 (엔티티 구현 반영)
+# Source: docs/ERD.md v1.1 §4.4 subscriptions, §6 계산 규칙
+
+entity: SUBSCRIPTION
+description: 사용자가 등록한 구독. 결제 금액·주기·기준 결제일·결제한 곳과 구독 상태(구독 중/구독 종료)를 보유하며, 결제일·환산 금액은 저장하지 않고 계산합니다.
+table: subscriptions
+domain: Subscription
+extends: BaseEntity
+
+relationships:
+  - user:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: User
+      join_column: user_id
+      nullable: false
+  - serviceCatalog:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: ServiceCatalog
+      join_column: service_id
+      nullable: true
+      description: "사전 등록 서비스. 직접 입력 서비스(A-03s)는 NULL"
+
+columns:
+  - user_id:
+      type: BINARY(16)
+      nullable: false
+      fk: users.id
+      description: "회원 FK"
+  - service_id:
+      type: BINARY(16)
+      nullable: true
+      fk: services.id
+      description: "사전 등록 서비스 FK. 직접 입력 서비스는 NULL"
+  - name:
+      type: VARCHAR(50)
+      nullable: false
+      description: "서비스명. 사전 등록 서비스는 services.name 스냅샷(수정 불가), 직접 입력은 1~30자"
+  - category:
+      type: VARCHAR(30)
+      nullable: false
+      enum: Category
+      description: "카테고리 (catalog/service_catalog.yaml 참고). 사전 등록은 서비스 카테고리, 직접 입력은 ETC가 기본값. 사용자가 변경 가능"
+  - amount:
+      type: INT
+      nullable: false
+      description: "1회 결제 금액(원). 0보다 커야 함"
+  - billing_cycle_value:
+      type: TINYINT
+      nullable: false
+      default: 1
+      description: "결제 주기 숫자 (1~31)"
+  - billing_cycle_unit:
+      type: VARCHAR(10)
+      nullable: false
+      default: MONTH
+      enum: BillingCycleUnit
+      description: "결제 주기 단위. @Enumerated(EnumType.STRING)"
+  - billing_anchor_on:
+      type: DATE
+      nullable: false
+      description: "결제 기준일. 사용자가 등록·편집 때 입력한 '다음 결제일'(과거 날짜 불가). 다음/이전 결제일은 이 날짜 ± k × 주기로 계산"
+  - payment_method:
+      type: VARCHAR(20)
+      nullable: false
+      default: WEB_DIRECT
+      enum: PaymentMethod
+      description: "결제한 곳. @Enumerated(EnumType.STRING). 해지 안내 분기에 사용"
+  - status:
+      type: VARCHAR(10)
+      nullable: false
+      default: ACTIVE
+      enum: SubscriptionStatus
+      description: "구독 상태. @Enumerated(EnumType.STRING)"
+  - canceled_on:
+      type: DATE
+      nullable: true
+      description: "해지일 — 해지 완료 확인 모달(X-06)에서 '해지 완료'를 누른 날짜. ACTIVE면 NULL"
+  - is_steady_use:
+      type: BOOLEAN
+      nullable: false
+      default: false
+      description: "'꾸준히 쓰는 구독' (M-03 토글). true이면 D-3 점검 알림과 홈 점검 유도에서 제외. D-1 결제 알림은 그대로 발송"
+  - registration_source:
+      type: VARCHAR(20)
+      nullable: false
+      enum: RegistrationSource
+      description: "등록 경로. @Enumerated(EnumType.STRING)"
+
+enums:
+  BillingCycleUnit:
+    - DAY: "일"
+    - WEEK: "주"
+    - MONTH: "개월"
+    - YEAR: "년"
+  PaymentMethod:
+    - WEB_DIRECT: "웹·직접 결제 (통신사 결제 포함) — cancel_url 있으면 X-04, 없으면 X-05"
+    - APP_STORE: "App Store — X-01"
+    - GOOGLE_PLAY: "Google Play — X-03"
+  SubscriptionStatus:
+    - ACTIVE: "구독 중"
+    - ENDED: "구독 종료"
+  RegistrationSource:
+    - MANUAL: "직접 등록"
+    - SCREENSHOT: "스크린샷"
+    - GMAIL: "Gmail"
+
+indexes:
+  - "idx_subscriptions_user_status (user_id, status)"
+  - "idx_subscriptions_service_id (service_id)"
+
+constraints:
+  - "amount > 0, billing_cycle_value 1~31, 직접 입력 서비스명 1~30자, billing_anchor_on 과거 불가 — 요청 DTO에서 검증 (엔티티는 검증하지 않음)"
+  - "편집(updatePaymentInfo, updateCustomName)·해지(cancel)는 ACTIVE 구독만, 서비스명 수정은 직접 입력 서비스만 — 도메인 서비스/UseCase에서 검증 후 엔티티 메서드 호출"
+  - "같은 회원이 같은 service_id를 ACTIVE 상태로 중복 등록 불가 — 애플리케이션에서 검증 (A-02, A-09, A-13)"
+  - "조회는 항상 deleted = false 조건"
+
+business_logic:
+  - "createFromCatalog(user, serviceCatalog, category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod, registrationSource): 사전 등록 서비스 정적 팩토리. name = serviceCatalog.name 스냅샷, status = ACTIVE"
+  - "createCustom(user, name, category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod, registrationSource): 직접 입력 서비스 정적 팩토리. serviceCatalog = null, status = ACTIVE"
+  - "updatePaymentInfo(category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod): 구독 정보 편집 (M-06)"
+  - "updateCustomName(name): 직접 입력 서비스명 수정 (M-06)"
+  - "changeSteadyUse(enabled): 꾸준히 쓰는 구독 토글 (M-03)"
+  - "cancel(today): 해지 완료 (X-06). status = ENDED, canceledOn = today"
+  - "softDelete(): 구독 삭제 (M-02.3, C-04) → BaseEntity 위임"
+
+
+notes:
+  - "구독 시작일 컬럼 없음 — 등록일(created_at)을 사용 (ERD 10.1 #2)"
+  - "재등록(M-05 '재등록하기'): 기존 ENDED 행은 그대로 두고 새 행 생성 (시작일 = 재등록일)"
+  - "구독 삭제 시 해당 subscription_checks, subscription_check_cancel_reasons, notifications도 함께 Soft Delete (ERD 8장) — UseCase에서 각 도메인 서비스를 통해 처리"
+  - "홈 연 금액(H-02)은 예외적으로 등록일과 관계없이 올해 1/1~12/31 전체를 계산하며 ACTIVE 구독만 포함 (ERD 6.3)"
+  - "저장하지 않는 값: 다음 결제일, D-day, 월/연 환산 금액, 결제 예정액, 캘린더 결제일 (ERD 6장)"
+  - "다음 결제일·기간 내 결제일·월/연 환산·캘린더 상태·해지 안내 분기 계산(ERD 6장)은 기능 구현 시 추가. 계산·검색·표시 로직은 엔티티에 두지 않음 — 해당 기능 스펙 구현 시 추가 (2026-11-16 결정, 기존 User/Post 방식)"

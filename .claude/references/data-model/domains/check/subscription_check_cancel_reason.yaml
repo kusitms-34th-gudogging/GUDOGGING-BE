@@ -1,0 +1,53 @@
+# SubscriptionCheckCancelReason Entity
+# Last Updated: 2026-11-16
+# Source: docs/ERD.md v1.1 §4.6 subscription_check_cancel_reasons, §5.6 CancelReason
+
+entity: SUBSCRIPTION_CHECK_CANCEL_REASON
+description: 점검 후 해지하기를 고른 경우의 해지 이유 (K-90, 복수 선택). 선택한 이유 1개당 1행입니다.
+table: subscription_check_cancel_reasons
+domain: Check
+extends: BaseEntity
+
+relationships:
+  - subscriptionCheck:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: SubscriptionCheck
+      join_column: subscription_check_id
+      nullable: false
+
+columns:
+  - subscription_check_id:
+      type: BINARY(16)
+      nullable: false
+      fk: subscription_checks.id
+      description: "점검 기록 FK"
+  - reason:
+      type: VARCHAR(30)
+      nullable: false
+      enum: CancelReason
+      description: "해지 이유. @Enumerated(EnumType.STRING). 표시 문구는 카테고리별로 다름"
+
+enums:
+  CancelReason:
+    - RARELY_USED: "잘 안 써요 (예: 요즘 잘 안 봐요)"
+    - PRICE_BURDEN: "구독료가 부담돼요"
+    - LACKING: "카테고리별 부족한 점 (예: 볼 만한 콘텐츠가 없어요)"
+    - SWITCHING: "다른 서비스로 옮겨요"
+    - GOAL_ACHIEVED: "목적 달성 (예: 보고 싶던 작품을 다 봤어요)"
+    - CUSTOM: "직접 입력 — 내용은 subscription_checks.cancel_reason_text"
+
+constants:
+  labels: "(Category, CancelReason) 조합별 표시 문구 상수 (ERD 5.6, CHK-009 원문)"
+
+constraints:
+  - "UNIQUE (subscription_check_id, reason) — uk_subscription_check_cancel_reasons_check_reason"
+  - "조회는 항상 deleted = false 조건"
+
+business_logic:
+  - "create(subscriptionCheck, reason): 정적 팩토리"
+  - "softDelete(): → BaseEntity 위임"
+
+notes:
+  - "SubscriptionCheck → 이유 목록은 단방향 @ManyToOne만 매핑 (@OneToMany 없음). 여러 이유는 saveAll()로 한 번에 저장"
+  - "K-90 '건너뛰기'를 누르면 행 없음 (SubscriptionCheck.decision = CANCEL만 저장)"
+  - "저장한 이유는 구독 종료 상세(M-05) '마지막 점검'과 재등록 때 표시"
