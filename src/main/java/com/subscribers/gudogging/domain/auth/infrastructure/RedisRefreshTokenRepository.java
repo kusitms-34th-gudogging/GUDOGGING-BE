@@ -29,4 +29,9 @@ public class RedisRefreshTokenRepository implements RefreshTokenRepository {
     public Optional<String> findByUserId(UUID userId) {
         return Optional.ofNullable(redisTemplate.opsForValue().get(KEY_PREFIX + userId));
     }
+
+    @Override
+    public void deleteByUserId(UUID userId) {
+        redisTemplate.delete(KEY_PREFIX + userId);
+    }
 }

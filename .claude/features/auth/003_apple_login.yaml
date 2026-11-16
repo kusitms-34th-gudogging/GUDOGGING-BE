@@ -1,0 +1,286 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-07
+
+meta:
+  id: AUTH-003
+  title: 애플 로그인
+  type: Feature
+  author: 1winhyun
+  depends_on:
+    - AUTH-001   # JwtProvider, RefreshTokenService, LoginResponse, JWT 필터 재사용
+    - AUTH-002   # 발급한 Refresh Token은 기존 재발급 API로 갱신
+  used_by:
+    - USER-001   # 회원 탈퇴 시 여기서 저장한 Apple refresh token으로 revoke
+
+overview:
+  summary: >
+    모바일 앱이 Sign in with Apple로 받은 identityToken과 authorizationCode를 서버로 보내면,
+    서버가 identityToken을 검증하고 authorizationCode를 Apple refresh token으로 교환·암호화 저장한 뒤
+    기존 회원이면 로그인·신규면 가입 처리하고 Access/Refresh Token을 발급한다. (L-01)
+  user_story: >
+    As a 앱 사용자, I want to Apple 계정으로 로그인하기를,
+    so that 별도 회원가입 없이 구독 관리 기능을 이용할 수 있다.
+  goals:
+    - Apple identityToken 서버 검증 (서명·iss·aud·exp)
+    - authorizationCode → Apple refresh token 교환 후 암호화 저장 (탈퇴 시 revoke용, App Store 계정 삭제 요건)
+    - 신규 계정 자동 가입, 기존 계정 로그인 (social_provider = APPLE + social_id = sub 기준)
+    - 첫 로그인 때 앱이 전달한 이름(name)을 가입 시 저장
+    - AUTH-001과 동일한 Access/Refresh Token 발급 (LoginResponse 재사용)
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/auth/apple
+      summary: 애플 로그인
+      auth: None (공개)
+      request:
+        dto: AppleLoginRequest
+        fields:
+          - name: identityToken
+            type: String
+            required: true
+            validation: "@NotBlank"
+            description: "ASAuthorizationAppleIDCredential.identityToken (JWT 문자열)"
+          - name: authorizationCode
+            type: String
+            required: true
+            validation: "@NotBlank"
+            description: "ASAuthorizationAppleIDCredential.authorizationCode. 1회용·발급 후 5분 유효 → 받은 즉시 전송"
+          - name: name
+            type: String
+            required: false
+            validation: "@Size(max = 100)"
+            description: "사용자 이름. Apple은 첫 인가 때만 fullName을 앱에 주므로, 앱이 그때만 조합해 보냄. 이후 로그인에서는 생략"
+      response:
+        dto: LoginResponse (AUTH-001 재사용)
+        http_status: 200 OK
+        wrapper: CommonResponse<LoginResponse>
+        response_code: AuthResponseCode.LOGIN_SUCCESS (200, "로그인되었습니다.") — 재사용
+        fields:
+          - name: accessToken
+            type: String
+          - name: refreshToken
+            type: String
+          - name: isNewUser
+            type: boolean
+            description: "이번 요청에서 가입했으면 true → O-01(온보딩), false면 홈(H-01)"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (AuthController)
+      action: "@Valid AppleLoginRequest 검증 → AuthUseCase.loginWithApple(request)"
+    - step: 2
+      layer: UseCase (AuthUseCase)
+      action: "identityToken 검증 → authorizationCode 교환 → 회원 조회/가입 → Apple refresh token 갱신 → 토큰 발급(issueTokens 재사용) → LoginResponse.of(...)"
+      transaction: true
+    - step: 3
+      layer: External (AppleTokenVerifier 구현체)
+      action: "Apple JWKS 공개키로 서명 검증 + iss + aud + exp 확인 → AppleUserInfo(sub, email) 반환. 실패 시 InvalidAppleIdTokenException"
+    - step: 4
+      layer: External (AppleAuthClient 구현체)
+      action: >
+        AppleAuthClient.issueTokens(authorizationCode) → POST https://appleid.apple.com/auth/token
+        (grant_type = authorization_code) → AppleTokens(sub = 응답 id_token의 sub, refreshToken) 반환.
+        UseCase에서 AppleTokens.sub ≠ AppleUserInfo.sub면 InvalidAppleAuthorizationCodeException.
+        교환 실패 시 로그인 실패 (회원 생성·토큰 발급 안 함)
+    - step: 5
+      layer: Domain Service (UserGetService)
+      action: "UserGetService.findUserBySocialAccount(SocialProvider.APPLE, sub) — deleted = false 조회 (Optional)"
+    - step: 6
+      layer: Domain (User) + Domain Service (UserCreateService)
+      action: "조회 결과 없으면 User.create(APPLE, sub, email, name) → UserCreateService.createUser(user), isNewUser = true. 기존 회원이면 request.name 무시"
+    - step: 7
+      layer: Domain (User)
+      action: "user.updateAppleRefreshToken(appleTokens.refreshToken()) — 매 로그인마다 최신 값으로 덮어씀 (Dirty Checking, 저장 시 암호화)"
+    - step: 8
+      layer: Global (JwtProvider) + Domain Service (RefreshTokenService)
+      action: "AUTH-001과 동일 — Access/Refresh 발급, Redis refresh:{userId} 저장 (기존 값 덮어씀)"
+
+  apple_identity_token_verification:
+    library: "spring-security-oauth2-jose (NimbusJwtDecoder) — AUTH-001 의존성 재사용, JWKS 캐싱 포함"
+    jwk_set_uri: https://appleid.apple.com/auth/keys
+    algorithm: RS256
+    checks:
+      - "서명 (Apple 공개키, kid로 선택)"
+      - "iss: https://appleid.apple.com"
+      - "aud: apple.client-id (iOS 앱 Bundle ID)"
+      - "exp: 만료 전"
+    extracted:
+      - "sub → users.social_id"
+      - "email → users.email (nullable, 비공개 relay 주소일 수 있음)"
+    not_from_token:
+      - "name — identityToken에 없음. request.name으로만 받음"
+
+  apple_rest_api:
+    reference: "Apple 공식 문서 — Token validation, Token revocation, Creating a client secret, TN3194"
+    token_exchange:
+      endpoint: "POST https://appleid.apple.com/auth/token"
+      content_type: application/x-www-form-urlencoded
+      params:
+        - "client_id = apple.client-id (Bundle ID)"
+        - "client_secret = 아래 client_secret JWT"
+        - "code = request.authorizationCode"
+        - "grant_type = authorization_code"
+        - "redirect_uri 생략 (네이티브 앱은 최초 인가 요청에 redirect_uri가 없음)"
+      success_response: "{ access_token, token_type, expires_in, refresh_token, id_token } → refresh_token, id_token.sub만 사용"
+      error_mapping:
+        - "400 invalid_grant (만료·재사용·다른 client의 code) → INVALID_APPLE_AUTHORIZATION_CODE (40106)"
+        - "그 외 4xx(invalid_client 등 설정 오류) / 5xx / 타임아웃 → APPLE_SERVER_ERROR (40107)"
+    revoke:
+      endpoint: "POST https://appleid.apple.com/auth/revoke"
+      params: "client_id, client_secret, token = 저장된 refresh token, token_type_hint = refresh_token"
+      note: "포트(AppleAuthClient.revokeRefreshToken)만 이 스펙에서 정의. 호출은 USER-001(회원 탈퇴). 200 = 무효화 성공 또는 이미 무효화됨"
+    client_secret:
+      algorithm: "ES256 (P-256 + SHA-256), Apple Developer에서 발급한 .p8 개인키로 서명"
+      header: "alg = ES256, kid = apple.key-id"
+      claims:
+        - "iss = apple.team-id"
+        - "iat = 현재 시각"
+        - "exp = iat + 5분 (Apple 상한 15777000초 = 6개월. 요청마다 새로 생성하므로 짧게)"
+        - "aud = https://appleid.apple.com"
+        - "sub = apple.client-id (client_id와 동일, 대소문자 구분)"
+      library: "jjwt (AUTH-001 의존성 재사용) + .p8(PKCS#8 PEM) → java.security.PrivateKey 변환"
+    http_client: "Spring RestClient (추가 의존성 없음). 타임아웃 connect 3초 / read 5초"
+
+  refresh_token_storage:
+    location: "users.apple_refresh_token (VARCHAR(512), NULL) — Apple 회원만 값이 있음"
+    encryption: >
+      JPA AttributeConverter(EncryptedStringConverter)로 AES-256-GCM 암호화 저장.
+      저장값 = Base64(IV 12바이트 + 암호문 + 태그). 키 = encryption.key (Base64, 디코딩 후 32바이트)
+    reason: "Apple TN3194 — 토큰을 안전하게 저장(securely store)하라고 명시. refresh token은 만료 기한이 없는 자격 증명"
+    lifecycle:
+      - "로그인마다 새로 교환한 값으로 덮어씀 (사용자가 Apple 설정에서 연결을 끊었다가 다시 로그인해도 유효한 토큰 보장)"
+      - "회원 탈퇴 시 revoke 후 NULL (USER-001)"
+
+  database:
+    entities:
+      - name: User
+        action: Read / Create / Update
+        table: users
+        fields:
+          - column: social_provider (VARCHAR(10), NOT NULL) — APPLE (SocialProvider enum에 이미 존재)
+          - column: social_id (VARCHAR(255), NOT NULL) — Apple sub
+          - column: email (VARCHAR(255), NULL) — Apple email 클레임
+          - column: name (VARCHAR(100), NULL) — request.name
+          - column: "apple_refresh_token (VARCHAR(512), NULL) — 신규 컬럼, 암호화 저장"
+        constraints: "UNIQUE (social_provider, social_id)"
+        notes: "엔티티 정의는 references/data-model/domains/user/user.yaml 기준 (apple_refresh_token 반영)"
+    redis:
+      - key: "refresh:{userId}"
+        action: Create / Update
+
+  error_codes:
+    domain_range: "401xx (auth)"
+    codes:
+      - code: 40105
+        enum: AuthErrorCode.INVALID_APPLE_ID_TOKEN
+        status: 401 Unauthorized
+        message: "유효하지 않은 Apple 인증 정보입니다."
+        trigger: "identityToken 서명·iss·aud·exp 검증 실패"
+      - code: 40106
+        enum: AuthErrorCode.INVALID_APPLE_AUTHORIZATION_CODE
+        status: 401 Unauthorized
+        message: "유효하지 않은 Apple 인가 코드입니다."
+        trigger: "Apple /auth/token이 invalid_grant 반환, 또는 교환 결과 sub가 identityToken sub와 다름"
+      - code: 40107
+        enum: AuthErrorCode.APPLE_SERVER_ERROR
+        status: 502 Bad Gateway
+        message: "Apple 서버와 통신하지 못했습니다. 잠시 후 다시 시도해주세요."
+        trigger: "Apple /auth/token·/auth/revoke 호출 실패 (5xx, 타임아웃, invalid_client 등). USER-001에서도 사용"
+    reused_global:
+      - "40001 INVALID_ARGUMENT — identityToken·authorizationCode blank, name 100자 초과 (@Valid)"
+
+  changes_to_existing_code:
+    - target: "UserGetService.findUserBySocialAccount(GoogleUserInfo)"
+      change: "findUserBySocialAccount(SocialProvider socialProvider, String socialId)로 시그니처 일반화"
+      reason: "Apple 조회에 같은 메서드를 쓰고, user 도메인 서비스가 auth 도메인의 GoogleUserInfo에 의존하던 것을 없앰"
+      impact: "AuthUseCase.loginWithGoogle 호출부, AuthUseCaseTest의 구글 로그인 mock 수정 (동작 변화 없음)"
+    - target: "AuthUseCase"
+      change: "loginWithGoogle과 loginWithApple의 '조회 → 없으면 가입' 부분을 private 메서드로 공통화"
+      reason: "중복 제거. loginWithGoogle의 외부 동작은 그대로"
+    - target: "User 엔티티"
+      change: "appleRefreshToken 필드(@Convert EncryptedStringConverter) + updateAppleRefreshToken(token) 추가, withdraw()에서 NULL 처리"
+
+  security_config:
+    permit_urls_add:
+      - /api/v1/auth/apple
+
+  configuration:
+    dependencies_add: "없음 (spring-security-oauth2-jose, jjwt, RestClient 모두 기존 의존성)"
+    properties: |
+      apple:
+        client-id: ${APPLE_CLIENT_ID}       # iOS 앱 Bundle ID (aud 검증 + token/revoke의 client_id, client_secret의 sub)
+        team-id: ${APPLE_TEAM_ID}           # 10자리 Team ID
+        key-id: ${APPLE_KEY_ID}             # Sign in with Apple용 .p8 키의 Key ID
+        private-key: ${APPLE_PRIVATE_KEY}   # .p8 파일 내용 (PEM, 저장소에 커밋 금지)
+      encryption:
+        key: ${ENCRYPTION_KEY}              # AES-256 키 (Base64, 디코딩 후 32바이트)
+
+  validation_rules:
+    - "identityToken, authorizationCode: blank 불가"
+    - "name: 선택, 최대 100자. 공백뿐이면 null로 저장"
+    - "identityToken의 aud가 apple.client-id와 다르면 거절"
+    - "authorizationCode 교환 결과의 sub가 identityToken의 sub와 같아야 한다 (다른 사용자의 code 바인딩 방지)"
+    - "교환에 실패하면 로그인 실패 — Apple refresh token이 없는 Apple 회원을 만들지 않는다"
+    - "회원 식별은 (social_provider = APPLE, social_id = sub)로만 한다. email로 식별하지 않음"
+    - "name은 신규 가입 때만 저장. 기존 회원 로그인 시 request.name이 있어도 반영하지 않음"
+    - "apple_refresh_token은 로그·응답에 절대 노출하지 않는다"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  auth:
+    - "domain/auth/presentation/AuthController.java (수정 — POST /apple 추가)"
+    - "domain/auth/application/usecase/AuthUseCase.java (수정 — loginWithApple 추가, 로그인 공통화)"
+    - "domain/auth/application/dto/request/AppleLoginRequest.java"
+    - "domain/auth/application/exception/AuthErrorCode.java (수정 — 40105~40107 추가)"
+    - "domain/auth/application/exception/InvalidAppleIdTokenException.java"
+    - "domain/auth/application/exception/InvalidAppleAuthorizationCodeException.java"
+    - "domain/auth/application/exception/AppleServerException.java"
+    - "domain/auth/domain/AppleTokenVerifier.java (interface, Port) + AppleUserInfo (record: sub, email)"
+    - "domain/auth/domain/AppleAuthClient.java (interface, Port: issueTokens(authorizationCode), revokeRefreshToken(refreshToken)) + AppleTokens (record: sub, refreshToken)"
+    - "domain/auth/external/AppleIdentityTokenVerifierAdapter.java (AppleTokenVerifier 구현)"
+    - "domain/auth/external/AppleAuthClientAdapter.java (AppleAuthClient 구현 — RestClient, client_secret 생성)"
+  user:
+    - "domain/user/domain/entity/User.java (수정 — appleRefreshToken)"
+    - "domain/user/domain/service/UserGetService.java (수정 — findUserBySocialAccount 일반화)"
+  global:
+    - "global/common/crypto/EncryptedStringConverter.java (AttributeConverter, AES-256-GCM)"
+    - "global/config/security/SecurityConfig.java (수정 — permit URL 추가)"
+  resources:
+    - "application.yaml (수정 — apple.*, encryption.key 추가)"
+
+testing_strategy:
+  # AuthUseCaseTest only (JUnit5 + Mockito)
+  # Mock: AppleTokenVerifier, AppleAuthClient, GoogleTokenVerifier, UserGetService, UserCreateService, RefreshTokenService, JwtProvider
+  happy_path:
+    - "loginWithApple: 기존 회원이면 isNewUser = false, UserCreateService는 호출되지 않는다"
+    - "loginWithApple: 신규 회원이면 APPLE·sub·email·name으로 User를 생성하고 isNewUser = true를 반환한다"
+    - "loginWithApple: 교환한 Apple refresh token이 회원의 appleRefreshToken에 저장된다 (기존 회원은 새 값으로 교체)"
+    - "loginWithApple: 발급한 Refresh Token을 RefreshTokenService에 저장한다"
+  edge_cases:
+    - "loginWithApple: identityToken 검증에 실패하면 INVALID_APPLE_ID_TOKEN 예외를 던지고 AppleAuthClient를 호출하지 않는다"
+    - "loginWithApple: authorizationCode 교환이 INVALID_APPLE_AUTHORIZATION_CODE로 실패하면 User를 생성하지 않고 토큰도 발급하지 않는다"
+    - "loginWithApple: Apple 서버 오류(APPLE_SERVER_ERROR)면 User를 생성하지 않고 토큰도 발급하지 않는다"
+    - "loginWithApple: 교환 결과 sub가 identityToken sub와 다르면 INVALID_APPLE_AUTHORIZATION_CODE 예외를 던진다"
+    - "loginWithApple: name 없이 요청하면 신규 회원은 name = null로 가입된다"
+    - "loginWithApple: 공백 name으로 요청하면 신규 회원은 name = null로 가입된다"
+    - "loginWithApple: identityToken에 email이 없어도 email = null로 가입된다"
+    - "loginWithApple: 기존 회원이 name을 보내도 name은 바뀌지 않는다"
+    - "loginWithGoogle: findUserBySocialAccount 일반화 후 기존 테스트가 GOOGLE·sub로 조회하도록 수정되어 통과한다"
+  test_files:
+    - "test/.../domain/auth/application/usecase/AuthUseCaseTest.java (수정)"
+
+notes:
+  - "저장 방식 근거: Apple TN3194는 '인가 코드를 /auth/token으로 검증한 뒤 토큰 응답을 안전하게 저장'하라고 안내. 탈퇴 시점에 앱에서 Apple 재인증을 받아 code를 다시 받는 방식도 있으나, 탈퇴 UX가 늘고 공식 권장 흐름이 아니라 채택하지 않음"
+  - "저장 위치: Apple 회원과 1:1이고 값 하나뿐이라 별도 테이블 대신 users 컬럼 채택 (Google 회원은 NULL). 테이블 구조는 공식 권장이 없어 단순한 쪽을 선택"
+  - "TN3194의 'refresh token을 하루 1회 이하로 Apple에 검증' 권장은 범위 외 (세션 관리는 자체 JWT로 함)"
+  - "Apple은 name을 첫 인가 때만 줌 → 앱이 그 응답을 서버에 보내기 전에 실패하면 이름은 다시 받을 수 없음 (사용자가 Apple 설정에서 연결 해제 후 재로그인해야 다시 제공). 이 경우 name = NULL"
+  - "[가정] apple_refresh_token 길이는 Apple 문서에 명시가 없어 암호화·Base64 오버헤드를 고려해 VARCHAR(512)"
+  - "[가정] Apple 외부 호출(교환)은 DB 쓰기 전에 끝나지만 트랜잭션 안에서 실행됨 (타임아웃 read 5초로 제한)"
+  - "[가정] name 조합(성·이름 순서, 공백)은 앱이 담당하고 서버는 받은 문자열을 그대로 저장"
+  - "[가정] nonce 검증은 하지 않음 (AUTH-001과 동일 수준)"
+  - "[가정] 지원 플랫폼은 iOS 네이티브 → client-id는 Bundle ID 하나. Android/웹 Apple 로그인(Services ID)을 붙이면 client-id 목록화와 code 발급 client 구분이 필요"
+  - "같은 사람이 Google과 Apple로 각각 로그인하면 별개 회원 (email로 계정 병합하지 않음)"
+  - "[가정] 응답 HTTP 상태는 AUTH-001과 같이 200 OK"
+  - "[가정] 동시 가입 경합 시 UNIQUE 위반 → DATA_INTEGRITY_ERROR(30003) — AUTH-001과 동일"

@@ -28,4 +28,8 @@ public class RefreshTokenService {
             throw new InvalidRefreshTokenException();
         }
     }
+
+    public void deleteRefreshToken(UUID userId) {
+        refreshTokenRepository.deleteByUserId(userId);
+    }
 }

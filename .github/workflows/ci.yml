@@ -49,9 +49,18 @@ jobs:
       GOOGLE_CLIENT_IDS: ci-dummy-client-id
       # CI 전용 더미 값 (실제 환경과 무관)
       JWT_SECRET: Y2ktb25seS1kdW1teS1zZWNyZXQta2V5LW5vdC1mb3ItcHJvZHVjdGlvbi0wMTIzNDU2Nzg5
+      APPLE_CLIENT_ID: ci.dummy.client.id
+      APPLE_TEAM_ID: CIDUMMYTEAM
+      APPLE_KEY_ID: CIDUMMYKEY
 
     steps:
       - uses: actions/checkout@v4
+
+      # 생성자에서 형식을 검증하는 값은 실행마다 새로 만든다 (EC P-256 PKCS#8 키, 32바이트 AES 키)
+      - name: Generate CI dummy keys
+        run: |
+          echo "APPLE_PRIVATE_KEY=$(openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt -outform DER | base64 -w0)" >> "$GITHUB_ENV"
+          echo "ENCRYPTION_KEY=$(openssl rand -base64 32)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:

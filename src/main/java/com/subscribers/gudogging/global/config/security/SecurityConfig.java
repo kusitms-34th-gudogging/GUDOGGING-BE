@@ -30,7 +30,9 @@ public class SecurityConfig {
         "/v3/api-docs/**",
         "/api/v1/auth/google",
         "/api/v1/auth/reissue",
-        "/actuator/health"
+        "/actuator/health",
+        "/api/v1/auth/apple",
+        "/api/v1/auth/reissue"
     };
 
     private final JwtProvider jwtProvider;
