@@ -1,5 +1,6 @@
 package com.subscribers.gudogging.domain.auth.presentation;
 
+import com.subscribers.gudogging.domain.auth.application.dto.request.AppleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.GoogleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.ReissueTokenRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.response.LoginResponse;
@@ -49,6 +50,32 @@ public class AuthController {
     @PostMapping("/google")
     public CommonResponse<LoginResponse> loginWithGoogle(@RequestBody @Valid GoogleLoginRequest request) {
         LoginResponse response = authUseCase.loginWithGoogle(request);
+        return CommonResponse.success(AuthResponseCode.LOGIN_SUCCESS, response);
+    }
+
+    @Operation(
+        summary = "애플 로그인",
+        description = """
+            **기능**
+            앱이 Sign in with Apple로 받은 identityToken과 authorizationCode로 로그인합니다. 처음 로그인한 Apple 계정이면 자동으로 가입합니다.
+            authorizationCode는 1회용이고 발급 후 5분 동안만 유효하므로 받은 즉시 호출해야 합니다.
+            identityToken이 유효하지 않으면 40105, authorizationCode가 만료·재사용됐거나 identityToken과 다른 사용자의 코드면 40106,
+            Apple 서버와 통신하지 못하면 40107(502) 에러를 반환합니다.
+            
+            **요청값**
+            - identityToken (String, 필수): ASAuthorizationAppleIDCredential.identityToken (JWT 문자열)
+            - authorizationCode (String, 필수): ASAuthorizationAppleIDCredential.authorizationCode
+            - name (String, 선택): 사용자 이름 (최대 100자). Apple은 첫 인가 때만 fullName을 주므로 그때만 보내고 이후에는 생략. 가입할 때만 저장됨
+            
+            **응답값**
+            - accessToken (String): API 호출 시 Authorization: Bearer 헤더에 넣는 토큰 (유효기간 1시간)
+            - refreshToken (String): Access Token 재발급용 토큰 (유효기간 14일)
+            - isNewUser (boolean): 이번 요청으로 가입했으면 true (온보딩 화면으로 이동), 기존 회원이면 false (홈으로 이동)
+            """
+    )
+    @PostMapping("/apple")
+    public CommonResponse<LoginResponse> loginWithApple(@RequestBody @Valid AppleLoginRequest request) {
+        LoginResponse response = authUseCase.loginWithApple(request);
         return CommonResponse.success(AuthResponseCode.LOGIN_SUCCESS, response);
     }
 

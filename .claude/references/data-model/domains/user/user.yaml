@@ -1,5 +1,5 @@
 # User Entity
-# Last Updated: 2026-11-05
+# Last Updated: 2026-11-07
 # Source: docs/ERD.md 4.1 users (v0.2) + essential-rules 반영 (Soft Delete)
 
 entity: USER
@@ -25,7 +25,12 @@ columns:
   - name:
       type: VARCHAR(100)
       nullable: true
-      description: "소셜 계정 사용자 이름 (Google: name 클레임). 제공되지 않으면 NULL. 탈퇴 시 NULL"
+      description: "소셜 계정 사용자 이름 (Google: name 클레임, Apple: 앱이 첫 로그인 때 보낸 fullName). 제공되지 않으면 NULL. 탈퇴 시 NULL"
+  - apple_refresh_token:
+      type: VARCHAR(512)
+      nullable: true
+      converter: EncryptedStringConverter (AES-256-GCM)
+      description: "Apple authorizationCode 교환으로 받은 refresh token (탈퇴 시 revoke용). Apple 회원만 값 있음, 로그인마다 갱신. 암호화 저장. 탈퇴 시 NULL"
 
 enums:
   SocialProvider:
@@ -38,7 +43,8 @@ constraints:
 
 business_logic:
   - "create(socialProvider, socialId, email, name): 정적 팩토리 메서드"
-  - "withdraw(): 회원 탈퇴(E-08). softDelete() 호출 + socialId = 'withdrawn_{id}', email = null, name = null"
+  - "updateAppleRefreshToken(appleRefreshToken): Apple 로그인 시 교환한 refresh token으로 교체 (AUTH-003)"
+  - "withdraw(): 회원 탈퇴(E-08, USER-001). softDelete() 호출 + socialId = 'withdrawn_{id}', email = null, name = null, appleRefreshToken = null"
 
 notes:
   - "탈퇴 처리(익명화): ERD는 물리 삭제를 권장하지만 Hard Delete 금지 규칙에 따라 Soft Delete로 처리. UNIQUE는 유지하고, 탈퇴 시 social_id를 'withdrawn_{id}'로 덮어써 같은 소셜 계정의 재가입이 새 행으로 생성되도록 함"

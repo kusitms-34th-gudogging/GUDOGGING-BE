@@ -1,7 +1,9 @@
 package com.subscribers.gudogging.domain.user.domain.entity;
 
+import com.subscribers.gudogging.global.common.crypto.EncryptedStringConverter;
 import com.subscribers.gudogging.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -40,9 +42,16 @@ public class User extends BaseEntity {
     @Column(name = "name", length = 100)
     private String name;
 
+    @Convert(converter = EncryptedStringConverter.class)
+    @Column(name = "apple_refresh_token", length = 512)
+    private String appleRefreshToken;
 
     public static User create(SocialProvider socialProvider, String socialId, String email, String name) {
-        return new User(socialProvider, socialId, email, name);
+        return new User(socialProvider, socialId, email, name, null);
+    }
+
+    public void updateAppleRefreshToken(String appleRefreshToken) {
+        this.appleRefreshToken = appleRefreshToken;
     }
 
     public void withdraw() {
@@ -50,6 +59,7 @@ public class User extends BaseEntity {
         this.name = null;
         this.socialId = WITHDRAWN_SOCIAL_ID_PREFIX + getId();
         this.email = null;
+        this.appleRefreshToken = null;
     }
 
 }

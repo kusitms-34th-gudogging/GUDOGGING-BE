@@ -233,4 +233,4 @@ notes:
   - "[가정] 응답 HTTP 상태는 200 OK. 리소스 생성이 아니라 토큰 발급이므로 POST 기본값(201) 대신 200 사용"
   - "[가정] 동시 가입 경합 시 UNIQUE 위반 → DATA_INTEGRITY_ERROR(30003). ID Token당 1회 요청이라 실제 발생은 드묾"
   - "[가정] 탈퇴 회원의 Access Token은 만료(최대 1시간) 전까지 필터를 통과함. 각 UseCase의 회원 조회(deleted = false)가 방어선"
-  - "@CurrentUserId 등 컨트롤러 userId 주입 편의 기능은 첫 보호 API 구현 시 추가"
+  - "@CurrentUserId 등 컨트롤러 userId 주입 편의 기능은 첫 보호 API 구현 시 추가 → USER-001(회원 탈퇴)에서 추가됨 (global/security/annotation/CurrentUserId)"

@@ -37,5 +37,8 @@ out/
 .vscode/
 .claude/memory.md
 
+### macOS ###
+.DS_Store
+
 ### Env ###
 .env
