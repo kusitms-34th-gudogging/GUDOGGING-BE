@@ -38,7 +38,7 @@ public class GmailConnection extends BaseEntity {
     private String gmailAddress;
 
     @Convert(converter = EncryptedStringConverter.class)
-    @Column(name = "refresh_token", nullable = false, length = 512)
+    @Column(name = "refresh_token", nullable = false, length = 720)
     private String refreshToken;
 
     @Column(name = "last_synced_at")

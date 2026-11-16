@@ -31,10 +31,10 @@ columns:
       nullable: false
       description: "연동된 Gmail 주소 (E-03 표시)"
   - refresh_token:
-      type: VARCHAR(512)
+      type: VARCHAR(720)
       nullable: false
       converter: EncryptedStringConverter (AES-256-GCM)
-      description: "gmail.readonly 범위 Google OAuth refresh token. 암호화 저장"
+      description: "gmail.readonly 범위 Google OAuth refresh token. 암호화 저장. Google refresh token 최대 512바이트 → 저장값 Base64(IV 12 + 암호문 512 + 태그 16) = 720자"
   - last_synced_at:
       type: DATETIME
       nullable: true
