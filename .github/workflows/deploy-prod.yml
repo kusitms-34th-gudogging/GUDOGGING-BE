@@ -53,6 +53,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 서버 .env 는 Secret PROD_ENV_FILE(.env 전체 내용)로 관리. 변수 추가 시 Secret 만 수정하면 다음 배포에 반영
+      - name: Check & prepare .env
+        env:
+          ENV_FILE: ${{ secrets.PROD_ENV_FILE }}
+        run: |
+          if [ -z "$ENV_FILE" ]; then echo "::error::Secret PROD_ENV_FILE 이 비어 있음"; exit 1; fi
+          printf '%s\n' "$ENV_FILE" > "$RUNNER_TEMP/app.env"
+          bash .github/scripts/check-env.sh "$RUNNER_TEMP/app.env" \
+            src/main/resources/application.yaml src/main/resources/application-prod.yaml docker-compose.prod.yml
+          ENV_B64=$(base64 -w0 "$RUNNER_TEMP/app.env")
+          echo "::add-mask::$ENV_B64"
+          echo "ENV_B64=$ENV_B64" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/app.env"
+
       - name: Copy compose & nginx config to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -73,12 +87,17 @@ jobs:
           host: ${{ secrets.PROD_HOST }}
           username: ${{ secrets.PROD_USER }}
           key: ${{ secrets.PROD_SSH_KEY }}
-          envs: GHCR_TOKEN,GHCR_USER,NEW_IMAGE,IMAGE_REPO
+          envs: GHCR_TOKEN,GHCR_USER,NEW_IMAGE,IMAGE_REPO,ENV_B64
           command_timeout: 10m
           script: |
             set -e
             cd /home/ubuntu/gudogging
             COMPOSE="docker compose -f docker-compose.prod.yml"
+
+            # Secret 내용으로 .env 갱신 (기존 파일은 .env.bak 로 백업)
+            [ -f .env ] && cp -p .env .env.bak
+            (umask 077 && echo "$ENV_B64" | base64 -d > .env.new && mv .env.new .env)
+            chmod 600 .env .env.bak 2>/dev/null || true
 
             # 롤백용: 현재 실행 중인 이미지 기록 (최초 배포면 비어 있음)
             PREV_IMAGE=$(docker inspect --format '{{.Config.Image}}' gudogging-app 2>/dev/null || true)
