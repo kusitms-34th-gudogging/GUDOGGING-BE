@@ -22,6 +22,10 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
 
+server:
+  # Nginx(HTTPS) 뒤에서 X-Forwarded-* 인식 (개발·운영 공통). 없으면 https Origin 요청을 다른 출처로 오인해 CORS 403
+  forward-headers-strategy: framework
+
 server-uri: ${SERVER_URI:http://localhost:8080}
 
 # 헬스체크 (배포 후 확인 / 롤백 기준). health 만 노출, 상세 정보는 숨김
