@@ -1,7 +1,9 @@
 package com.subscribers.gudogging.domain.subscription.presentation;
 
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -43,11 +46,11 @@ public class SubscriptionController {
             - 구독 중 탭에 CANCELED_AT, 구독 종료 탭에 NEXT_BILLING_DATE를 보내면 40403(400)
             - 회원이 없거나 탈퇴했으면 40201(404)
             구독이 없으면 개수 · 합계 0과 빈 배열을 반환합니다.
-
+            
             **요청값**
             - status (String, 선택): ACTIVE(구독 중) / ENDED(구독 종료). 없으면 ACTIVE (query parameter)
             - sort (String, 선택): NEXT_BILLING_DATE / CANCELED_AT / AMOUNT_DESC. 없으면 탭의 기본 정렬 (query parameter)
-
+            
             **응답값**
             - count (Integer): 선택한 탭의 구독 개수
             - activeCount (Integer): 구독 중 개수 — 탭 뱃지 '구독 중 N'
@@ -123,5 +126,34 @@ public class SubscriptionController {
     ) {
         List<SubscriptionResponse> response = subscriptionUseCase.createSubscriptions(userId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, response);
+    }
+
+    @Operation(
+        summary = "구독 선택 삭제 (일괄)",
+        description = """
+            **기능**
+            구독 관리 목록의 삭제 선택 모드(M-02.2)에서 고른 구독을 삭제 확인 모달(M-02.3)의 '삭제하기'로 한 번에 삭제합니다.
+            구독 중 · 구독 종료 구독 모두 삭제할 수 있고, 캘린더 구독 상세(C-03, C-04)의 삭제도 구독 1건으로 이 API를 사용합니다.
+            구독과 함께 해당 구독의 점검 기록 · 해지 이유 · 알림도 모두 삭제합니다 (Soft Delete).
+            같은 ID가 여러 번 있으면 한 번으로 처리합니다.
+            하나라도 삭제할 수 없으면 전체가 실패하며 아무것도 삭제하지 않습니다.
+            - 없거나 이미 삭제됐거나 다른 회원의 구독이 포함되면 40404(404)
+            - subscriptionIds가 비어 있거나 100개를 넘거나 null 요소가 있으면 40001(400), UUID 형식 오류는 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - subscriptionIds (List<UUID>, 필수): 삭제할 구독 ID 목록 (1~100개)
+            
+            **응답값**
+            - deletedCount (Integer): 삭제된 구독 개수 (중복 제외)
+            """
+    )
+    @DeleteMapping
+    public CommonResponse<SubscriptionDeletionResponse> deleteSubscriptions(
+        @CurrentUserId UUID userId,
+        @RequestBody @Valid DeleteSubscriptionsRequest request
+    ) {
+        SubscriptionDeletionResponse response = subscriptionUseCase.deleteSubscriptions(userId, request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_DELETED, response);
     }
 }
