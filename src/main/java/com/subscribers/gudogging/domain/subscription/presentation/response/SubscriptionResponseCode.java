@@ -9,7 +9,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum SubscriptionResponseCode implements ResponseCodeInterface {
 
-    SUBSCRIPTIONS_CREATED(201, HttpStatus.CREATED, "구독이 등록되었습니다.");
+    SUBSCRIPTIONS_CREATED(201, HttpStatus.CREATED, "구독이 등록되었습니다."),
+    SUBSCRIPTIONS_FOUND(200, HttpStatus.OK, "구독 목록을 조회했습니다.");
 
     private final int code;
     private final HttpStatus status;

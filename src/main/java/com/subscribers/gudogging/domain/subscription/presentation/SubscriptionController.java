@@ -1,8 +1,11 @@
 package com.subscribers.gudogging.domain.subscription.presentation;
 
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
+import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import com.subscribers.gudogging.domain.subscription.presentation.response.SubscriptionResponseCode;
 import com.subscribers.gudogging.global.common.response.CommonResponse;
 import com.subscribers.gudogging.global.security.annotation.CurrentUserId;
@@ -13,9 +16,11 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -26,6 +31,51 @@ import org.springframework.web.bind.annotation.RestController;
 public class SubscriptionController {
 
     private final SubscriptionUseCase subscriptionUseCase;
+
+    @Operation(
+        summary = "구독 목록 조회 (탭 · 정렬 · 요약)",
+        description = """
+            **기능**
+            구독 관리 화면(M-02 구독 중 탭 / M-04 구독 종료 탭)의 구독 목록을 조회합니다.
+            선택한 탭(status)의 구독을 정렬 기준(sort)대로 반환하고, 탭 뱃지용 두 탭 개수와 탭의 월 환산 합계를 함께 반환합니다.
+            - 구독 중 탭 기본 정렬: 다음 결제일 순(같으면 금액 높은 순) / 구독 종료 탭 기본 정렬: 해지일 최근 순
+            - 금액 높은 순(AMOUNT_DESC): 구독 중은 결제 금액(amount), 구독 종료는 월 환산 금액(monthlyAmount) 기준
+            - 구독 중 탭에 CANCELED_AT, 구독 종료 탭에 NEXT_BILLING_DATE를 보내면 40403(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            구독이 없으면 개수 · 합계 0과 빈 배열을 반환합니다.
+
+            **요청값**
+            - status (String, 선택): ACTIVE(구독 중) / ENDED(구독 종료). 없으면 ACTIVE (query parameter)
+            - sort (String, 선택): NEXT_BILLING_DATE / CANCELED_AT / AMOUNT_DESC. 없으면 탭의 기본 정렬 (query parameter)
+
+            **응답값**
+            - count (Integer): 선택한 탭의 구독 개수
+            - activeCount (Integer): 구독 중 개수 — 탭 뱃지 '구독 중 N'
+            - endedCount (Integer): 구독 종료 개수 — 탭 뱃지 '구독 종료 N'
+            - monthlyTotal (Integer): 선택한 탭 구독의 월 환산 합계 — 구독 중 '월 N원' / 구독 종료 '월 N원 절약'
+            - subscriptions (List): 구독 목록
+              - subscriptionId (UUID): 구독 ID
+              - serviceName (String): 서비스명
+              - logoUrl (String, nullable): 서비스 로고 URL. null이면 기본 이미지 사용
+              - amount (Integer): 1회 결제 금액 (원) — 구독 중 탭 우측 금액
+              - monthlyAmount (Integer): 월 환산 금액 (원) — 구독 종료 탭 우측 '월 금액'
+              - billingCycleValue (Integer): 결제 주기 값
+              - billingCycleUnit (String): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
+              - nextBillingDate (String, nullable): 다음 결제일 (yyyy-MM-dd). 구독 종료면 null
+              - dDay (Integer, nullable): 다음 결제일까지 남은 일수 (오늘이면 0). 구독 종료면 null
+              - canceledAt (String, nullable): 해지일 (yyyy-MM-dd). 구독 중이면 null
+              - totalPaidAmount (Integer, nullable): 총 지출 — 등록일 ~ 해지일 결제 횟수 × 금액. 구독 중이면 null
+            """
+    )
+    @GetMapping
+    public CommonResponse<SubscriptionListResponse> getSubscriptions(
+        @CurrentUserId UUID userId,
+        @RequestParam(required = false) SubscriptionStatus status,
+        @RequestParam(required = false) SubscriptionSortType sort
+    ) {
+        SubscriptionListResponse response = subscriptionUseCase.getSubscriptions(userId, status, sort);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_FOUND, response);
+    }
 
     @Operation(
         summary = "구독 직접 등록 (일괄)",
