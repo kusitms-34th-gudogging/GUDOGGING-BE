@@ -3,6 +3,8 @@ package com.subscribers.gudogging.domain.subscription.presentation;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
@@ -23,6 +25,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -131,6 +134,47 @@ public class SubscriptionController {
     ) {
         SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId, subscriptionId, baseDate);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_FOUND, response);
+    }
+
+    @Operation(
+        summary = "구독 정보 수정",
+        description = """
+            **기능**
+            구독 상세(M-03) 더보기 › 편집(M-06)에서 구독 중인 구독의 결제 정보를 수정합니다.
+            편집 화면은 저장된 값을 채운 상태로 전체 값을 보내므로 serviceName 외 필드는 모두 필수입니다 (부분 수정 아님).
+            서비스명은 직접 입력한 구독만 바꿀 수 있고(앞뒤 공백 제거 후 저장, null이면 기존 이름 유지), 사전 등록 서비스는 serviceName을 무시합니다.
+            다음 결제일을 결제 기준일로 다시 저장하므로 연 환산 · 다음 결제일 · 캘린더 · 점검 알림 일정은 자동으로 바뀝니다.
+            서비스 자체는 바꿀 수 없습니다 (삭제 후 새로 등록).
+            - 구독 종료(ENDED) 구독이면 40405(409)
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - 입력값 검증 실패 시 40001(400), 잘못된 enum · 날짜 형식은 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+            - serviceName (String, 선택): 서비스 이름 (최대 30자, 공백만 불가). 직접 입력 서비스만 반영
+            - category (String, 필수): 카테고리 코드 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC)
+            - amount (Integer, 필수): 결제 금액 (원, 1 이상)
+            - billingCycleValue (Integer, 필수): 결제 주기 값 (1~31)
+            - billingCycleUnit (String, 필수): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
+            - nextBillingDate (String, 필수): 다음 결제일 (yyyy-MM-dd, 오늘 이후)
+            - paymentMethod (String, 필수): 결제한 곳 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
+            
+            **응답값**
+            - subscriptionId (UUID): 구독 ID
+            - yearlyAmount (Integer): 재계산된 연 환산 금액 (원)
+            - nextBillingDate (String): 다음 결제일 (yyyy-MM-dd)
+            """
+    )
+    @PatchMapping("/{subscriptionId}")
+    public CommonResponse<SubscriptionBillingResponse> updateSubscription(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId,
+        @RequestBody @Valid UpdateSubscriptionRequest request
+    ) {
+        SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId, subscriptionId,
+            request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_UPDATED, response);
     }
 
     @Operation(
