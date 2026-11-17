@@ -174,6 +174,22 @@ public class Subscription extends BaseEntity {
     }
 
     /**
+     * 연 환산 금액 = 월 환산 금액 × 12 (ERD 6.1).
+     */
+    public int yearlyAmount() {
+        return Math.multiplyExact(monthlyAmount(), MONTHS_PER_YEAR);
+    }
+
+    /**
+     * base 날짜 기준 상태 (ERD 6.2 캘린더 C-03). base가 등록일 ~ 해지일(구독 중이면 상한 없음) 사이면 ACTIVE.
+     */
+    public SubscriptionStatus statusOn(LocalDate base) {
+        boolean afterStart = !base.isBefore(startedOn());
+        boolean beforeCancel = canceledOn == null || !base.isAfter(canceledOn);
+        return afterStart && beforeCancel ? SubscriptionStatus.ACTIVE : SubscriptionStatus.ENDED;
+    }
+
+    /**
      * base 이후(포함) 첫 결제일 (ERD 6.2). 결제일은 매번 billingAnchorOn에서 계산하므로 월말이 밀리지 않는다.
      */
     public LocalDate nextBillingOn(LocalDate base) {
