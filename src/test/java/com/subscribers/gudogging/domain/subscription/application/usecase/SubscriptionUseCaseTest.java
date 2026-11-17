@@ -26,6 +26,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Del
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSummaryResponse;
@@ -606,6 +607,200 @@ class SubscriptionUseCaseTest {
 
             // when & then
             assertThatThrownBy(() -> subscriptionUseCase.getSubscriptions(userId, null, null))
+                .isInstanceOf(UserNotFoundException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("getSubscription")
+    class GetSubscription {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate today = LocalDate.now();
+
+        // 구독 종료 픽스처: 2026-01-01 등록, 매월 15일 결제, 2026-10-16 해지 → 1/15 ~ 10/15 결제 10회
+        private final LocalDate endedAnchor = LocalDate.of(2026, 1, 15);
+        private final LocalDate endedStartedOn = LocalDate.of(2026, 1, 1);
+        private final LocalDate endedCanceledOn = LocalDate.of(2026, 10, 16);
+
+        private Subscription activeFromCatalog(ServiceCatalog service, LocalDate billingAnchorOn,
+                                               LocalDate startedOn) {
+            Subscription subscription = Subscription.createFromCatalog(user, service, service.getCategory(), 13500,
+                1, BillingCycleUnit.MONTH, billingAnchorOn, PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
+            return persisted(subscription, startedOn);
+        }
+
+        private Subscription endedCustom() {
+            Subscription subscription = Subscription.createCustom(user, "왓챠", Category.VIDEO_OTT, 7900, 1,
+                BillingCycleUnit.MONTH, endedAnchor, PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            subscription.cancel(endedCanceledOn);
+            return persisted(subscription, endedStartedOn);
+        }
+
+        // id · createdAt은 JPA 저장 시(@PrePersist) 채워지므로 테스트에서만 지정한다.
+        private Subscription persisted(Subscription subscription, LocalDate startedOn) {
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(subscription, "createdAt", startedOn.atStartOfDay());
+            return subscription;
+        }
+
+        private void givenSubscription(Subscription subscription) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscription.getId()))
+                .willReturn(Optional.of(subscription));
+        }
+
+        @Test
+        @DisplayName("구독 중이면 결제 금액 · 연 환산 · 다음 결제일 · D-n · 구독 시작일 · 지금까지 결제 횟수와 금액을 반환하고 해지일은 null이다")
+        void returnsActiveSubscriptionDetail() {
+            // given — 2개월 전 등록, 5일 뒤가 결제일인 월 구독 → 등록 후 결제일 2번 지남
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
+            LocalDate startedOn = today.minusMonths(2);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), startedOn);
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.subscriptionId()).isEqualTo(subscription.getId());
+            assertThat(response.status()).isEqualTo(SubscriptionStatus.ACTIVE);
+            assertThat(response.serviceName()).isEqualTo("넷플릭스");
+            assertThat(response.logoUrl()).isEqualTo("https://logo.example.com/netflix.png");
+            assertThat(response.category()).isEqualTo(Category.VIDEO_OTT);
+            assertThat(response.amount()).isEqualTo(13500);
+            assertThat(response.billingCycleValue()).isEqualTo(1);
+            assertThat(response.billingCycleUnit()).isEqualTo(BillingCycleUnit.MONTH);
+            assertThat(response.paymentMethod()).isEqualTo(PaymentMethod.APP_STORE);
+            assertThat(response.isSteady()).isFalse();
+            assertThat(response.yearlyAmount()).isEqualTo(13500 * 12);
+            assertThat(response.nextBillingDate()).isEqualTo(today.plusDays(5));
+            assertThat(response.dDay()).isEqualTo(5);
+            assertThat(response.startedAt()).isEqualTo(startedOn);
+            assertThat(response.paidCount()).isEqualTo(2);
+            assertThat(response.totalPaidAmount()).isEqualTo(13500 * 2);
+            assertThat(response.canceledAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("구독 종료면 해지일 · 해지일까지 결제 금액을 반환하고 다음 결제일 · D-n은 null이다")
+        void returnsEndedSubscriptionDetail() {
+            // given
+            Subscription subscription = endedCustom();
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.status()).isEqualTo(SubscriptionStatus.ENDED);
+            assertThat(response.canceledAt()).isEqualTo(endedCanceledOn);
+            assertThat(response.paidCount()).isEqualTo(10);
+            assertThat(response.totalPaidAmount()).isEqualTo(7900 * 10);
+            assertThat(response.nextBillingDate()).isNull();
+            assertThat(response.dDay()).isNull();
+        }
+
+        @Test
+        @DisplayName("baseDate를 주면 그 날짜 이후 첫 결제일과, 등록일 ~ 해지일 범위로 판단한 상태를 반환한다")
+        void calculatesWithBaseDate() {
+            // given — 구독 종료 구독의 이용 기간(1/1 ~ 10/16) 안의 날짜
+            Subscription subscription = endedCustom();
+            givenSubscription(subscription);
+            LocalDate baseDate = LocalDate.of(2026, 6, 20);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), baseDate);
+
+            // then — 지금까지 결제 횟수 · 금액은 baseDate와 무관하게 해지일까지
+            assertThat(response.status()).isEqualTo(SubscriptionStatus.ACTIVE);
+            assertThat(response.nextBillingDate()).isEqualTo(LocalDate.of(2026, 7, 15));
+            assertThat(response.dDay()).isEqualTo(25);
+            assertThat(response.canceledAt()).isEqualTo(endedCanceledOn);
+            assertThat(response.paidCount()).isEqualTo(10);
+            assertThat(response.totalPaidAmount()).isEqualTo(7900 * 10);
+        }
+
+        @Test
+        @DisplayName("baseDate가 등록일 이전이면 구독 중이어도 ENDED 상태로 반환한다")
+        void returnsEndedWhenBaseDateBeforeStart() {
+            // given
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
+            LocalDate startedOn = today.minusMonths(2);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), startedOn);
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), startedOn.minusDays(1));
+
+            // then
+            assertThat(response.status()).isEqualTo(SubscriptionStatus.ENDED);
+        }
+
+        @Test
+        @DisplayName("직접 입력 서비스는 logoUrl을 null로 반환한다")
+        void returnsNullLogoForCustomService() {
+            // given
+            Subscription subscription = endedCustom();
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.serviceName()).isEqualTo("왓챠");
+            assertThat(response.logoUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("점검 필드는 latestCheckup · pastCheckupAverage를 null로, pastCheckups를 빈 목록으로 반환한다")
+        void returnsEmptyCheckupFields() {
+            // given
+            Subscription subscription = endedCustom();
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.latestCheckup()).isNull();
+            assertThat(response.pastCheckups()).isEmpty();
+            assertThat(response.pastCheckupAverage()).isNull();
+        }
+
+        @Test
+        @DisplayName("없거나 다른 회원의 구독이면 SUBSCRIPTION_NOT_FOUND 예외를 던진다")
+        void throwsWhenSubscriptionNotFound() {
+            // given
+            UUID subscriptionId = UUID.randomUUID();
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscriptionId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.getSubscription(userId, subscriptionId, null))
+                .isInstanceOf(SubscriptionNotFoundException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던진다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.getSubscription(userId, UUID.randomUUID(), null))
                 .isInstanceOf(UserNotFoundException.class)
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
