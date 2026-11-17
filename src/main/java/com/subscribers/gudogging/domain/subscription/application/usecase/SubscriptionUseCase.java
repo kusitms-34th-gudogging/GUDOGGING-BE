@@ -5,16 +5,22 @@ import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
+import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionCreateService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +42,33 @@ public class SubscriptionUseCase {
     private final ServiceCatalogGetService serviceCatalogGetService;
     private final SubscriptionGetService subscriptionGetService;
     private final SubscriptionCreateService subscriptionCreateService;
+
+    /**
+     * 선택한 탭(status)의 구독을 정렬 기준(sort)대로 조회하고, 두 탭 개수와 탭의 월 환산 합계를 함께 반환한다.
+     */
+    public SubscriptionListResponse getSubscriptions(UUID userId, SubscriptionStatus status,
+                                                     SubscriptionSortType sort) {
+        SubscriptionStatus tab = status != null ? status : SubscriptionStatus.ACTIVE;
+        SubscriptionSortType sortType = sort != null ? sort : defaultSortOf(tab);
+        validateSort(tab, sortType);
+
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        LocalDate today = LocalDate.now();
+
+        Map<SubscriptionStatus, List<Subscription>> subscriptionsByStatus = subscriptionGetService
+            .findSubscriptions(user).stream()
+            .collect(Collectors.groupingBy(Subscription::getStatus));
+        List<Subscription> activeSubscriptions = subscriptionsByStatus.getOrDefault(SubscriptionStatus.ACTIVE,
+            List.of());
+        List<Subscription> endedSubscriptions = subscriptionsByStatus.getOrDefault(SubscriptionStatus.ENDED, List.of());
+
+        List<Subscription> tabSubscriptions = subscriptionsByStatus.getOrDefault(tab, List.of()).stream()
+            .sorted(comparatorOf(tab, sortType, today))
+            .toList();
+        return SubscriptionListResponse.of(tabSubscriptions, activeSubscriptions.size(), endedSubscriptions.size(),
+            today);
+    }
 
     /**
      * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(MANUAL). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다.
@@ -68,6 +101,37 @@ public class SubscriptionUseCase {
         return subscriptionCreateService.createSubscriptions(subscriptions).stream()
             .map(SubscriptionResponse::from)
             .toList();
+    }
+
+    private SubscriptionSortType defaultSortOf(SubscriptionStatus tab) {
+        return tab == SubscriptionStatus.ACTIVE ? SubscriptionSortType.NEXT_BILLING_DATE
+            : SubscriptionSortType.CANCELED_AT;
+    }
+
+    private void validateSort(SubscriptionStatus tab, SubscriptionSortType sortType) {
+        boolean activeWithCanceledAt = tab == SubscriptionStatus.ACTIVE && sortType == SubscriptionSortType.CANCELED_AT;
+        boolean endedWithNextBillingDate =
+            tab == SubscriptionStatus.ENDED && sortType == SubscriptionSortType.NEXT_BILLING_DATE;
+        if (activeWithCanceledAt || endedWithNextBillingDate) {
+            throw new InvalidSubscriptionSortException();
+        }
+    }
+
+    private Comparator<Subscription> comparatorOf(SubscriptionStatus tab, SubscriptionSortType sortType,
+                                                  LocalDate today) {
+        Comparator<Subscription> byNextBillingDate = Comparator.comparing(
+            subscription -> subscription.nextBillingOn(today));
+        Comparator<Subscription> byAmountDesc = Comparator.comparingInt(Subscription::getAmount).reversed();
+        Comparator<Subscription> byCanceledOnDesc = Comparator.comparing(Subscription::getCanceledOn).reversed();
+        Comparator<Subscription> byMonthlyAmountDesc = Comparator.comparingInt(Subscription::monthlyAmount).reversed();
+
+        return switch (sortType) {
+            case NEXT_BILLING_DATE -> byNextBillingDate.thenComparing(byAmountDesc);
+            case CANCELED_AT -> byCanceledOnDesc.thenComparing(byMonthlyAmountDesc);
+            case AMOUNT_DESC -> tab == SubscriptionStatus.ACTIVE
+                ? byAmountDesc.thenComparing(byNextBillingDate)
+                : byMonthlyAmountDesc.thenComparing(byCanceledOnDesc);
+        };
     }
 
     private Map<UUID, ServiceCatalog> findServicesById(Set<UUID> serviceIds) {
