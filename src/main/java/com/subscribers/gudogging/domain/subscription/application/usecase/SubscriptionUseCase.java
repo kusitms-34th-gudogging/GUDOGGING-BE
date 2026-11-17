@@ -11,6 +11,8 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Cre
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
@@ -18,6 +20,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
+import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotActiveException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
@@ -124,6 +127,30 @@ public class SubscriptionUseCase {
         return subscriptionCreateService.createSubscriptions(subscriptions).stream()
             .map(SubscriptionResponse::from)
             .toList();
+    }
+
+    /**
+     * 구독 중인 구독의 결제 정보를 수정한다. 서비스명은 직접 입력 서비스만 바꾸고, 사전 등록 서비스는 요청 serviceName을 무시한다. 다음 결제일은 결제 기준일(billing_anchor_on)로
+     * 저장하므로 일정 · 금액은 계산 시점에 자동으로 바뀐다 (ERD 6.2).
+     */
+    @Transactional
+    public SubscriptionBillingResponse updateSubscription(UUID userId, UUID subscriptionId,
+                                                          UpdateSubscriptionRequest request) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
+            .orElseThrow(SubscriptionNotFoundException::new);
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE) {
+            throw new SubscriptionNotActiveException();
+        }
+
+        subscription.updatePaymentInfo(request.category(), request.amount(), request.billingCycleValue(),
+            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod());
+        if (subscription.getServiceCatalog() == null && request.serviceName() != null) {
+            subscription.updateCustomName(request.serviceName().strip());
+        }
+
+        return SubscriptionBillingResponse.from(subscription, LocalDate.now());
     }
 
     /**
