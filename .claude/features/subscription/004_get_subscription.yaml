@@ -1,0 +1,270 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-17
+
+meta:
+  id: SUBSCRIPTION-004
+  title: 구독 상세 조회 (구독 중 · 구독 종료 · 캘린더 기준일)
+  type: Feature
+  author: 1winhyun
+  source: "Figma 디자인 작업소 › 구독 관리 › MNG-003 (M-03, M-05)"
+  api_doc: "Notion API 명세서 › 구독 상세 조회 — https://app.notion.com/p/159885ef28218210b19f819c6e07130d"
+  depends_on:
+    - AUTH-001      # JWT 인증 필터, @CurrentUserId
+    - USER-001      # UserErrorCode.USER_NOT_FOUND, UserNotFoundException
+    - SUBSCRIPTION-002  # Subscription 계산 메서드 (monthlyAmount, nextBillingOn, startedOn, paidCount, totalPaidAmount)
+    - SUBSCRIPTION-003  # SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND, SubscriptionCheckGetService, SubscriptionCheckCancelReasonGetService
+
+overview:
+  summary: >
+    구독 1건의 기본 정보와 점검 기록을 조회한다. 구독 중 상세(M-03) · 구독 종료 상세(M-05)에 함께 쓰고,
+    캘린더에서 날짜를 눌러 들어온 구독 상세(C-03)는 baseDate 기준으로 상태와 다음 결제일을 계산한다.
+    '지난 점검'(M-03)은 최근 90일 점검 응답 평균, '마지막 점검'(M-05)은 가장 최근 점검 1건과 해지 이유로 보여준다.
+    점검 응답은 Notion대로 선택지 문구(String)로 반환한다 — 카테고리별 선택지 상수(ERD 5.5, 코딩 규칙: 고정 데이터는 Enum/상수)를 서버에 둔다.
+  user_story: >
+    As a 로그인한 회원, I want to 구독 하나의 결제 정보와 점검 결과를 자세히 보기를,
+    so that 이 구독을 유지할지 해지할지 판단할 수 있다.
+  goals:
+    - 구독 기본 정보 + 계산 값(다음 결제일 · D-n · 연 환산 · 지금까지 결제 금액/횟수) 반환 (ERD 6.1 · 6.2 · 6.3)
+    - latestCheckup(최근 1건) · pastCheckups(최근 90일 원본) · pastCheckupAverage(최근 90일 평균) 반환 (ERD 6.4)
+    - baseDate(선택)로 캘린더 C-03 상태 · 다음 결제일 계산
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/subscriptions/{subscriptionId}
+      summary: 구독 상세 조회
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        dto: 없음
+        path_variables:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        query_params:
+          - name: baseDate
+            type: LocalDate
+            required: false
+            validation: "yyyy-MM-dd. 캘린더 C-03에서 선택한 날짜. 없으면 오늘"
+      response:
+        dto: SubscriptionDetailResponse
+        http_status: 200 OK
+        response_code: "SubscriptionResponseCode.SUBSCRIPTION_FOUND (200, HttpStatus.OK, \"구독 상세를 조회했습니다.\")"
+        wrapper: CommonResponse<SubscriptionDetailResponse>
+        fields:
+          - "subscriptionId (UUID)"
+          - "status (SubscriptionStatus): baseDate가 없으면 저장된 상태, 있으면 baseDate가 등록일 ~ 해지일(ACTIVE면 상한 없음) 사이일 때 ACTIVE, 아니면 ENDED (ERD 6.2 C-03 상태 칩)"
+          - "serviceName (String)"
+          - "logoUrl (String, nullable): 직접 입력 · 로고 없음은 null"
+          - "category (Category): 카테고리 칩"
+          - "amount (int): 1회 결제 금액 — M-03 '결제 예정'"
+          - "billingCycleValue (int), billingCycleUnit (BillingCycleUnit): 결제 주기"
+          - "nextBillingDate (LocalDate, nullable): 기준일(baseDate 또는 오늘) 이후(포함) 첫 결제일. 저장된 상태가 ENDED이고 그 날짜가 해지일 이후면 null"
+          - "startedAt (LocalDate): 구독 시작일 = 등록일 (created_at 날짜)"
+          - "paymentMethod (PaymentMethod): 결제한 곳 — 해지하기 분기(X-01/X-03/X-04/X-05)에도 사용"
+          - "isSteady (boolean): '꾸준히 쓰는 구독' 토글 (subscriptions.is_steady_use)"
+          - "canceledAt (LocalDate, nullable): 해지일 (subscriptions.canceled_on). 저장된 상태가 ACTIVE면 null"
+          - "yearlyAmount (int): 연 환산 = monthlyAmount() × 12"
+          - "totalPaidAmount (int): 지금까지 결제 금액 = paidCount × amount — M-05 '지금까지 쓴 금액'"
+          - "paidCount (int): 지금까지 결제 횟수 — 등록일 ~ (ENDED면 해지일 / ACTIVE면 오늘) 양끝 포함 결제일 수"
+          - "dDay (Integer, nullable): nextBillingDate − 기준일. nextBillingDate가 null이면 null"
+          - "latestCheckup (LatestCheckupResponse, nullable): 가장 최근 점검 1건 (기간 제한 없음). 없으면 null — M-05 '마지막 점검', C-03 최근 점검"
+          - "pastCheckups (List<PastCheckupResponse>): 최근 90일 점검 원본 기록, 최신순. 없으면 빈 배열"
+          - "pastCheckupAverage (PastCheckupAverageResponse, nullable): 최근 90일 점검 응답 평균 — M-03 '지난 점검'. 없으면 null(영역 숨김)"
+        latest_checkup_fields:
+          - "checkupId (UUID): subscription_checks.id (점검 결과 조회 API에 사용)"
+          - "checkedAt (LocalDate): 점검일 (created_at 날짜) — '10월 3일 점검' 칩"
+          - "decision (CheckDecision, nullable): KEEP / CANCEL. 결정 전이면 null — 칩의 '· 해지'"
+          - "usageAnswer, satisfactionAnswer, planAnswer (String): 점검 당시 카테고리(subscription_checks.category 스냅샷)와 응답 점수(1~5)의 선택지 문구"
+          - "stage (CheckResultStage): KEEP_RECOMMENDED / KEEP_CONSIDER / CANCEL_CONSIDER / CANCEL_RECOMMENDED"
+          - "score (int): 활용도(%)"
+          - "memo (String, nullable)"
+          - "cancelReasons (List<CancelReason>): 해지 이유 코드. 없으면 빈 배열"
+          - "cancelReasonText (String, nullable): '직접 입력' 해지 이유"
+        past_checkup_fields:
+          - "checkedAt (LocalDate)"
+          - "usageAnswer, satisfactionAnswer, planAnswer (String): 점검 당시 카테고리 스냅샷 기준 선택지 문구"
+          - "decision (CheckDecision, nullable)"
+        past_checkup_average_fields:
+          - "periodFrom (LocalDate): 오늘 − 90일 — '3월~6월 결과' 칩"
+          - "periodTo (LocalDate): 오늘"
+          - "usageAnswer, satisfactionAnswer, planAnswer (String): 문항별 평균을 반올림(HALF_UP)한 점수의 선택지 문구. 카테고리는 기간 내 가장 최근 점검의 스냅샷"
+          - "score (int): 문항별 소수 평균으로 계산한 활용도(%)"
+          - "stage (CheckResultStage)"
+        factory: "SubscriptionDetailResponse.of(Subscription, LocalDate today, LocalDate baseDate, LatestCheckupResponse, List<PastCheckupResponse>, PastCheckupAverageResponse), LatestCheckupResponse.of(SubscriptionCheck, List<SubscriptionCheckCancelReason>), PastCheckupResponse.from(SubscriptionCheck), PastCheckupAverageResponse.of(LocalDate from, LocalDate to, CheckResult)"
+        display_note: "'유지 추천(92%)' 조합, 해지 이유 문구(카테고리별, cancelReasons 코드 → 문구), '점검 알림: 중단됨'(ENDED), 하단 버튼 · C-03 버튼 숨김은 클라이언트 처리"
+        example: |
+          {
+            "code": 200,
+            "message": "구독 상세를 조회했습니다.",
+            "data": {
+              "subscriptionId": "3f2b...", "status": "ACTIVE", "serviceName": "넷플릭스",
+              "logoUrl": "https://.../netflix.png", "category": "VIDEO_OTT", "amount": 13500,
+              "billingCycleValue": 1, "billingCycleUnit": "MONTH", "nextBillingDate": "2026-12-01",
+              "startedAt": "2026-07-17", "paymentMethod": "APP_STORE", "isSteady": false, "canceledAt": null,
+              "yearlyAmount": 162000, "totalPaidAmount": 67500, "paidCount": 5, "dDay": 14,
+              "latestCheckup": { "checkupId": "b1d7...", "checkedAt": "2026-11-10", "decision": "KEEP",
+                "usageAnswer": "6~10편", "satisfactionAnswer": "구독료만큼 가치 있어요", "planAnswer": "꼭 계속 쓸 거예요", "stage": "KEEP_RECOMMENDED", "score": 92,
+                "memo": "가족과 같이 봄", "cancelReasons": [], "cancelReasonText": null },
+              "pastCheckups": [ { "checkedAt": "2026-11-10", "usageAnswer": "6~10편", "satisfactionAnswer": "구독료만큼 가치 있어요", "planAnswer": "꼭 계속 쓸 거예요", "decision": "KEEP" } ],
+              "pastCheckupAverage": { "periodFrom": "2026-08-19", "periodTo": "2026-11-17",
+                "usageAnswer": "6~10편", "satisfactionAnswer": "구독료만큼 가치 있어요", "planAnswer": "꼭 계속 쓸 거예요", "score": 92, "stage": "KEEP_RECOMMENDED" }
+            }
+          }
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: "@CurrentUserId UUID userId, @PathVariable UUID subscriptionId, @RequestParam(required = false) LocalDate baseDate → SubscriptionUseCase.getSubscription(userId, subscriptionId, baseDate) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_FOUND, data)"
+    - step: 2
+      layer: UseCase (SubscriptionUseCase.getSubscription)
+      action: "회원 조회 → 본인 구독 조회 → today = LocalDate.now(), base = baseDate ?: today → 최근 점검 · 90일 점검 조회 → 평균 계산 → SubscriptionDetailResponse"
+      transaction: "readOnly (클래스 기본)"
+    - step: 3
+      layer: Domain Service (UserGetService)
+      action: "findUserById(userId) — 없으면 UserNotFoundException"
+    - step: 4
+      layer: Domain Service (SubscriptionGetService)
+      action: "findSubscription(User, UUID subscriptionId) — user 일치 AND deleted = false, serviceCatalog fetch join. 없으면 SubscriptionNotFoundException"
+    - step: 5
+      layer: Domain Service (SubscriptionCheckGetService)
+      action: "findLatestCheck(Subscription) — created_at 최신 1건 (Optional). findChecksSince(Subscription, LocalDateTime from) — from = (today − 90일) 00:00, created_at 내림차순"
+    - step: 6
+      layer: Domain Service (SubscriptionCheckCancelReasonGetService)
+      action: "latestCheckup이 있으면 findCancelReasonsByCheck(SubscriptionCheck). 없으면 호출하지 않음"
+    - step: 7
+      layer: Domain (CheckResult) — 신규 순수 도메인 객체 (check/domain/result)
+      action: >
+        CheckResult.from(SubscriptionCheck) / CheckResult.average(List<SubscriptionCheck>):
+        활용도 = round((이용도−1)/4×40 + (만족도−1)/4×25 + (계획−1)/4×35), 평균은 소수 평균 그대로 대입.
+        반올림한 계획 점수가 1이면 min(활용도, 59). 단계: 80↑ KEEP_RECOMMENDED / 60~79 KEEP_CONSIDER / 40~59 CANCEL_CONSIDER / 40↓ CANCEL_RECOMMENDED.
+        점수는 평균 반올림(HALF_UP). 1건이면 그 기록 그대로
+    - step: 7-1
+      layer: Domain (CheckAnswer) — 신규 상수 (check/domain/question)
+      action: >
+        카테고리별 선택지 문구 상수 (코딩 규칙: 점검 문항 · 선택지는 Enum/상수, ERD 5.5).
+        usageAnswer(Category, int score) · satisfactionAnswer(Category, int score) · planAnswer(Category, int score) → String.
+        문구는 Figma 점검 문항 설명(CHK-001~007)의 선택지 그대로 = ERD 5.5 (2026-11-17 Figma 대조 완료)
+    - step: 8
+      layer: Domain (Subscription)
+      action: "yearlyAmount() (신규), nextBillingOn(base), startedOn(), paidCount(today), totalPaidAmount(today) — SUBSCRIPTION-002 계산 메서드 재사용. statusOn(LocalDate base) (신규): base가 startedOn() ~ canceledOn(없으면 무한) 사이면 ACTIVE"
+
+  check_answer_constants:
+    source: "Figma 디자인 작업소 › 구독 점검 › CHK-001~007 Description (K-11~K-66 선택지), ERD 5.5와 동일"
+    usage:
+      VIDEO_OTT: ["안 봤어요", "1~2편", "3~5편", "6~10편", "11편 이상"]
+      SHOPPING_DELIVERY: ["안 썼어요", "1~2번", "3~5번", "6~9번", "10번 이상"]
+      MUSIC · EDUCATION · PRODUCTIVITY_AI · ENTERTAINMENT · ETC: ["안 썼어요", "한 달에 1~3일", "주 1~2일", "주 3~5일", "거의 매일"]
+    satisfaction_common: ["많이 아까워요", "조금 아까워요", "보통이에요", "구독료만큼 가치 있어요", "구독료보다 더 가치 있어요"]
+    plan_common: ["안 쓸 거예요", "거의 안 쓸 것 같아요", "아직 잘 모르겠어요", "아마 계속 쓸 것 같아요", "꼭 계속 쓸 거예요"]
+    index: "점수 1 → 첫 번째 문구 … 점수 5 → 다섯 번째 문구"
+
+  database:
+    entities:
+      - name: Subscription
+        action: Read
+        table: subscriptions
+      - name: ServiceCatalog
+        action: Read (fetch join)
+        table: services
+        fields: "logo_url"
+      - name: SubscriptionCheck
+        action: Read
+        table: subscription_checks
+        fields: "usage_score, satisfaction_score, plan_score, memo, decision, cancel_reason_text, created_at"
+      - name: SubscriptionCheckCancelReason
+        action: Read
+        table: subscription_check_cancel_reasons
+        fields: "reason"
+      - name: User
+        action: Read
+        table: users
+
+  error_codes:
+    reused:
+      - "40404 SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND (404) — 없음 · 삭제됨 · 다른 회원 구독 (SUBSCRIPTION-003에서 정의, 먼저 구현되는 스펙에서 추가)"
+      - "40201 UserErrorCode.USER_NOT_FOUND (404)"
+      - "40005 / 40103 / 40104 — 인증 실패 (AUTH-001)"
+      - "subscriptionId · baseDate 형식 오류 — MethodArgumentTypeMismatchException은 GlobalExceptionHandler에 핸들러가 없어 Spring 기본 400 (SUBSCRIPTION-002 notes 참고)"
+
+  changes_to_existing_code:
+    - target: "SubscriptionRepository"
+      change: "findWithServiceByIdAndUser(UUID id, User user) 추가 — @Query: left join fetch s.serviceCatalog, s.deleted = false"
+    - target: "SubscriptionGetService"
+      change: "findSubscription(User, UUID) 추가 — Optional 반환 (UserGetService.findUserById 패턴), UseCase에서 orElseThrow"
+    - target: "Subscription (엔티티)"
+      change: "yearlyAmount(), statusOn(LocalDate) 추가"
+    - target: "SubscriptionCheckRepository"
+      change: "findAllBySubscriptionAndCreatedAtGreaterThanEqualAndDeletedFalseOrderByCreatedAtDesc(Subscription, LocalDateTime), findFirstBySubscriptionAndDeletedFalseOrderByCreatedAtDesc(Subscription) 추가"
+    - target: "SubscriptionCheckGetService (SUBSCRIPTION-003에서 신규)"
+      change: "findChecksSince(Subscription, LocalDateTime), findLatestCheck(Subscription) 추가"
+    - target: "SubscriptionCheckCancelReasonRepository"
+      change: "findAllBySubscriptionCheckAndDeletedFalse(SubscriptionCheck) 추가"
+    - target: "SubscriptionCheckCancelReasonGetService (SUBSCRIPTION-003에서 신규)"
+      change: "findCancelReasonsByCheck(SubscriptionCheck) 추가"
+    - target: "SubscriptionResponseCode"
+      change: "SUBSCRIPTION_FOUND(200) 추가"
+
+  security_config:
+    note: "변경 없음 — anyRequest().authenticated()로 보호됨"
+
+  validation_rules:
+    - "본인 구독만 조회 — 다른 회원 구독 · 삭제된 구독은 SUBSCRIPTION_NOT_FOUND (존재 여부 노출 안 함)"
+    - "지난 점검 기간: created_at ≥ (오늘 − 90일) 00:00 (ERD 6.4, 10.1 #6). baseDate와 무관하게 오늘 기준"
+    - "활용도는 문항별 소수 평균을 공식에 대입, 보정(계획 1점 → 최대 59%)은 반올림한 계획 점수 기준"
+    - "지금까지 결제 금액 · 횟수는 baseDate와 무관하게 오늘(ENDED면 해지일)까지"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  subscription:
+    - "domain/subscription/presentation/SubscriptionController.java (수정 — GET /{subscriptionId} 추가)"
+    - "domain/subscription/presentation/response/SubscriptionResponseCode.java (수정)"
+    - "domain/subscription/application/usecase/SubscriptionUseCase.java (수정 — getSubscription)"
+    - "domain/subscription/application/dto/response/SubscriptionDetailResponse.java (신규, record + of())"
+    - "domain/subscription/application/dto/response/LatestCheckupResponse.java (신규, record + of())"
+    - "domain/subscription/application/dto/response/PastCheckupResponse.java (신규, record + from())"
+    - "domain/subscription/application/dto/response/PastCheckupAverageResponse.java (신규, record + of())"
+    - "domain/subscription/domain/entity/Subscription.java (수정 — yearlyAmount, statusOn)"
+    - "domain/subscription/domain/service/SubscriptionGetService.java (수정)"
+    - "domain/subscription/domain/repository/SubscriptionRepository.java (수정)"
+  check:
+    - "domain/check/domain/result/CheckResult.java (신규, 순수 도메인 객체 — 활용도 · 단계 · 반올림 점수)"
+    - "domain/check/domain/result/CheckResultStage.java (신규, enum — 값만)"
+    - "domain/check/domain/question/CheckAnswer.java (신규, 카테고리별 선택지 문구 상수)"
+    - "domain/check/domain/service/SubscriptionCheckGetService.java (수정)"
+    - "domain/check/domain/service/SubscriptionCheckCancelReasonGetService.java (수정)"
+    - "domain/check/domain/repository/SubscriptionCheckRepository.java (수정)"
+    - "domain/check/domain/repository/SubscriptionCheckCancelReasonRepository.java (수정)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest only (JUnit5 + Mockito) — @Nested GetSubscription
+  # Mock: UserGetService, SubscriptionGetService, SubscriptionCheckGetService, SubscriptionCheckCancelReasonGetService
+  # Subscription · SubscriptionCheck는 정적 팩토리로 생성, id · createdAt은 ReflectionTestUtils로 지정
+  happy_path:
+    - "getSubscription: 구독 중이면 결제 금액 · 연 환산 · 다음 결제일 · D-n · 구독 시작일 · 지금까지 결제 횟수와 금액을 반환하고 해지일은 null이다"
+    - "getSubscription: 최근 90일 점검이 여러 건이면 문항별 소수 평균으로 활용도와 단계를, 평균을 반올림한 점수의 선택지 문구를 pastCheckupAverage로 반환하고 원본을 최신순으로 반환한다"
+    - "getSubscription: 점검 응답 문구는 점검 당시 카테고리 스냅샷 기준 선택지 문구로 반환한다 (구독 카테고리가 바뀌어도 점검 당시 문구 유지)"
+    - "getSubscription: 최근 90일 점검이 1건이면 그 기록의 문구와 활용도를 평균으로 그대로 반환한다"
+    - "getSubscription: 반올림한 계획 점수가 1이면 활용도를 59%로 제한하고 CANCEL_CONSIDER 단계로 반환한다"
+    - "getSubscription: 최근 90일 점검이 없으면 pastCheckupAverage는 null, pastCheckups는 빈 목록이다"
+    - "getSubscription: 구독 종료면 해지일 · 해지일까지 결제 금액을 반환하고 다음 결제일 · D-n은 null이다"
+    - "getSubscription: 최근 점검이 있으면 결정 · 응답 문구 · 활용도 · 단계 · 메모 · 해지 이유 코드 · 직접 입력 이유를 latestCheckup으로 반환한다"
+    - "getSubscription: 점검 기록이 없으면 latestCheckup을 null로 반환하고 해지 이유를 조회하지 않는다"
+    - "getSubscription: baseDate를 주면 그 날짜 이후 첫 결제일과, 등록일 ~ 해지일 범위로 판단한 상태를 반환한다"
+    - "getSubscription: 직접 입력 서비스는 logoUrl을 null로 반환한다"
+  edge_cases:
+    - "getSubscription: 없거나 다른 회원의 구독이면 SUBSCRIPTION_NOT_FOUND 예외를 던진다"
+    - "getSubscription: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던진다"
+
+notes:
+  - "기준: Figma 우선, 그다음 Notion API 명세서 (2026-11-17 대조). 경로 · baseDate · 응답 구조 · 필드명은 Notion을 따름"
+  - "결정 (2026-11-17, 재검토): 점검 응답은 Notion대로 문구(usageAnswer · satisfactionAnswer · planAnswer) 반환 — Figma · 코딩 규칙과 충돌 없음(규칙: 점검 선택지는 Enum/상수). 문구는 Figma CHK-001~007 선택지 = ERD 5.5 (technical_spec.check_answer_constants)"
+  - "[Figma 확인 필요] M-03 · M-05 목업 예시 문구('한 달 6~10편 봤어요', '보고 싶은 작품이 계속 생겨요', '꼭 볼 작품이 있어요' 등)는 점검 선택지와 다름. M-03 Figma 설명은 '평균을 반올림한 점수의 선택지 문구'로 명시 → 설명을 기준으로 선택지 문구 사용, 목업은 예시 텍스트로 판단 (디자인 쪽 목업 문구 수정 요청 대상)"
+  - "[참고] 교육·학습(CHK-004) 설명 패널은 Figma MCP 호출 한도로 미확인 — K-41 보조 문구('하루에 여러 번 써도 1일로…')가 일 단위 그룹과 같아 ERD 5.5와 일치로 판단"
+  - "[Notion 보완] latestCheckup에 checkupId · memo · cancelReasons · cancelReasonText가 있으나 mock data에는 cancelReasons가 빠져 있음 → 항상 포함(없으면 빈 배열)"
+  - "[가정] baseDate(C-03) 동작은 Notion 설명 + ERD 6.2 기준으로 정의. 캘린더 화면(C-03) Figma는 이번에 검토하지 않음 → 캘린더 스펙 작성 때 재확인"
+  - "[가정] pastCheckups 범위는 pastCheckupAverage와 같은 최근 90일 (Notion: '지난 점검 원본 기록 (최신순)', 범위 미기재)"
+  - "[가정] pastCheckupAverage는 상태와 무관하게 계산 (Figma는 M-03에서만 표시)"
+  - "결정 (2026-11-17): '오늘'은 LocalDate.now() (JVM 기본 시간대) — SUBSCRIPTION-002와 동일"
+  - "[가정] 활용도 계산은 check 도메인의 순수 도메인 객체 CheckResult (CATALOG-001의 ServiceSearchKeyword와 같은 방식). 점검 기능(K-70 결과 화면)에서도 재사용"
+  - "범위 외: '꾸준히 쓰는 구독' 토글 변경(Notion PATCH /{subscriptionId}/steady), 편집(SUBSCRIPTION-005), 해지 안내(Notion /cancel-guide), 해지 완료(/cancel), 재등록(/reactivate), 점검 결과 조회(/checkups/{checkupId})"
