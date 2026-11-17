@@ -1,5 +1,5 @@
 # Subscription Entity
-# Last Updated: 2026-11-16 (엔티티 구현 반영)
+# Last Updated: 2026-11-17 (SUBSCRIPTION-001 직접 일괄 등록 구현 반영)
 # Source: docs/ERD.md v1.1 §4.4 subscriptions, §6 계산 규칙
 
 entity: SUBSCRIPTION
@@ -112,7 +112,7 @@ indexes:
 constraints:
   - "amount > 0, billing_cycle_value 1~31, 직접 입력 서비스명 1~30자, billing_anchor_on 과거 불가 — 요청 DTO에서 검증 (엔티티는 검증하지 않음)"
   - "편집(updatePaymentInfo, updateCustomName)·해지(cancel)는 ACTIVE 구독만, 서비스명 수정은 직접 입력 서비스만 — 도메인 서비스/UseCase에서 검증 후 엔티티 메서드 호출"
-  - "같은 회원이 같은 service_id를 ACTIVE 상태로 중복 등록 불가 — 애플리케이션에서 검증 (A-02, A-09, A-13)"
+  - "같은 회원이 같은 service_id를 ACTIVE 상태로 중복 등록 불가 — 애플리케이션에서 검증 (A-02, A-09, A-13). 직접 등록은 SubscriptionUseCase.createSubscriptions에서 SubscriptionGetService.findActiveServiceIds(user)로 검사 (40401)"
   - "조회는 항상 deleted = false 조건"
 
 business_logic:
@@ -127,6 +127,7 @@ business_logic:
 
 notes:
   - "구독 시작일 컬럼 없음 — 등록일(created_at)을 사용 (ERD 10.1 #2)"
+  - "직접 일괄 등록(A-04 → A-05)은 SUBSCRIPTION-001에서 구현 — POST /api/v1/subscriptions, registration_source = MANUAL, 전체 성공/전체 실패, SubscriptionCreateService.createSubscriptions → saveAll()"
   - "재등록(M-05 '재등록하기'): 기존 ENDED 행은 그대로 두고 새 행 생성 (시작일 = 재등록일)"
   - "구독 삭제 시 해당 subscription_checks, subscription_check_cancel_reasons, notifications도 함께 Soft Delete (ERD 8장) — UseCase에서 각 도메인 서비스를 통해 처리"
   - "홈 연 금액(H-02)은 예외적으로 등록일과 관계없이 올해 1/1~12/31 전체를 계산하며 ACTIVE 구독만 포함 (ERD 6.3)"

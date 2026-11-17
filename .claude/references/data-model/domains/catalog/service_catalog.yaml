@@ -87,4 +87,5 @@ notes:
   - "검색은 서비스 수가 적어 전체 목록을 메모리에 올려 애플리케이션에서 처리 (초성 검색 포함)"
   - "사용자가 이미 등록한(ACTIVE) 서비스는 A-02 목록에서 제외"
   - "서비스 검색(A-02)은 CATALOG-001에서 구현 — domain/catalog/domain/search/ServiceSearchKeyword (정규화·초성·점수 정렬), 조회는 ServiceCatalogRepository.findAllByIsActiveTrueAndDeletedFalseOrderBySortOrderAscNameAsc()"
+  - "구독 등록(SUBSCRIPTION-001)의 serviceId 검증은 ServiceCatalogGetService.findActiveServicesByIds → findAllByIdInAndIsActiveTrueAndDeletedFalse(ids). 없거나 비활성이면 CatalogErrorCode.SERVICE_NOT_FOUND (40301)"
   - "목적격 조사 선택(X-06), 해지 링크 유무 분기(X-04/X-05)는 기능 구현 시 추가"
