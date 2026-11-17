@@ -13,9 +13,19 @@ import com.subscribers.gudogging.domain.catalog.application.exception.ServiceNot
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
+import com.subscribers.gudogging.domain.check.domain.entity.CancelReason;
+import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheckCancelReason;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonGetService;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
+import com.subscribers.gudogging.domain.notification.domain.entity.Notification;
+import com.subscribers.gudogging.domain.notification.domain.entity.NotificationType;
+import com.subscribers.gudogging.domain.notification.domain.service.NotificationGetService;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSummaryResponse;
@@ -23,6 +33,7 @@ import com.subscribers.gudogging.domain.subscription.application.exception.Dupli
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
+import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
 import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleUnit;
 import com.subscribers.gudogging.domain.subscription.domain.entity.PaymentMethod;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
@@ -37,6 +48,7 @@ import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.exception.ApplicationException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -70,6 +82,15 @@ class SubscriptionUseCaseTest {
 
     @Mock
     private SubscriptionCreateService subscriptionCreateService;
+
+    @Mock
+    private SubscriptionCheckGetService subscriptionCheckGetService;
+
+    @Mock
+    private SubscriptionCheckCancelReasonGetService subscriptionCheckCancelReasonGetService;
+
+    @Mock
+    private NotificationGetService notificationGetService;
 
     @InjectMocks
     private SubscriptionUseCase subscriptionUseCase;
@@ -589,6 +610,171 @@ class SubscriptionUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("deleteSubscriptions")
+    class DeleteSubscriptions {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate billingOn = LocalDate.of(2026, 12, 1);
+
+        private Subscription subscription(String name) {
+            Subscription subscription = Subscription.createCustom(user, name, Category.ETC, 10000, 1,
+                BillingCycleUnit.MONTH, billingOn, PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            // id는 JPA 저장 시 생성되므로, 요청 ID와의 매칭 검증을 위해 테스트에서만 지정한다.
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            return subscription;
+        }
+
+        private SubscriptionCheck check(Subscription subscription) {
+            return SubscriptionCheck.create(subscription, billingOn, Category.ETC, 3, 3, 3, null);
+        }
+
+        private Notification notification(Subscription subscription) {
+            return Notification.create(user, subscription, NotificationType.BILLING_REMINDER, billingOn,
+                "결제 1일 전", subscription.getName() + " 결제 예정", LocalDateTime.of(2026, 11, 30, 9, 0));
+        }
+
+        private DeleteSubscriptionsRequest request(UUID... subscriptionIds) {
+            return new DeleteSubscriptionsRequest(List.of(subscriptionIds));
+        }
+
+        private void givenUser() {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+        }
+
+        @Test
+        @DisplayName("선택한 구독과 그 점검 기록 · 해지 이유 · 알림을 모두 Soft Delete 하고 삭제 개수를 반환한다")
+        void softDeletesSubscriptionsWithRelatedData() {
+            // given
+            Subscription netflix = subscription("넷플릭스");
+            Subscription melon = subscription("멜론");
+            SubscriptionCheck netflixCheck = check(netflix);
+            SubscriptionCheckCancelReason cancelReason = SubscriptionCheckCancelReason.create(netflixCheck,
+                CancelReason.PRICE_BURDEN);
+            Notification melonNotification = notification(melon);
+            givenUser();
+            given(subscriptionGetService.findSubscriptionsByIds(user, Set.of(netflix.getId(), melon.getId())))
+                .willReturn(List.of(netflix, melon));
+            given(subscriptionCheckGetService.findChecksBySubscriptions(List.of(netflix, melon)))
+                .willReturn(List.of(netflixCheck));
+            given(subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(List.of(netflixCheck)))
+                .willReturn(List.of(cancelReason));
+            given(notificationGetService.findNotificationsBySubscriptions(List.of(netflix, melon)))
+                .willReturn(List.of(melonNotification));
+
+            // when
+            SubscriptionDeletionResponse response = subscriptionUseCase.deleteSubscriptions(userId,
+                request(netflix.getId(), melon.getId()));
+
+            // then
+            assertThat(response.deletedCount()).isEqualTo(2);
+            assertThat(List.of(netflix, melon)).allMatch(Subscription::isDeleted);
+            assertThat(netflixCheck.isDeleted()).isTrue();
+            assertThat(cancelReason.isDeleted()).isTrue();
+            assertThat(melonNotification.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("구독 종료(ENDED) 구독도 삭제한다")
+        void deletesEndedSubscription() {
+            // given
+            Subscription watcha = subscription("왓챠");
+            watcha.cancel(LocalDate.of(2026, 10, 16));
+            givenUser();
+            given(subscriptionGetService.findSubscriptionsByIds(user, Set.of(watcha.getId())))
+                .willReturn(List.of(watcha));
+            given(subscriptionCheckGetService.findChecksBySubscriptions(List.of(watcha))).willReturn(List.of());
+            given(notificationGetService.findNotificationsBySubscriptions(List.of(watcha))).willReturn(List.of());
+
+            // when
+            SubscriptionDeletionResponse response = subscriptionUseCase.deleteSubscriptions(userId,
+                request(watcha.getId()));
+
+            // then
+            assertThat(response.deletedCount()).isEqualTo(1);
+            assertThat(watcha.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("점검 기록이 없으면 해지 이유를 조회하지 않고 구독과 알림만 삭제한다")
+        void skipsCancelReasonsWhenNoChecks() {
+            // given
+            Subscription netflix = subscription("넷플릭스");
+            Notification netflixNotification = notification(netflix);
+            givenUser();
+            given(subscriptionGetService.findSubscriptionsByIds(user, Set.of(netflix.getId())))
+                .willReturn(List.of(netflix));
+            given(subscriptionCheckGetService.findChecksBySubscriptions(List.of(netflix))).willReturn(List.of());
+            given(notificationGetService.findNotificationsBySubscriptions(List.of(netflix)))
+                .willReturn(List.of(netflixNotification));
+
+            // when
+            subscriptionUseCase.deleteSubscriptions(userId, request(netflix.getId()));
+
+            // then
+            verifyNoInteractions(subscriptionCheckCancelReasonGetService);
+            assertThat(netflix.isDeleted()).isTrue();
+            assertThat(netflixNotification.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("요청에 같은 ID가 여러 번 있어도 한 번만 조회해 삭제하고 삭제 개수는 중복을 제외한다")
+        void deduplicatesRequestedIds() {
+            // given
+            Subscription netflix = subscription("넷플릭스");
+            givenUser();
+            given(subscriptionGetService.findSubscriptionsByIds(user, Set.of(netflix.getId())))
+                .willReturn(List.of(netflix));
+            given(subscriptionCheckGetService.findChecksBySubscriptions(List.of(netflix))).willReturn(List.of());
+            given(notificationGetService.findNotificationsBySubscriptions(List.of(netflix))).willReturn(List.of());
+
+            // when
+            SubscriptionDeletionResponse response = subscriptionUseCase.deleteSubscriptions(userId,
+                request(netflix.getId(), netflix.getId()));
+
+            // then
+            assertThat(response.deletedCount()).isEqualTo(1);
+            assertThat(netflix.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("없거나 다른 회원의 구독이 하나라도 있으면 SUBSCRIPTION_NOT_FOUND 예외를 던지고 아무것도 삭제하지 않는다")
+        void throwsWhenAnySubscriptionNotFound() {
+            // given — 요청 2건 중 본인 구독 1건만 조회됨 (다른 하나는 없거나 다른 회원 구독)
+            Subscription netflix = subscription("넷플릭스");
+            UUID othersSubscriptionId = UUID.randomUUID();
+            givenUser();
+            given(subscriptionGetService.findSubscriptionsByIds(user, Set.of(netflix.getId(), othersSubscriptionId)))
+                .willReturn(List.of(netflix));
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.deleteSubscriptions(userId,
+                request(netflix.getId(), othersSubscriptionId)))
+                .isInstanceOf(SubscriptionNotFoundException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND);
+            assertThat(netflix.isDeleted()).isFalse();
+            verifyNoInteractions(subscriptionCheckGetService, subscriptionCheckCancelReasonGetService,
+                notificationGetService);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 아무것도 삭제하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.deleteSubscriptions(userId, request(UUID.randomUUID())))
+                .isInstanceOf(UserNotFoundException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionGetService, subscriptionCheckGetService,
+                subscriptionCheckCancelReasonGetService, notificationGetService);
         }
     }
 }
