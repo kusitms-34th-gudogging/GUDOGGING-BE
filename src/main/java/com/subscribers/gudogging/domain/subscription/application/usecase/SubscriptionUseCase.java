@@ -1,16 +1,23 @@
 package com.subscribers.gudogging.domain.subscription.application.usecase;
 
 import com.subscribers.gudogging.domain.catalog.application.exception.ServiceNotFoundException;
+import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonGetService;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
+import com.subscribers.gudogging.domain.notification.domain.service.NotificationGetService;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
+import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
@@ -19,6 +26,7 @@ import com.subscribers.gudogging.domain.subscription.domain.service.Subscription
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
+import com.subscribers.gudogging.global.common.entity.BaseEntity;
 import java.time.LocalDate;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -42,6 +50,9 @@ public class SubscriptionUseCase {
     private final ServiceCatalogGetService serviceCatalogGetService;
     private final SubscriptionGetService subscriptionGetService;
     private final SubscriptionCreateService subscriptionCreateService;
+    private final SubscriptionCheckGetService subscriptionCheckGetService;
+    private final SubscriptionCheckCancelReasonGetService subscriptionCheckCancelReasonGetService;
+    private final NotificationGetService notificationGetService;
 
     /**
      * 선택한 탭(status)의 구독을 정렬 기준(sort)대로 조회하고, 두 탭 개수와 탭의 월 환산 합계를 함께 반환한다.
@@ -101,6 +112,34 @@ public class SubscriptionUseCase {
         return subscriptionCreateService.createSubscriptions(subscriptions).stream()
             .map(SubscriptionResponse::from)
             .toList();
+    }
+
+    /**
+     * 선택한 구독과 그 점검 기록 · 해지 이유 · 알림을 Soft Delete 한다 (ERD 8장). 하나라도 삭제할 수 없으면 아무것도 삭제하지 않는다.
+     */
+    @Transactional
+    public SubscriptionDeletionResponse deleteSubscriptions(UUID userId, DeleteSubscriptionsRequest request) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+
+        Set<UUID> subscriptionIds = Set.copyOf(request.subscriptionIds());
+        List<Subscription> subscriptions = subscriptionGetService.findSubscriptionsByIds(user, subscriptionIds);
+        if (subscriptions.size() != subscriptionIds.size()) {
+            throw new SubscriptionNotFoundException();
+        }
+
+        List<SubscriptionCheck> subscriptionChecks = subscriptionCheckGetService.findChecksBySubscriptions(
+            subscriptions);
+        if (!subscriptionChecks.isEmpty()) {
+            subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(subscriptionChecks)
+                .forEach(BaseEntity::softDelete);
+        }
+        subscriptionChecks.forEach(BaseEntity::softDelete);
+        notificationGetService.findNotificationsBySubscriptions(subscriptions)
+            .forEach(BaseEntity::softDelete);
+        subscriptions.forEach(BaseEntity::softDelete);
+
+        return SubscriptionDeletionResponse.from(subscriptions);
     }
 
     private SubscriptionSortType defaultSortOf(SubscriptionStatus tab) {
