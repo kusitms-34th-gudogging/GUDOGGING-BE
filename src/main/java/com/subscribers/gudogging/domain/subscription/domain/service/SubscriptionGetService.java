@@ -5,6 +5,7 @@ import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -26,5 +27,9 @@ public class SubscriptionGetService {
 
     public List<Subscription> findSubscriptionsByIds(User user, Collection<UUID> subscriptionIds) {
         return subscriptionRepository.findAllByIdInAndUserAndDeletedFalse(subscriptionIds, user);
+    }
+
+    public Optional<Subscription> findSubscription(User user, UUID subscriptionId) {
+        return subscriptionRepository.findWithServiceByIdAndUser(subscriptionId, user);
     }
 }

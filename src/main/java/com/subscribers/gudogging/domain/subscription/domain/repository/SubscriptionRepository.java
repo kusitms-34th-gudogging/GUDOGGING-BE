@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -31,4 +32,14 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
     List<Subscription> findAllWithServiceByUser(@Param("user") User user);
 
     List<Subscription> findAllByIdInAndUserAndDeletedFalse(Collection<UUID> ids, User user);
+
+    @Query("""
+        select s
+        from Subscription s
+        left join fetch s.serviceCatalog
+        where s.id = :id
+          and s.user = :user
+          and s.deleted = false
+        """)
+    Optional<Subscription> findWithServiceByIdAndUser(@Param("id") UUID id, @Param("user") User user);
 }
