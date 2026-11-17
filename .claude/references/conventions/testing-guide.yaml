@@ -1,5 +1,5 @@
 # Testing Guide
-# Last Updated: 2026-11-03
+# Last Updated: 2026-11-17
 
 meta:
   title: Testing Guide
@@ -21,7 +21,15 @@ test_scope:
     - Repository tests
     - Controller tests
     - DTO / Request validation tests
-    - Integration tests
+    - Integration tests (except the context-load smoke test below)
+  exception:
+    target: "GudoggingApplicationTests.contextLoads() — the ONLY allowed non-UseCase test (2026-11-17)"
+    setup: "@SpringBootTest + @ActiveProfiles(\"test\"), src/test/resources/application-test.yaml (H2 in-memory MODE=MySQL, ddl-auto create-drop, test-only dummy keys), build.gradle testRuntimeOnly 'com.h2database:h2'"
+    purpose: "Catch startup failures (bean wiring, JPQL/derived query errors, missing properties) without .env or a local MySQL"
+    rules:
+      - "Keep contextLoads() empty — no assertions on data, no repository/controller calls"
+      - "Do NOT add other @SpringBootTest / @DataJpaTest / H2-based tests; feature tests stay UseCase unit tests"
+      - "When a new required property (no default) is added to application.yaml, add a dummy value to application-test.yaml"
   note: "Entity 비즈니스 로직(Rich Model)은 별도 테스트 없이 UseCase 테스트 시나리오로 검증 (Entity는 mock하지 않고 실제 객체 사용)"
 
 test_structure:
@@ -200,11 +208,11 @@ forbidden:
   - "Repository tests"
   - "Controller layer tests"
   - "DTO / Request validation tests"
-  - "Integration tests (unit tests only)"
+  - "Integration tests (unit tests only) — except contextLoads smoke test (see test_scope.exception)"
   - "English test names (use Korean @DisplayName)"
   - "JUnit 4 (use JUnit 5)"
   - "Field injection in tests (use @Mock / @InjectMocks)"
-  - "H2 or TestContainers (no DB tests — mock the Domain Services)"
+  - "H2 or TestContainers (no DB tests — mock the Domain Services) — except H2 for contextLoads smoke test (see test_scope.exception)"
 
 example_unit_test: |
   @ExtendWith(MockitoExtension.class)
