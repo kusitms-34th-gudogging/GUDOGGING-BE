@@ -305,6 +305,38 @@ public enum {Name}ErrorCode implements ErrorCodeInterface {
 3. Build: `./gradlew build`
 4. Check code style (manual review against `coding-style.yaml`)
 
+### Phase 4: Convention Compliance Check (MANDATORY — Final Step)
+
+**Goal:** After implementation, check every file created or modified in this task against the actual rule documents, item by item, and report the result. Passing build and tests alone does NOT mean the feature is complete.
+
+**Step 1: Re-read the Rule Documents (do NOT rely on memory)**
+
+- `core/essential-rules.yaml` (constraints, coding_style)
+- `core/system-design.yaml` (architecture, api, entity)
+- `references/conventions/coding-style.yaml`
+- `references/conventions/testing-guide.yaml`
+
+**Step 2: Check Changed Files**
+
+- List every changed file of this task with `git status` / `git diff` (miss none)
+- For each item below, judge ✅ Compliant / ⚠️ Needs confirmation / ❌ Violation, with evidence (`file:line`)
+  - Layers: Controller → UseCase → Domain Service → Repository, no layer skipping, no horizontal dependencies
+  - DI & Transactions: @RequiredArgsConstructor, UseCase class `readOnly = true` + @Transactional on write methods, no transactions in Domain Services
+  - Naming: service methods are verb + target noun, DTOs `{Action}{Resource}Request` / `{Resource}Response`, correct package location
+  - DTO: record, Response uses static factory `from()`
+  - API: CommonResponse, HTTP status (POST 201, etc.), @CurrentUserId, @Tag / @Operation (with the 기능 / 요청값 / 응답값 sections)
+  - Codes: ResponseCode / ErrorCode enums (@Getter + @AllArgsConstructor), success codes use standard HTTP values, error code range & no duplicates, docs (system-design, coding-style) updated
+  - Entity (if changed): matches ERD, Lombok rules, no @Setter, Soft Delete
+  - Performance: saveAll, no N+1
+  - Tests: UseCase tests only, @Nested / Korean @DisplayName / given-when-then / AssertJ, entities via static factory, mock Domain Services only
+  - Spec match: no features or validations beyond the spec
+- Violations in existing code outside this task's scope: do NOT fix — report separately under "Note"
+
+**Step 3: Handle Results**
+
+- Report ❌ violations to the user and fix them only after confirming (if a rule conflicts with the spec or existing code, ASK instead of deciding)
+- Include the results as a table in the `📏 Convention Compliance` section of the Report Format below
+
 ## Validation Checklist
 
 Before completing feature:
@@ -318,6 +350,7 @@ Before completing feature:
 - [ ] Build successful: `./gradlew build`
 - [ ] Code follows `essential-rules.yaml`
 - [ ] Korean test names used
+- [ ] Phase 4 Convention Compliance Check completed and reported
 
 ## Report Format
 
@@ -341,6 +374,14 @@ Before completing feature:
   - Status: ✅ PASSED ([X]/[X])
 
 🏗️ Build Status: ✅ SUCCESS
+
+📏 Convention Compliance:
+  | Item | Result | Evidence |
+  |---|---|---|
+  | Layers & dependencies | ✅ / ⚠️ / ❌ | file:line |
+  | ... (all Phase 4 Step 2 items) | | |
+  - Violations / Needs confirmation: [or "None"]
+  - Note (existing code outside this task's scope): [if any]
 
 📝 Notes:
   - [Any important decisions or trade-offs made]
