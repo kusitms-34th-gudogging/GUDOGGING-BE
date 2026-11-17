@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Cre
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
@@ -14,12 +15,15 @@ import com.subscribers.gudogging.global.security.annotation.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -78,6 +82,55 @@ public class SubscriptionController {
     ) {
         SubscriptionListResponse response = subscriptionUseCase.getSubscriptions(userId, status, sort);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_FOUND, response);
+    }
+
+    @Operation(
+        summary = "구독 상세 조회",
+        description = """
+            **기능**
+            구독 1건의 기본 정보와 결제 계산 값을 조회합니다. 구독 중 상세(M-03) · 구독 종료 상세(M-05)와
+            캘린더에서 날짜를 눌러 들어온 구독 상세(C-03)에 사용합니다.
+            baseDate가 있으면 그 날짜 기준으로 상태(등록일 ~ 해지일 사이면 ACTIVE) · 다음 결제일 · D-n을 계산합니다.
+            지금까지 결제 금액 · 횟수는 baseDate와 무관하게 오늘(구독 종료면 해지일)까지로 계산합니다.
+            점검 기록(latestCheckup · pastCheckups · pastCheckupAverage)은 구독 점검 기능 구현 전까지 항상 null · 빈 배열입니다.
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+            - baseDate (String, 선택): 기준일 (yyyy-MM-dd). 캘린더 C-03에서 선택한 날짜. 없으면 오늘 (query parameter)
+            
+            **응답값**
+            - subscriptionId (UUID): 구독 ID
+            - status (String): ACTIVE / ENDED. baseDate가 없으면 저장된 상태, 있으면 baseDate 기준 상태
+            - serviceName (String): 서비스명
+            - logoUrl (String, nullable): 서비스 로고 URL. null이면 기본 이미지 사용
+            - category (String): 카테고리 코드
+            - amount (Integer): 1회 결제 금액 (원)
+            - billingCycleValue (Integer): 결제 주기 값
+            - billingCycleUnit (String): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
+            - nextBillingDate (String, nullable): 기준일 이후(포함) 첫 결제일 (yyyy-MM-dd). 구독 종료이고 해지일 이후면 null
+            - startedAt (String): 구독 시작일 = 등록일 (yyyy-MM-dd)
+            - paymentMethod (String): 결제한 곳 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
+            - isSteady (Boolean): '꾸준히 쓰는 구독' 여부
+            - canceledAt (String, nullable): 해지일 (yyyy-MM-dd). 구독 중이면 null
+            - yearlyAmount (Integer): 연 환산 금액 (원)
+            - totalPaidAmount (Integer): 지금까지 결제 금액 (원) = 결제 횟수 × 금액
+            - paidCount (Integer): 지금까지 결제 횟수
+            - dDay (Integer, nullable): 다음 결제일 − 기준일. nextBillingDate가 null이면 null
+            - latestCheckup (Object, nullable): 가장 최근 점검 1건. 현재 항상 null
+            - pastCheckups (List): 최근 90일 점검 기록. 현재 항상 빈 배열
+            - pastCheckupAverage (Object, nullable): 최근 90일 점검 평균. 현재 항상 null
+            """
+    )
+    @GetMapping("/{subscriptionId}")
+    public CommonResponse<SubscriptionDetailResponse> getSubscription(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId,
+        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate baseDate
+    ) {
+        SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId, subscriptionId, baseDate);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_FOUND, response);
     }
 
     @Operation(
