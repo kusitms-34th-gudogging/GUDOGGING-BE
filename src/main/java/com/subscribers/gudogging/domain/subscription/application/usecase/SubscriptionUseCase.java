@@ -12,6 +12,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Del
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
@@ -79,6 +80,17 @@ public class SubscriptionUseCase {
             .toList();
         return SubscriptionListResponse.of(tabSubscriptions, activeSubscriptions.size(), endedSubscriptions.size(),
             today);
+    }
+
+    /**
+     * 본인 구독 1건의 기본 정보와 결제 계산 값을 조회한다. baseDate(캘린더 C-03)가 있으면 그 날짜 기준으로 상태 · 다음 결제일을 계산한다.
+     */
+    public SubscriptionDetailResponse getSubscription(UUID userId, UUID subscriptionId, LocalDate baseDate) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
+            .orElseThrow(SubscriptionNotFoundException::new);
+        return SubscriptionDetailResponse.of(subscription, LocalDate.now(), baseDate);
     }
 
     /**
