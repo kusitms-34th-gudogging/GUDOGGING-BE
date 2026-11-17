@@ -19,4 +19,13 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
           and s.serviceCatalog is not null
         """)
     List<UUID> findActiveServiceIdsByUser(@Param("user") User user);
+
+    @Query("""
+        select s
+        from Subscription s
+        left join fetch s.serviceCatalog
+        where s.user = :user
+          and s.deleted = false
+        """)
+    List<Subscription> findAllWithServiceByUser(@Param("user") User user);
 }
