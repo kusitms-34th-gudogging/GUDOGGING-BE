@@ -1,0 +1,32 @@
+# 테스트 프로필 (@ActiveProfiles("test")). application.yaml 위에 덮어씀.
+# .env·MySQL 없이 @SpringBootTest 컨텍스트를 띄우기 위한 설정. 모든 값은 테스트 전용 더미 (실제 환경과 무관)
+spring:
+  datasource:
+    url: jdbc:h2:mem:gudogging;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+    hibernate:
+      ddl-auto: create-drop
+
+google:
+  client-ids: test-dummy-client-id
+
+# 생성자에서 형식을 검증하므로 형식은 맞춘 더미 값 (EC P-256 PKCS#8 Base64)
+apple:
+  client-id: test.dummy.client.id
+  team-id: TESTDUMMYTEAM
+  key-id: TESTDUMMYKEY
+  private-key: MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgqtDuMNP8xoz8/NQ6as/jllrRX5eoGWfPnRh08l6eX8ShRANCAASdwLg+BoViKDNNOnQ7asy7oWTlX0r7KpoF5j3qSrw0VuMsjjuPM9cOjltBJop2OxLNbWHVZe7oPcbE01F1n9A7
+
+# Base64, 디코딩 후 정확히 32바이트
+encryption:
+  key: VPsOkCvWV+dJ66Bme5PIrIT1t7LOtgWUDLnl9BDNQNM=
+
+# Base64, 디코딩 후 32바이트 이상
+jwt:
+  secret: dGVzdC1vbmx5LWR1bW15LXNlY3JldC1rZXktbm90LWZvci1wcm9kdWN0aW9uLTAxMjM0NTY3ODk=
