@@ -59,4 +59,16 @@ public class ServiceCatalog extends BaseEntity {
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
 
+    public static ServiceCatalog create(
+        String name,
+        String nameEn,
+        String searchKeywords,
+        Category category,
+        String logoUrl,
+        int sortOrder
+    ) {
+        return new ServiceCatalog(name, nameEn, searchKeywords, category, logoUrl,
+            null, null, null, null, sortOrder, true);
+    }
+
 }
