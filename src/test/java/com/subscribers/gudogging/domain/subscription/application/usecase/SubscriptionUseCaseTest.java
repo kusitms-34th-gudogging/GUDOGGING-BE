@@ -340,6 +340,25 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("동시 등록으로 중복 조회를 통과했어도 저장할 때 같은 서비스의 ACTIVE 구독과 충돌하면 DUPLICATE_SUBSCRIPTION 예외를 던진다")
+        void throwsWhenActiveSubscriptionConflictsOnSave() {
+            // given — 다른 요청이 먼저 저장해 DB 고유 제약(uk_subscriptions_user_active_service)에 걸린 상황
+            givenUser();
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId())))
+                .willReturn(List.of(netflix));
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+            given(subscriptionCreateService.createSubscriptions(any()))
+                .willThrow(new DuplicateSubscriptionException());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.createSubscriptions(userId,
+                request(catalogItem(netflix, null), customItem("동네 헬스장"))))
+                .isInstanceOf(DuplicateSubscriptionException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.DUPLICATE_SUBSCRIPTION);
+        }
+
+        @Test
         @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 저장하지 않는다")
         void throwsWhenUserNotFound() {
             // given
