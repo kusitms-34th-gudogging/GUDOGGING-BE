@@ -169,9 +169,11 @@ technical_spec:
         fields: "cancel_url, object_particle"
         schema_change: "cancel_guide (TEXT), cancel_notice (VARCHAR 255) 필드 제거. cancel_guide_verified_on은 만들지 않음"
         migration_note: >
-          ddl-auto=update는 컬럼을 지우지 않음 → 기존 DB(로컬·dev·운영)에서 수동 실행:
+          ddl-auto=update는 컬럼을 지우지 않음. 두 컬럼은 NULL 허용이라 남아 있어도 새 버전 동작에 영향이 없으므로 정리용으로만 삭제한다.
+          실행 시점: 두 컬럼을 매핑하는 구버전 인스턴스가 모두 종료된 뒤(= 새 버전 배포 완료 후). 배포 전에 실행하지 않는다.
+          삭제 후에는 구버전으로 롤백해도 컬럼 · 데이터가 복구되지 않으므로 롤백 가능 기간이 끝난 뒤 실행한다.
           ALTER TABLE services DROP COLUMN cancel_guide, DROP COLUMN cancel_notice;
-          (운영 validate는 남은 컬럼이 있어도 통과하므로 배포를 막지 않음)
+          (운영은 아직 services 테이블이 없어 해당 없음 — 최초 생성 시 두 컬럼 없이 만들어짐. validate는 남은 컬럼이 있어도 통과)
 
   error_codes:
     domain_range: "404xx (subscription, feat/#28에서 확정). 403xx는 catalog(40301 SERVICE_NOT_FOUND)"
