@@ -26,6 +26,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Del
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
@@ -1131,6 +1132,251 @@ class SubscriptionUseCaseTest {
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService, subscriptionCheckGetService,
                 subscriptionCheckCancelReasonGetService, notificationGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("getCancelGuide")
+    class GetCancelGuide {
+
+        private static final String APP_STORE_URL = "https://apps.apple.com/account/subscriptions";
+        private static final String GOOGLE_PLAY_URL = "https://play.google.com/store/account/subscriptions";
+        private static final String WEB_CAUTION = "해지해도 남은 기간까지는 혜택을 쓸 수 있어요";
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+
+        private ServiceCatalog catalog(String name, String cancelUrl, String objectParticle) {
+            ServiceCatalog service = ServiceCatalog.create(name, null, null, Category.VIDEO_OTT,
+                "https://logo.example.com/" + name + ".png", cancelUrl, 1);
+            ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(service, "objectParticle", objectParticle);
+            return service;
+        }
+
+        private Subscription fromCatalog(ServiceCatalog service, PaymentMethod paymentMethod) {
+            Subscription subscription = Subscription.createFromCatalog(user, service, service.getCategory(), 13500, 1,
+                BillingCycleUnit.MONTH, LocalDate.now().plusDays(5), paymentMethod, RegistrationSource.MANUAL);
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            return subscription;
+        }
+
+        private Subscription custom(String name, PaymentMethod paymentMethod) {
+            Subscription subscription = Subscription.createCustom(user, name, Category.ETC, 9900, 1,
+                BillingCycleUnit.MONTH, LocalDate.now().plusDays(5), paymentMethod, RegistrationSource.MANUAL);
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            return subscription;
+        }
+
+        private CancelGuideResponse getGuideOf(Subscription subscription) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscription.getId()))
+                .willReturn(Optional.of(subscription));
+            return subscriptionUseCase.getCancelGuide(userId, subscription.getId());
+        }
+
+        @Test
+        @DisplayName("APP_STORE면 X-01 steps · caution과 App Store 구독 관리 링크를 반환한다")
+        void returnsAppStoreGuide() {
+            // given
+            Subscription subscription = fromCatalog(catalog("티빙", "https://www.tving.com/cancel", null),
+                PaymentMethod.APP_STORE);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.serviceName()).isEqualTo("티빙");
+            assertThat(result.paymentMethod()).isEqualTo(PaymentMethod.APP_STORE);
+            assertThat(result.steps()).containsExactly(
+                "아래 버튼을 눌러 App Store 구독 관리 화면을 열어요",
+                "목록에서 티빙을 선택해요",
+                "'구독 취소'를 누르면 끝!");
+            assertThat(result.cancelUrl()).isEqualTo(APP_STORE_URL);
+            assertThat(result.caution()).isEqualTo("다른 Apple ID로 결제했거나 가족 공유 중인 구독은 목록에 보이지 않을 수 있어요");
+        }
+
+        @Test
+        @DisplayName("GOOGLE_PLAY면 X-03 steps · caution과 Google Play 정기 결제 링크를 반환한다")
+        void returnsGooglePlayGuide() {
+            // given
+            Subscription subscription = fromCatalog(catalog("티빙", "https://www.tving.com/cancel", null),
+                PaymentMethod.GOOGLE_PLAY);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.paymentMethod()).isEqualTo(PaymentMethod.GOOGLE_PLAY);
+            assertThat(result.steps()).containsExactly(
+                "아래 버튼을 눌러 Google Play 정기 결제 화면을 열어요",
+                "목록에서 티빙을 선택해요",
+                "'정기 결제 취소'를 누르면 끝!");
+            assertThat(result.cancelUrl()).isEqualTo(GOOGLE_PLAY_URL);
+            assertThat(result.caution()).isEqualTo("다른 Google 계정으로 결제한 구독은 목록에 보이지 않을 수 있어요");
+        }
+
+        @Test
+        @DisplayName("WEB_DIRECT이고 서비스 cancelUrl이 있으면 X-04와 그 cancelUrl을 반환한다")
+        void returnsWebGuideWithServiceCancelUrl() {
+            // given
+            String cancelUrl = "https://www.netflix.com/cancelplan";
+            Subscription subscription = fromCatalog(catalog("넷플릭스", cancelUrl, null), PaymentMethod.WEB_DIRECT);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.steps()).containsExactly(
+                "아래 버튼을 눌러 해지 페이지로 이동해요",
+                "해지를 완료해요",
+                "돌아와서 '해지 완료'를 눌러요");
+            assertThat(result.cancelUrl()).isEqualTo(cancelUrl);
+            assertThat(result.caution()).isEqualTo(WEB_CAUTION);
+        }
+
+        @Test
+        @DisplayName("WEB_DIRECT이고 cancelUrl이 없으면 X-05, cancelUrl = null, steps에 서비스명이 들어간다")
+        void returnsWebGuideWithoutCancelUrl() {
+            // given
+            Subscription subscription = fromCatalog(catalog("넷플릭스", null, null), PaymentMethod.WEB_DIRECT);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.steps()).containsExactly(
+                "넷플릭스 앱이나 웹에서 해지 메뉴로 이동해요",
+                "해지를 완료해요",
+                "돌아와서 '해지했어요'를 눌러요");
+            assertThat(result.cancelUrl()).isNull();
+            assertThat(result.caution()).isEqualTo(WEB_CAUTION);
+        }
+
+        @Test
+        @DisplayName("WEB_DIRECT이고 cancelUrl이 공백뿐이면 X-05로 보고 cancelUrl = null을 반환한다")
+        void treatsBlankCancelUrlAsMissing() {
+            // given
+            Subscription subscription = fromCatalog(catalog("넷플릭스", " ", null), PaymentMethod.WEB_DIRECT);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.cancelUrl()).isNull();
+            assertThat(result.steps().get(0)).isEqualTo("넷플릭스 앱이나 웹에서 해지 메뉴로 이동해요");
+        }
+
+        @Test
+        @DisplayName("직접 입력 구독(serviceCatalog = null) + WEB_DIRECT면 X-05를 반환한다")
+        void returnsWebGuideWithoutCancelUrlForCustomSubscription() {
+            // given
+            Subscription subscription = custom("동네 헬스장", PaymentMethod.WEB_DIRECT);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.serviceName()).isEqualTo("동네 헬스장");
+            assertThat(result.steps().get(0)).isEqualTo("동네 헬스장 앱이나 웹에서 해지 메뉴로 이동해요");
+            assertThat(result.cancelUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("직접 입력 구독도 APP_STORE면 서비스명과 조사가 들어간 X-01을 반환한다")
+        void returnsAppStoreGuideForCustomSubscription() {
+            // given
+            Subscription subscription = custom("동네 헬스장", PaymentMethod.APP_STORE);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.steps().get(1)).isEqualTo("목록에서 동네 헬스장을 선택해요");
+            assertThat(result.cancelUrl()).isEqualTo(APP_STORE_URL);
+        }
+
+        @Test
+        @DisplayName("받침 있는 서비스명은 '을'(티빙을), 없는 서비스명은 '를'(넷플릭스를)을 쓴다")
+        void choosesParticleByFinalConsonant() {
+            // given
+            Subscription withFinalConsonant = fromCatalog(catalog("티빙", null, null), PaymentMethod.APP_STORE);
+            Subscription withoutFinalConsonant = fromCatalog(catalog("쿠팡플레이", null, null), PaymentMethod.APP_STORE);
+            Subscription endingWithEu = fromCatalog(catalog("넷플릭스", null, null), PaymentMethod.APP_STORE);
+
+            // when & then
+            assertThat(getGuideOf(withFinalConsonant).steps().get(1)).isEqualTo("목록에서 티빙을 선택해요");
+            assertThat(getGuideOf(withoutFinalConsonant).steps().get(1)).isEqualTo("목록에서 쿠팡플레이를 선택해요");
+            assertThat(getGuideOf(endingWithEu).steps().get(1)).isEqualTo("목록에서 넷플릭스를 선택해요");
+        }
+
+        @Test
+        @DisplayName("영문으로 끝나는 서비스명은 services.object_particle 값을 쓴다")
+        void usesServiceObjectParticleForEnglishName() {
+            // given
+            Subscription subscription = fromCatalog(catalog("ChatGPT Plus", null, "을"), PaymentMethod.GOOGLE_PLAY);
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.steps().get(1)).isEqualTo("목록에서 ChatGPT Plus을 선택해요");
+        }
+
+        @Test
+        @DisplayName("영문으로 끝나는 서비스명에 object_particle이 없으면 '를'을 쓴다")
+        void defaultsToReulForEnglishNameWithoutObjectParticle() {
+            // given
+            Subscription catalogSubscription = fromCatalog(catalog("YouTube Premium", null, null),
+                PaymentMethod.APP_STORE);
+            Subscription customSubscription = custom("Notion", PaymentMethod.APP_STORE);
+
+            // when & then
+            assertThat(getGuideOf(catalogSubscription).steps().get(1)).isEqualTo("목록에서 YouTube Premium를 선택해요");
+            assertThat(getGuideOf(customSubscription).steps().get(1)).isEqualTo("목록에서 Notion를 선택해요");
+        }
+
+        @Test
+        @DisplayName("구독 종료(ENDED) 구독이어도 해지 안내를 반환한다")
+        void returnsGuideForEndedSubscription() {
+            // given
+            Subscription subscription = fromCatalog(catalog("티빙", null, null), PaymentMethod.APP_STORE);
+            subscription.cancel(LocalDate.now());
+
+            // when
+            CancelGuideResponse result = getGuideOf(subscription);
+
+            // then
+            assertThat(result.cancelUrl()).isEqualTo(APP_STORE_URL);
+        }
+
+        @Test
+        @DisplayName("구독이 없거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND 예외를 던진다")
+        void throwsWhenSubscriptionNotFound() {
+            // given
+            UUID subscriptionId = UUID.randomUUID();
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscriptionId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.getCancelGuide(userId, subscriptionId))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 구독을 조회하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.getCancelGuide(userId, UUID.randomUUID()))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionGetService);
         }
     }
 }
