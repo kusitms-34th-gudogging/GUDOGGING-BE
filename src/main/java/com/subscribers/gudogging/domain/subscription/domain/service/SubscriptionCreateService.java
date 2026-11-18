@@ -23,21 +23,15 @@ public class SubscriptionCreateService {
         try {
             return subscriptionRepository.saveAllAndFlush(subscriptions);
         } catch (DataIntegrityViolationException e) {
-            if (isActiveServiceConflict(e)) {
-                throw new DuplicateSubscriptionException();
+            for (Throwable cause = e; cause != null; cause = cause.getCause()) {
+                if (cause instanceof ConstraintViolationException violation
+                    && violation.getConstraintName() != null
+                    && violation.getConstraintName().toLowerCase(Locale.ROOT)
+                    .contains(Subscription.ACTIVE_SERVICE_UNIQUE_CONSTRAINT)) {
+                    throw new DuplicateSubscriptionException();
+                }
             }
             throw e;
         }
-    }
-
-    private boolean isActiveServiceConflict(DataIntegrityViolationException e) {
-        for (Throwable cause = e; cause != null; cause = cause.getCause()) {
-            if (cause instanceof ConstraintViolationException violation) {
-                String constraintName = violation.getConstraintName();
-                return constraintName != null && constraintName.toLowerCase(Locale.ROOT)
-                    .contains(Subscription.ACTIVE_SERVICE_UNIQUE_CONSTRAINT);
-            }
-        }
-        return false;
     }
 }
