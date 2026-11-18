@@ -1,7 +1,7 @@
 package com.subscribers.gudogging.domain.catalog.application.usecase;
 
 import com.subscribers.gudogging.domain.catalog.application.dto.request.ServiceSeedRow;
-import com.subscribers.gudogging.domain.catalog.application.dto.response.ServiceResponse;
+import com.subscribers.gudogging.domain.catalog.application.dto.response.ServiceListResponse;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.search.ServiceSearchKeyword;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogCreateService;
@@ -35,7 +35,7 @@ public class CatalogUseCase {
     /**
      * 회원이 이미 구독 중(ACTIVE)인 서비스를 제외한 노출 서비스 중에서 검색어로 매칭·정렬한다. 검색어가 비어 있으면 전체 목록을 반환한다.
      */
-    public List<ServiceResponse> getServices(UUID userId, String keyword) {
+    public ServiceListResponse getServices(UUID userId, String keyword) {
         User user = userGetService.findUserById(userId)
             .orElseThrow(UserNotFoundException::new);
 
@@ -44,9 +44,7 @@ public class CatalogUseCase {
             .filter(service -> !registeredServiceIds.contains(service.getId()))
             .toList();
 
-        return ServiceSearchKeyword.from(keyword).search(candidates).stream()
-            .map(ServiceResponse::from)
-            .toList();
+        return ServiceListResponse.from(ServiceSearchKeyword.from(keyword).search(candidates));
     }
 
     /**
@@ -67,7 +65,7 @@ public class CatalogUseCase {
         for (ServiceSeedRow row : rows) {
             ServiceCatalog existing = servicesByName.get(row.name());
             if (existing == null) {
-                ServiceCatalog created = ServiceCatalog.create(row.name(), null, null, row.category(), row.logoUrl(),
+                ServiceCatalog created = ServiceCatalog.create(row.name(), null, null, row.category(), row.logoUrl(), null,
                     row.cancelUrl(), row.sortOrder());
                 newServices.add(created);
                 servicesByName.put(row.name(), created);

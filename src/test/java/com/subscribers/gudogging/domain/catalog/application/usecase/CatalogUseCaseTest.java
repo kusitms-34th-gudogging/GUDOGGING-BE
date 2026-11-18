@@ -60,15 +60,20 @@ class CatalogUseCaseTest {
 
     private static ServiceCatalog service(String name, String nameEn, String searchKeywords, Category category,
                                           int sortOrder) {
+        return service(name, nameEn, searchKeywords, category, null, sortOrder);
+    }
+
+    private static ServiceCatalog service(String name, String nameEn, String searchKeywords, Category category,
+                                          Integer defaultAmount, int sortOrder) {
         ServiceCatalog service = ServiceCatalog.create(name, nameEn, searchKeywords, category,
-            "https://logo.example.com/" + sortOrder + ".png", sortOrder);
+            "https://logo.example.com/" + sortOrder + ".png", defaultAmount, sortOrder);
         // id는 JPA 저장 시 생성되므로, 구독 중 서비스 제외(ID 비교) 검증을 위해 테스트에서만 지정한다.
         ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
         return service;
     }
 
     private static List<String> namesOf(List<ServiceResponse> responses) {
-        return responses.stream().map(ServiceResponse::name).toList();
+        return responses.stream().map(ServiceResponse::serviceName).toList();
     }
 
     @Nested
@@ -78,7 +83,8 @@ class CatalogUseCaseTest {
         private final UUID userId = UUID.randomUUID();
         private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
 
-        private final ServiceCatalog netflix = service("넷플릭스", "Netflix", "넷플,netflix", Category.VIDEO_OTT, 1);
+        private final ServiceCatalog netflix = service("넷플릭스", "Netflix", "넷플,netflix", Category.VIDEO_OTT, 13500,
+            1);
         private final ServiceCatalog youtube = service("유튜브 프리미엄", "YouTube Premium", "유튭,youtube", Category.VIDEO_OTT,
             2);
         private final ServiceCatalog melon = service("멜론", "Melon", null, Category.MUSIC, 3);
@@ -91,13 +97,13 @@ class CatalogUseCaseTest {
         }
 
         @Test
-        @DisplayName("keyword가 null이면 노출 서비스 전체를 조회 순서 그대로 반환한다")
+        @DisplayName("keyword가 null이면 노출 서비스 전체를 조회 순서 그대로 반환한다 (serviceName·category·logoUrl·defaultAmount 매핑)")
         void returnsAllServicesWhenKeywordIsNull() {
             // given
             givenServices(Set.of(), netflix, youtube, melon, spotify);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, null);
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, null).services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("넷플릭스", "유튜브 프리미엄", "멜론", "스포티파이");
@@ -105,6 +111,22 @@ class CatalogUseCaseTest {
             assertThat(first.serviceId()).isEqualTo(netflix.getId());
             assertThat(first.category()).isEqualTo(Category.VIDEO_OTT);
             assertThat(first.logoUrl()).isEqualTo(netflix.getLogoUrl());
+            assertThat(first.defaultAmount()).isEqualTo(13500);
+        }
+
+        @Test
+        @DisplayName("기본 금액이 없는 서비스는 defaultAmount = null로 반환한다")
+        void returnsNullDefaultAmountWhenServiceHasNoPrice() {
+            // given
+            givenServices(Set.of(), melon);
+
+            // when
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, null).services();
+
+            // then
+            assertThat(responses).singleElement()
+                .extracting(ServiceResponse::defaultAmount)
+                .isNull();
         }
 
         @Test
@@ -114,7 +136,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "   ");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "   ").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("넷플릭스", "유튜브 프리미엄", "멜론");
@@ -127,7 +149,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(netflix.getId(), melon.getId()), netflix, youtube, melon, spotify);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, null);
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, null).services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("유튜브 프리미엄", "스포티파이");
@@ -140,7 +162,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(netflix.getId()), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "넷플");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "넷플").services();
 
             // then
             assertThat(responses).isEmpty();
@@ -153,7 +175,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "넷플");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "넷플").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("넷플릭스");
@@ -166,7 +188,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "ㄴㅍ");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "ㄴㅍ").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("넷플릭스");
@@ -179,7 +201,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "NETFLIX");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "NETFLIX").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("넷플릭스");
@@ -192,7 +214,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "유튭");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "유튭").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("유튜브 프리미엄");
@@ -205,7 +227,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon, spotify);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "음악");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "음악").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("멜론", "스포티파이");
@@ -221,7 +243,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), contains, prefix, exact);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "티비");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "티비").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("티비", "티비플러스", "에이티비");
@@ -236,7 +258,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), laterOrder, earlierOrder);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "티비");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "티비").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("티비나라", "티비플러스");
@@ -251,7 +273,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), chosungContains, chosungPrefix);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "ㅌㅂ");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "ㅌㅂ").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("타블로", "에이티비");
@@ -266,7 +288,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), categoryOnly, nameMatch);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "기타");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "기타").services();
 
             // then
             assertThat(namesOf(responses)).containsExactly("기타서비스", "티비");
@@ -279,7 +301,7 @@ class CatalogUseCaseTest {
             givenServices(Set.of(), netflix, youtube, melon);
 
             // when
-            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "존재하지않는서비스");
+            List<ServiceResponse> responses = catalogUseCase.getServices(userId, "존재하지않는서비스").services();
 
             // then
             assertThat(responses).isEmpty();
@@ -312,7 +334,7 @@ class CatalogUseCaseTest {
 
         private ServiceCatalog existing(String name, String nameEn, String searchKeywords, Category category,
                                         String logoUrl, String cancelUrl, int sortOrder) {
-            ServiceCatalog service = ServiceCatalog.create(name, nameEn, searchKeywords, category, logoUrl, cancelUrl,
+            ServiceCatalog service = ServiceCatalog.create(name, nameEn, searchKeywords, category, logoUrl, null, cancelUrl,
                 sortOrder);
             ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
             return service;

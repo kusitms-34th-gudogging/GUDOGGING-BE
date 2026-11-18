@@ -1,6 +1,6 @@
 # ServiceCatalog Entity
-# Last Updated: 2026-11-17
-# Source: docs/ERD.md v1.1 §4.3 services
+# Last Updated: 2026-11-18
+# Source: docs/ERD.md v1.2 §4.3 services
 
 entity: SERVICE_CATALOG
 description: 사전 등록 서비스 (서비스 DB). 구독 등록 시 서비스 목록·검색(A-02), 카테고리 기본값(A-03), 웹·직접 결제 해지 안내(X-04/X-05)에 사용하는 마스터 데이터. 운영자가 관리합니다.
@@ -30,6 +30,10 @@ columns:
       type: VARCHAR(500)
       nullable: true
       description: "서비스 로고 URL. NULL이면 클라이언트 기본 이미지"
+  - default_amount:
+      type: INT
+      nullable: true
+      description: "사전 등록 요금제 기본 금액(원). 구독 정보 입력(A-03) 결제 금액 기본값. NULL이면 기본값 없음 (CATALOG-001 응답 defaultAmount)"
   - object_particle:
       type: VARCHAR(1)
       nullable: true
@@ -70,14 +74,14 @@ constraints:
   - "조회는 항상 deleted = false AND is_active = true 조건"
 
 business_logic:
-  - "create(name, nameEn, searchKeywords, category, logoUrl, sortOrder): 정적 팩토리. object_particle, cancel_url은 NULL, is_active = true. 주로 UseCase 테스트 픽스처에 사용 (테스트 가이드: 엔티티는 정적 팩토리로 생성)"
-  - "create(name, nameEn, searchKeywords, category, logoUrl, cancelUrl, sortOrder): cancel_url을 지정하는 오버로드 (SUBSCRIPTION-006). 위 6개 인자 버전은 cancelUrl = null로 위임. 서비스 시드(services_seed.csv)는 nameEn·searchKeywords = null로 호출"
-  - "updateFromSeed(category, logoUrl, cancelUrl, sortOrder): 시드 CSV 동기화용 도메인 메서드. CSV에 있는 컬럼 4개만 갱신하고 나머지 컬럼은 유지 (SUBSCRIPTION-006)"
+  - "create(name, nameEn, searchKeywords, category, logoUrl, defaultAmount, sortOrder): 정적 팩토리. object_particle, cancel_url은 NULL, is_active = true. 주로 UseCase 테스트 픽스처에 사용 (테스트 가이드: 엔티티는 정적 팩토리로 생성)"
+  - "create(name, nameEn, searchKeywords, category, logoUrl, defaultAmount, cancelUrl, sortOrder): cancel_url을 지정하는 오버로드 (SUBSCRIPTION-006). 위 7개 인자 버전은 cancelUrl = null로 위임. 서비스 시드(services_seed.csv)는 nameEn·searchKeywords·defaultAmount = null로 호출"
+  - "updateFromSeed(category, logoUrl, cancelUrl, sortOrder): 시드 CSV 동기화용 도메인 메서드. CSV에 있는 컬럼 4개만 갱신하고 나머지 컬럼(default_amount 포함)은 유지 (SUBSCRIPTION-006)"
 
 notes:
   - "클래스명: 스프링 @Service 어노테이션과 이름이 겹치지 않도록 ServiceCatalog로 명명 (테이블명은 services 유지, @Table(name = \"services\"))"
   - "운영자가 SQL로 관리하는 마스터 데이터. 생성/수정 API는 MVP 범위 아님"
-  - "요금제·기본 가격은 다루지 않음. 결제 금액은 사용자가 직접 입력 (ERD 10.1 #7)"
+  - "요금제 테이블은 두지 않고 요금제 단위 행에 default_amount만 둠. A-03 결제 금액 기본값일 뿐 저장 금액은 사용자가 입력한 subscriptions.amount (ERD 10.1 #7, 2026-11-18 변경)"
   - "검색은 서비스 수가 적어 전체 목록을 메모리에 올려 애플리케이션에서 처리 (초성 검색 포함)"
   - "사용자가 이미 등록한(ACTIVE) 서비스는 A-02 목록에서 제외"
   - "서비스 검색(A-02)은 CATALOG-001에서 구현 — domain/catalog/domain/search/ServiceSearchKeyword (정규화·초성·점수 정렬), 조회는 ServiceCatalogRepository.findAllByIsActiveTrueAndDeletedFalseOrderBySortOrderAscNameAsc()"

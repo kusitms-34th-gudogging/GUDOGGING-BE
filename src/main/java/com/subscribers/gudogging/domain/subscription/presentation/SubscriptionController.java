@@ -5,10 +5,10 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Del
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
-import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import com.subscribers.gudogging.domain.subscription.presentation.response.SubscriptionResponseCode;
@@ -18,7 +18,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
-import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -210,12 +209,13 @@ public class SubscriptionController {
     }
 
     @Operation(
-        summary = "구독 직접 등록 (일괄)",
+        summary = "구독 일괄 등록 (직접 · 스크린샷 · Gmail 공통)",
         description = """
             **기능**
-            선택한 구독 확인 화면(A-04)의 'N개 구독 등록하기'에서 여러 구독을 한 번에 등록합니다 (registrationSource = MANUAL).
-            serviceId가 있으면 사전 등록 서비스로, 서비스명은 요청 name을 무시하고 서비스 목록의 이름을 사용합니다.
-            serviceId가 null이면 직접 입력 서비스로, name(앞뒤 공백 제거 후 1~30자)이 필수입니다.
+            선택한 구독 확인(A-04) · 스크린샷 등록 확인(A-09) · Gmail 등록 확인(A-13)의 'N개 구독 등록하기'에서 여러 구독을 한 번에 등록합니다.
+            등록 경로(source)는 구독의 등록 경로로 저장합니다.
+            serviceId가 있으면 사전 등록 서비스로, 서비스명은 요청 serviceName을 무시하고 서비스 목록의 이름을 사용합니다.
+            serviceId가 null이면 직접 입력 서비스로, serviceName(앞뒤 공백 제거 후 1~30자)이 필수입니다.
             하나라도 등록할 수 없으면 전체가 실패하며 아무것도 저장하지 않습니다.
             - 한 요청에 같은 serviceId가 2번 이상이면 40402(400)
             - 없거나 비활성인 serviceId가 있으면 40301(404)
@@ -224,36 +224,37 @@ public class SubscriptionController {
             - 회원이 없거나 탈퇴했으면 40201(404)
             
             **요청값**
+            - source (String, 필수): 등록 경로 (MANUAL, SCREENSHOT, GMAIL)
             - subscriptions (List, 필수): 등록할 구독 목록 (1~50개)
               - serviceId (UUID, 선택): 사전 등록 서비스 ID. 직접 입력 서비스는 null
-              - name (String, 직접 입력 시 필수): 서비스 이름 (최대 30자). serviceId가 있으면 무시
+              - serviceName (String, 직접 입력 시 필수): 서비스 이름 (최대 30자). serviceId가 있으면 무시
               - category (String, 필수): 카테고리 코드 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC)
               - amount (Integer, 필수): 결제 금액 (원, 1 이상)
               - billingCycleValue (Integer, 필수): 결제 주기 값 (1~31)
               - billingCycleUnit (String, 필수): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
-              - nextBillingOn (String, 필수): 다음 결제일 (yyyy-MM-dd, 오늘 이후)
+              - nextBillingDate (String, 필수): 다음 결제일 (yyyy-MM-dd, 오늘 이후)
               - paymentMethod (String, 필수): 결제 수단 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
             
-            **응답값** (요청 순서와 동일)
-            - subscriptionId (UUID): 구독 ID
-            - serviceId (UUID, nullable): 사전 등록 서비스 ID. 직접 입력 서비스는 null
-            - name (String): 서비스 이름
-            - logoUrl (String, nullable): 서비스 로고 URL. null이면 기본 이미지 사용
-            - category (String): 카테고리 코드
-            - amount (Integer): 결제 금액 (원)
-            - billingCycleValue (Integer): 결제 주기 값
-            - billingCycleUnit (String): 결제 주기 단위
-            - nextBillingOn (String): 다음 결제일 (yyyy-MM-dd)
-            - paymentMethod (String): 결제 수단
+            **응답값**
+            - createdCount (Integer): 등록된 구독 개수 — '등록된 구독 N'
+            - subscriptions (List): 방금 등록한 구독 목록 (요청 순서와 동일)
+              - subscriptionId (UUID): 구독 ID
+              - serviceName (String): 서비스 이름
+              - logoUrl (String, nullable): 서비스 로고 URL. null이면 기본 이미지 사용
+              - amount (Integer): 결제 금액 (원)
+              - billingCycleValue (Integer): 결제 주기 값
+              - billingCycleUnit (String): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
+              - nextBillingDate (String): 다음 결제일 (yyyy-MM-dd)
+              - paymentMethod (String): 결제 수단 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
             """
     )
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public CommonResponse<List<SubscriptionResponse>> createSubscriptions(
+    public CommonResponse<SubscriptionCreationResponse> createSubscriptions(
         @CurrentUserId UUID userId,
         @RequestBody @Valid CreateSubscriptionsRequest request
     ) {
-        List<SubscriptionResponse> response = subscriptionUseCase.createSubscriptions(userId, request);
+        SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, response);
     }
 
