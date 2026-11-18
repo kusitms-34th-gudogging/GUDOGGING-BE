@@ -1,6 +1,6 @@
 # Subscription Entity
-# Last Updated: 2026-11-18 (active_service_id 계산 컬럼 + 동시 등록 고유 제약)
-# Source: docs/ERD.md v1.1 §4.4 subscriptions, §6 계산 규칙
+# Last Updated: 2026-11-19 (billing_anchor_changed_on 제거 → subscription_billing_histories, ERD v1.7)
+# Source: docs/ERD.md v1.7 §4.4 subscriptions, §4.4.1 subscription_billing_histories, §6 계산 규칙
 
 entity: SUBSCRIPTION
 description: 사용자가 등록한 구독. 결제 금액·주기·기준 결제일·결제한 곳과 구독 상태(구독 중/구독 종료)를 보유하며, 결제일·환산 금액은 저장하지 않고 계산합니다.
@@ -59,11 +59,7 @@ columns:
   - billing_anchor_on:
       type: DATE
       nullable: false
-      description: "결제 기준일. 사용자가 등록·편집 때 입력한 '다음 결제일'(과거 날짜 불가). 다음/이전 결제일은 이 날짜 ± k × 주기로 계산하되, billing_anchor_changed_on(NULL이면 등록일)부터 이 날짜 전까지는 결제일이 아님"
-  - billing_anchor_changed_on:
-      type: DATE
-      nullable: true
-      description: "결제 기준일을 마지막으로 정한 날(updatePaymentInfo의 today). NULL이면 등록일(startedOn). 그보다 앞선 − k 결제일은 수정 전 결제 기록으로 유지"
+      description: "현재 조건의 결제 기준일. 사용자가 등록·편집 때 입력한 '다음 결제일'(과거 날짜 불가). 결제일은 이 날짜 + k × 주기(k ≥ 0)로 계산하고 그 전에는 결제일이 없음. 수정 전 조건의 결제는 subscription_billing_histories(subscription_billing_history.yaml)"
   - payment_method:
       type: VARCHAR(20)
       nullable: false
@@ -127,23 +123,23 @@ constraints:
 business_logic:
   - "createFromCatalog(user, serviceCatalog, category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod, registrationSource): 사전 등록 서비스 정적 팩토리. name = serviceCatalog.name 스냅샷, status = ACTIVE"
   - "createCustom(user, name, category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod, registrationSource): 직접 입력 서비스 정적 팩토리. serviceCatalog = null, status = ACTIVE"
-  - "updatePaymentInfo(category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod, today): 구독 정보 편집 (M-06). billingAnchorChangedOn = today"
+  - "updatePaymentInfo(category, amount, cycleValue, cycleUnit, nextBillingDate, paymentMethod, today) → Optional<SubscriptionBillingHistory>: 구독 정보 편집 (M-06). 금액 · 주기 · 다음 결제일(= nextBillingOn(today))이 그대로면 category · paymentMethod만 바꾸고 기준일 유지(월말 유지) · 이력 없음. 바뀌면 지금 조건으로 결제한 적이 있을 때(billingAnchorOn ≤ today, 새 다음 결제일이 today면 ≤ today − 1) 지금 조건을 ended_on = today 이력으로 반환하고 billingAnchorOn = nextBillingDate. UseCase가 SubscriptionBillingHistoryCreateService로 저장"
   - "updateCustomName(name): 직접 입력 서비스명 수정 (M-06)"
   - "changeSteadyUse(enabled): 꾸준히 쓰는 구독 토글 (M-03)"
   - "cancel(today): 해지 완료 (X-06). status = ENDED, canceledOn = today"
   - "softDelete(): 구독 삭제 (M-02.3, C-04) → BaseEntity 위임"
   - "monthlyAmount(): 월 환산 금액 (ERD 6.1) — MONTH n: amount/n · YEAR n: amount/(12n) · WEEK n: amount×52/(12n) · DAY n: amount×365/(12n), 원 단위 반올림(HALF_UP)"
-  - "nextBillingOn(base): billingAnchorOn + k × 주기(k는 음수 포함 정수) 중 base 이상인 가장 이른 날짜 (ERD 6.2). 매번 기준일에서 계산(MONTH · YEAR는 plusMonths)해 월말 결제일 유지"
+  - "billingCycle(): 현재 조건 BillingCycle(billingCycleValue, billingCycleUnit, billingAnchorOn) — domain/subscription/domain/billing. 결제일 = 기준일 + k × 주기(k ≥ 0), 매번 기준일에서 계산(MONTH · YEAR는 plusMonths)해 월말 결제일 유지. countBetween은 반복 없이 인덱스 차이로 계산"
+  - "nextBillingOn(base): 현재 조건으로 base 이상인 첫 결제일 (ERD 6.2). 이력은 모두 오늘까지 끝났으므로 오늘 이후 다음 결제일(목록 · 수정 응답)은 이 값"
   - "startedOn(): 구독 시작일 = created_at 날짜"
-  - "billingDatesBetween(from, to): from ~ to (양끝 포함) 사이 결제일 목록"
-  - "paidCount(today) / totalPaidAmount(today): 등록일 ~ (ENDED면 canceledOn, ACTIVE면 today) 결제 횟수 / 횟수 × amount"
+  - "지금까지 결제 횟수 · 금액과 과거 날짜 기준 다음 결제일은 BillingSchedule.of(subscription, 결제 조건 이력) — paidCount(today) · totalPaidAmount(today)(결제일마다 그때 금액) · nextBillingOn(base)(base가 이력 ended_on 전이면 그 조건부터). 엔티티에 두지 않음 (이력 필요)"
 
 
 notes:
   - "구독 시작일 컬럼 없음 — 등록일(created_at)을 사용 (ERD 10.1 #2)"
   - "직접 일괄 등록(A-04 → A-05)은 SUBSCRIPTION-001에서 구현 — POST /api/v1/subscriptions, registration_source = MANUAL, 전체 성공/전체 실패, SubscriptionCreateService.createSubscriptions → saveAllAndFlush()"
   - "재등록(M-05 '재등록하기'): 기존 ENDED 행은 그대로 두고 새 행 생성 (시작일 = 재등록일)"
-  - "구독 삭제 시 해당 subscription_checks, subscription_check_cancel_reasons, notifications도 함께 Soft Delete (ERD 8장) — UseCase에서 각 도메인 서비스를 통해 처리"
+  - "구독 삭제 시 해당 subscription_checks, subscription_check_cancel_reasons, notifications, subscription_billing_histories도 함께 Soft Delete (ERD 8장) — UseCase에서 각 도메인 서비스를 통해 처리"
   - "홈 연 금액(H-02)은 예외적으로 등록일과 관계없이 올해 1/1~12/31 전체를 계산하며 ACTIVE 구독만 포함 (ERD 6.3)"
   - "저장하지 않는 값: 다음 결제일, D-day, 월/연 환산 금액, 결제 예정액, 캘린더 결제일 (ERD 6장)"
   - "다음 결제일·기간 내 결제일·월 환산·지금까지 결제 금액은 SUBSCRIPTION-002에서 구현 (위 business_logic). 연 환산·캘린더 상태·해지 안내 분기 계산(ERD 6장)은 기능 구현 시 추가. 계산·검색·표시 로직은 엔티티에 두지 않음 — 해당 기능 스펙 구현 시 추가 (2026-11-16 결정, 기존 User/Post 방식)"

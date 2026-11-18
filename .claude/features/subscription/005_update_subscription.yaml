@@ -1,6 +1,6 @@
 # Feature Specification
 # Status: Draft
-# Last Updated: 2026-11-17
+# Last Updated: 2026-11-19
 
 meta:
   id: SUBSCRIPTION-005
@@ -97,7 +97,7 @@ technical_spec:
       action: "@CurrentUserId UUID userId, @PathVariable UUID subscriptionId, @Valid @RequestBody UpdateSubscriptionRequest → SubscriptionUseCase.updateSubscription(userId, subscriptionId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_UPDATED, data)"
     - step: 2
       layer: UseCase (SubscriptionUseCase.updateSubscription)
-      action: "회원 조회 → 본인 구독 조회 → ACTIVE 검사 → updatePaymentInfo → (직접 입력 + serviceName 있음) updateCustomName → 변경 감지로 저장 → SubscriptionBillingResponse"
+      action: "회원 조회 → 본인 구독 조회 → ACTIVE 검사 → updatePaymentInfo → (반환된 결제 조건 이력이 있으면) SubscriptionBillingHistoryCreateService.createBillingHistory → (직접 입력 + serviceName 있음) updateCustomName → 변경 감지로 저장 → SubscriptionBillingResponse"
       transaction: true (@Transactional)
     - step: 3
       layer: Domain Service (UserGetService)
@@ -111,7 +111,10 @@ technical_spec:
     - step: 6
       layer: Domain (Subscription) — 기존 메서드
       action: >
-        updatePaymentInfo(category, amount, billingCycleValue, billingCycleUnit, nextBillingDate → billingAnchorOn, paymentMethod, today → billingAnchorChangedOn).
+        [변경 2026-11-19] updatePaymentInfo(category, amount, billingCycleValue, billingCycleUnit, nextBillingDate, paymentMethod, today) → Optional<SubscriptionBillingHistory>.
+        금액 · 주기 · 다음 결제일(= 지금 nextBillingOn(today))이 그대로면 category · paymentMethod만 바꾸고 기준일 유지(월말 유지) · 이력 없음.
+        바뀌면 지금 조건으로 결제한 적이 있을 때(billingAnchorOn ≤ today, 새 다음 결제일이 today면 ≤ today − 1) 지금 조건을 ended_on = today 이력으로 반환하고, nextBillingDate를 새 billingAnchorOn으로 저장 (ERD 4.4.1 v1.7).
+        결제일 당일 수정: 새 다음 결제일이 뒤면 오늘 결제는 수정 전 조건, 오늘이면 새 조건으로 1번.
         serviceCatalog == null AND request.serviceName != null 이면 updateCustomName(serviceName.strip())
     - step: 7
       layer: Domain (Subscription)
@@ -122,7 +125,10 @@ technical_spec:
       - name: Subscription
         action: Update
         table: subscriptions
-        fields: "category, amount, billing_cycle_value, billing_cycle_unit, billing_anchor_on, billing_anchor_changed_on, payment_method, name(직접 입력만)"
+        fields: "category, amount, billing_cycle_value, billing_cycle_unit, billing_anchor_on, payment_method, name(직접 입력만)"
+      - name: SubscriptionBillingHistory
+        action: "Create — [변경 2026-11-19] 수정 전 조건으로 결제한 적이 있을 때만 1행"
+        table: subscription_billing_histories
       - name: User
         action: Read
         table: users
@@ -151,7 +157,7 @@ technical_spec:
     - target: "SubscriptionResponseCode"
       change: "SUBSCRIPTION_UPDATED(200) 추가"
     - target: "Subscription (엔티티)"
-      change: "[변경 2026-11-18] billing_anchor_changed_on 컬럼 추가, updatePaymentInfo에 today 인자 추가 (ERD v1.4). updateCustomName은 그대로"
+      change: "[변경 2026-11-18] billing_anchor_changed_on 컬럼 추가, updatePaymentInfo에 today 인자 추가 (ERD v1.4). [변경 2026-11-19] billing_anchor_changed_on 제거, updatePaymentInfo가 Optional<SubscriptionBillingHistory> 반환 — SubscriptionBillingHistory 엔티티 · Repository · Get/CreateService 신규 (ERD v1.7). updateCustomName은 그대로"
 
   security_config:
     note: "변경 없음 — anyRequest().authenticated()로 보호됨"

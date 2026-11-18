@@ -4,7 +4,7 @@ architecture:
   flow: Controller -> UseCase(Tx) -> Domain(Entity/Service) -> Repository
   flow(external/infra): Controller -> UseCase -> Domain(Interface) <- [Implements] - Infrastructure/External
   patterns:
-    - "Snapshot: Use for immutable history (Currently applied to -> subscription_checks.category, subscriptions.name/category copied from services)."
+    - "Snapshot: Use for immutable history (Currently applied to -> subscription_checks.category, subscriptions.name/category copied from services, subscription_billing_histories = 결제 정보 수정 전 조건)."
     - Factory Method: Use static `create()` method in Entity.
     - Rich Model: Encapsulate business logic in Entity methods.
   layers:

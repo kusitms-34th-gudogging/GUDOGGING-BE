@@ -1,6 +1,6 @@
 # Feature Specification
 # Status: Draft
-# Last Updated: 2026-11-17
+# Last Updated: 2026-11-19
 
 meta:
   id: SUBSCRIPTION-003
@@ -24,7 +24,7 @@ overview:
     so that 구독 목록을 정리할 수 있다.
   goals:
     - 선택한 구독(구독 중 · 구독 종료 모두) 일괄 Soft Delete
-    - 연관 데이터(subscription_checks, subscription_check_cancel_reasons, notifications) 함께 Soft Delete
+    - 연관 데이터(subscription_checks, subscription_check_cancel_reasons, notifications, subscription_billing_histories) 함께 Soft Delete ([변경 2026-11-19] 결제 조건 이력 추가, ERD 8장)
     - 전체 성공 또는 전체 실패 (부분 삭제 없음), 삭제 개수 반환
 
 technical_spec:
@@ -81,7 +81,7 @@ technical_spec:
       action: "findNotificationsBySubscriptions(Collection<Subscription>) — deleted = false"
     - step: 8
       layer: Domain (BaseEntity)
-      action: "해지 이유 → 점검 기록 → 알림 → 구독 순으로 softDelete(). 트랜잭션 커밋 시 변경 감지로 UPDATE"
+      action: "해지 이유 → 점검 기록 → 알림 → 결제 조건 이력(SubscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions, [변경 2026-11-19]) → 구독 순으로 softDelete(). 트랜잭션 커밋 시 변경 감지로 UPDATE"
 
   database:
     entities:
@@ -98,6 +98,9 @@ technical_spec:
       - name: Notification
         action: Soft Delete
         table: notifications
+      - name: SubscriptionBillingHistory
+        action: "Soft Delete — [변경 2026-11-19]"
+        table: subscription_billing_histories
       - name: User
         action: Read
         table: users
