@@ -9,7 +9,7 @@ import java.util.UUID;
  */
 public record SubscriptionBillingResponse(
     UUID subscriptionId,
-    int yearlyAmount,
+    long yearlyAmount,
     LocalDate nextBillingDate
 ) {
 

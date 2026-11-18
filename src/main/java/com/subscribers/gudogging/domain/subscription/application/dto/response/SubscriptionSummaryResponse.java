@@ -16,13 +16,13 @@ public record SubscriptionSummaryResponse(
     String serviceName,
     String logoUrl,
     int amount,
-    int monthlyAmount,
+    long monthlyAmount,
     int billingCycleValue,
     BillingCycleUnit billingCycleUnit,
     LocalDate nextBillingDate,
     Integer dDay,
     LocalDate canceledAt,
-    Integer totalPaidAmount
+    Long totalPaidAmount
 ) {
 
     public static SubscriptionSummaryResponse from(Subscription subscription, LocalDate today) {

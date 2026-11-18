@@ -199,7 +199,7 @@ public class SubscriptionUseCase {
             subscription -> subscription.nextBillingOn(today));
         Comparator<Subscription> byAmountDesc = Comparator.comparingInt(Subscription::getAmount).reversed();
         Comparator<Subscription> byCanceledOnDesc = Comparator.comparing(Subscription::getCanceledOn).reversed();
-        Comparator<Subscription> byMonthlyAmountDesc = Comparator.comparingInt(Subscription::monthlyAmount).reversed();
+        Comparator<Subscription> byMonthlyAmountDesc = Comparator.comparingLong(Subscription::monthlyAmount).reversed();
 
         return switch (sortType) {
             case NEXT_BILLING_DATE -> byNextBillingDate.thenComparing(byAmountDesc);

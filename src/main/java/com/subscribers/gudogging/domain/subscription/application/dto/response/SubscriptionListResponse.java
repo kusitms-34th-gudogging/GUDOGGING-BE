@@ -11,14 +11,14 @@ public record SubscriptionListResponse(
     int count,
     int activeCount,
     int endedCount,
-    int monthlyTotal,
+    long monthlyTotal,
     List<SubscriptionSummaryResponse> subscriptions
 ) {
 
     public static SubscriptionListResponse of(List<Subscription> tabSubscriptions, int activeCount, int endedCount,
                                               LocalDate today) {
-        int monthlyTotal = tabSubscriptions.stream()
-            .mapToInt(Subscription::monthlyAmount)
+        long monthlyTotal = tabSubscriptions.stream()
+            .mapToLong(Subscription::monthlyAmount)
             .sum();
         List<SubscriptionSummaryResponse> subscriptions = tabSubscriptions.stream()
             .map(subscription -> SubscriptionSummaryResponse.from(subscription, today))

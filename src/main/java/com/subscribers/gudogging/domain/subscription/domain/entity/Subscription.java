@@ -154,7 +154,7 @@ public class Subscription extends BaseEntity {
     /**
      * 월 환산 금액 (ERD 6.1). 원 단위 반올림.
      */
-    public int monthlyAmount() {
+    public long monthlyAmount() {
         BigDecimal numerator = BigDecimal.valueOf(amount);
         BigDecimal denominator = BigDecimal.valueOf(billingCycleValue);
         switch (billingCycleUnit) {
@@ -170,13 +170,13 @@ public class Subscription extends BaseEntity {
                 denominator = denominator.multiply(BigDecimal.valueOf(MONTHS_PER_YEAR));
             }
         }
-        return numerator.divide(denominator, 0, RoundingMode.HALF_UP).intValueExact();
+        return numerator.divide(denominator, 0, RoundingMode.HALF_UP).longValueExact();
     }
 
     /**
      * 연 환산 금액 = 월 환산 금액 × 12 (ERD 6.1).
      */
-    public int yearlyAmount() {
+    public long yearlyAmount() {
         return Math.multiplyExact(monthlyAmount(), MONTHS_PER_YEAR);
     }
 
@@ -222,8 +222,8 @@ public class Subscription extends BaseEntity {
         return billingDatesBetween(startedOn(), end).size();
     }
 
-    public int totalPaidAmount(LocalDate today) {
-        return Math.multiplyExact(paidCount(today), amount);
+    public long totalPaidAmount(LocalDate today) {
+        return Math.multiplyExact((long) paidCount(today), amount);
     }
 
     private LocalDate billingDateAt(long index) {

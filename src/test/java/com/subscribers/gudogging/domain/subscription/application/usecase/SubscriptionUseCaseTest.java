@@ -558,6 +558,28 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("월 환산 금액 · 합계 · 총 지출이 int 범위를 넘어도 목록 조회에 성공하고 long 금액으로 반환한다")
+        void returnsAmountsBeyondIntRange() {
+            // given — 매일 1억 원 → 월 환산 3,041,666,667원 (int 최대 2,147,483,647 초과)
+            Subscription daily = active("매일 1억", 100_000_000, 1, BillingCycleUnit.DAY, today.plusDays(1));
+            Subscription monthly = active("매월 20억", 2_000_000_000, 1, BillingCycleUnit.MONTH, today.plusDays(1));
+            // 결제일 1/10, 2/10, 3/10, 4/10 → 4번 × 20억 = 80억
+            Subscription canceled = ended("종료 20억", 2_000_000_000, 1, BillingCycleUnit.MONTH,
+                LocalDate.of(2026, 1, 10), LocalDate.of(2026, 1, 10), LocalDate.of(2026, 4, 10));
+            givenSubscriptions(daily, monthly, canceled);
+
+            // when
+            SubscriptionListResponse activeTab = subscriptionUseCase.getSubscriptions(userId, null, null);
+            SubscriptionListResponse endedTab = subscriptionUseCase.getSubscriptions(userId,
+                SubscriptionStatus.ENDED, null);
+
+            // then
+            assertThat(byName(activeTab).get("매일 1억").monthlyAmount()).isEqualTo(3_041_666_667L);
+            assertThat(activeTab.monthlyTotal()).isEqualTo(3_041_666_667L + 2_000_000_000L);
+            assertThat(endedTab.subscriptions().getFirst().totalPaidAmount()).isEqualTo(8_000_000_000L);
+        }
+
+        @Test
         @DisplayName("구독 종료 항목은 해지일과 등록일부터 해지일까지(양끝 포함) 결제 횟수 × 금액을 총 지출로 반환하고 다음 결제일 · D-n은 null이다")
         void returnsTotalPaidAmountForEnded() {
             // given — 결제일 1/10, 2/10, 3/10, 4/10 (등록일 1/10 · 해지일 4/10 포함) → 4번
@@ -795,6 +817,26 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("연 환산 금액 · 지금까지 결제 금액이 int 범위를 넘어도 상세 조회에 성공하고 long 금액으로 반환한다")
+        void returnsDetailAmountsBeyondIntRange() {
+            // given — 매월 20억 원, 1/15 ~ 10/15 결제 10번
+            Subscription subscription = Subscription.createCustom(user, "고액 구독", Category.ETC, 2_000_000_000, 1,
+                BillingCycleUnit.MONTH, endedAnchor, PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            subscription.cancel(endedCanceledOn);
+            persisted(subscription, endedStartedOn);
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.yearlyAmount()).isEqualTo(24_000_000_000L);
+            assertThat(response.paidCount()).isEqualTo(10);
+            assertThat(response.totalPaidAmount()).isEqualTo(20_000_000_000L);
+        }
+
+        @Test
         @DisplayName("점검 필드는 latestCheckup · pastCheckupAverage를 null로, pastCheckups를 빈 목록으로 반환한다")
         void returnsEmptyCheckupFields() {
             // given
@@ -932,6 +974,24 @@ class SubscriptionUseCaseTest {
             // then
             assertThat(subscription.getName()).isEqualTo("헬스장");
             assertThat(subscription.getAmount()).isEqualTo(120000);
+        }
+
+        @Test
+        @DisplayName("연 환산 금액이 int 범위를 넘어도 수정에 성공하고 long 금액으로 반환한다")
+        void returnsYearlyAmountBeyondIntRange() {
+            // given — 매월 2억 원 → 연 환산 24억 원 (int 최대 2,147,483,647 초과)
+            Subscription subscription = catalogSubscription();
+            givenSubscription(subscription);
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.ETC, 200_000_000, 1,
+                BillingCycleUnit.MONTH, today.plusDays(10), PaymentMethod.WEB_DIRECT);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+
+            // then
+            assertThat(subscription.getAmount()).isEqualTo(200_000_000);
+            assertThat(response.yearlyAmount()).isEqualTo(2_400_000_000L);
         }
 
         @Test
