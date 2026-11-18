@@ -43,7 +43,10 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleU
 import com.subscribers.gudogging.domain.subscription.domain.entity.PaymentMethod;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
+import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryCreateService;
+import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryGetService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionCreateService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserErrorCode;
@@ -54,6 +57,8 @@ import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.exception.ApplicationException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -87,6 +92,12 @@ class SubscriptionUseCaseTest {
 
     @Mock
     private SubscriptionCreateService subscriptionCreateService;
+
+    @Mock
+    private SubscriptionBillingHistoryGetService subscriptionBillingHistoryGetService;
+
+    @Mock
+    private SubscriptionBillingHistoryCreateService subscriptionBillingHistoryCreateService;
 
     @Mock
     private SubscriptionCheckGetService subscriptionCheckGetService;
@@ -442,6 +453,7 @@ class SubscriptionUseCaseTest {
             assertThat(first.dDay()).isEqualTo(3);
             assertThat(first.canceledAt()).isNull();
             assertThat(first.totalPaidAmount()).isNull();
+            verifyNoInteractions(subscriptionBillingHistoryGetService);  // 구독 중 탭은 총 지출이 없어 이력을 조회하지 않는다
         }
 
         @Test
@@ -655,6 +667,29 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("구독 종료 항목의 총 지출은 결제 조건 이력의 수정 전 결제를 그때 금액으로 더한다")
+        void includesBillingHistoryInTotalPaidAmount() {
+            // given — 1/15 · 2/15에 7,900원 결제 후 3/3에 매월 10일 9,900원으로 수정, 4/10 해지
+            Subscription canceled = Subscription.createCustom(user, "왓챠", Category.ETC, 7900, 1,
+                BillingCycleUnit.MONTH, LocalDate.of(2026, 1, 15), PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            SubscriptionBillingHistory billingHistory = canceled.updatePaymentInfo(Category.ETC, 9900, 1,
+                    BillingCycleUnit.MONTH, LocalDate.of(2026, 3, 10), PaymentMethod.WEB_DIRECT, LocalDate.of(2026, 3, 3))
+                .orElseThrow();
+            canceled.cancel(LocalDate.of(2026, 4, 10));
+            persisted(canceled, LocalDate.of(2026, 1, 1));
+            givenSubscriptions(canceled);
+            given(subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(List.of(canceled)))
+                .willReturn(List.of(billingHistory));
+
+            // when
+            SubscriptionListResponse response = subscriptionUseCase.getSubscriptions(userId,
+                SubscriptionStatus.ENDED, null);
+
+            // then — 수정 전 2번(1/15 · 2/15) × 7,900 + 수정 후 2번(3/10 · 4/10) × 9,900
+            assertThat(response.subscriptions().getFirst().totalPaidAmount()).isEqualTo(7900 * 2 + 9900 * 2);
+        }
+
+        @Test
         @DisplayName("구독이 없으면 개수 0, 합계 0, 빈 목록을 반환한다")
         void returnsEmptyWhenNoSubscriptions() {
             // given
@@ -746,12 +781,12 @@ class SubscriptionUseCaseTest {
         @Test
         @DisplayName("구독 중이면 결제 금액 · 연 환산 · 다음 결제일 · D-n · 구독 시작일 · 지금까지 결제 횟수와 금액을 반환하고 해지일은 null이다")
         void returnsActiveSubscriptionDetail() {
-            // given — 2개월 전 등록, 오늘 결제 정보를 수정해 5일 뒤가 결제일인 월 구독 → 오늘 이전 결제일 2번 지남
+            // given — 2개월 전 등록 때 다음 결제일을 5일 뒤로 입력한 월 구독 → 결제일 2번 지남
             ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
             LocalDate startedOn = today.minusMonths(2);
-            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), startedOn);
-            subscription.updatePaymentInfo(Category.VIDEO_OTT, 13500, 1, BillingCycleUnit.MONTH, today.plusDays(5),
-                PaymentMethod.APP_STORE, today);
+            LocalDate firstBillingOn = startedOn.plusDays(5);
+            LocalDate nextBillingOn = firstBillingOn.plusMonths(2);
+            Subscription subscription = activeFromCatalog(netflix, firstBillingOn, startedOn);
             givenSubscription(subscription);
 
             // when
@@ -770,8 +805,8 @@ class SubscriptionUseCaseTest {
             assertThat(response.paymentMethod()).isEqualTo(PaymentMethod.APP_STORE);
             assertThat(response.isSteady()).isFalse();
             assertThat(response.yearlyAmount()).isEqualTo(13500 * 12);
-            assertThat(response.nextBillingDate()).isEqualTo(today.plusDays(5));
-            assertThat(response.dDay()).isEqualTo(5);
+            assertThat(response.nextBillingDate()).isEqualTo(nextBillingOn);
+            assertThat(response.dDay()).isEqualTo((int) ChronoUnit.DAYS.between(today, nextBillingOn));
             assertThat(response.startedAt()).isEqualTo(startedOn);
             assertThat(response.paidCount()).isEqualTo(2);
             assertThat(response.totalPaidAmount()).isEqualTo(13500 * 2);
@@ -817,6 +852,32 @@ class SubscriptionUseCaseTest {
             assertThat(response.canceledAt()).isEqualTo(endedCanceledOn);
             assertThat(response.paidCount()).isEqualTo(10);
             assertThat(response.totalPaidAmount()).isEqualTo(7900 * 10);
+        }
+
+        @Test
+        @DisplayName("결제 조건 이력이 있으면 수정 전 결제를 그때 금액으로 더하고, 수정일 전 baseDate는 수정 전 조건의 결제일을 다음 결제일로 반환한다")
+        void includesBillingHistory() {
+            // given — 1/1 등록, 매월 15일 7,900원(1/15 · 2/15 결제) → 3/3에 매월 10일 9,900원으로 수정 → 10/16 해지
+            Subscription subscription = Subscription.createCustom(user, "왓챠", Category.VIDEO_OTT, 7900, 1,
+                BillingCycleUnit.MONTH, endedAnchor, PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            SubscriptionBillingHistory billingHistory = subscription.updatePaymentInfo(Category.VIDEO_OTT, 9900, 1,
+                    BillingCycleUnit.MONTH, LocalDate.of(2026, 3, 10), PaymentMethod.WEB_DIRECT, LocalDate.of(2026, 3, 3))
+                .orElseThrow();
+            subscription.cancel(endedCanceledOn);
+            persisted(subscription, endedStartedOn);
+            givenSubscription(subscription);
+            given(subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(List.of(subscription)))
+                .willReturn(List.of(billingHistory));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), LocalDate.of(2026, 2, 10));
+
+            // then — 수정 전 2번(1/15 · 2/15) × 7,900 + 수정 후 8번(3/10 ~ 10/10) × 9,900
+            assertThat(response.amount()).isEqualTo(9900);
+            assertThat(response.paidCount()).isEqualTo(10);
+            assertThat(response.totalPaidAmount()).isEqualTo(7900 * 2 + 9900 * 8);
+            assertThat(response.nextBillingDate()).isEqualTo(LocalDate.of(2026, 2, 15));
         }
 
         @Test
@@ -966,6 +1027,27 @@ class SubscriptionUseCaseTest {
             return subscription;
         }
 
+        // billingAnchorOn에 등록해 그날부터 결제해 온 사전 등록 서비스 구독
+        private Subscription paidSubscription(int amount, BillingCycleUnit cycleUnit, LocalDate billingAnchorOn) {
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
+            Subscription subscription = persisted(Subscription.createFromCatalog(user, netflix, Category.VIDEO_OTT,
+                amount, 1, cycleUnit, billingAnchorOn, PaymentMethod.APP_STORE, RegistrationSource.MANUAL));
+            ReflectionTestUtils.setField(subscription, "createdAt", billingAnchorOn.atStartOfDay());
+            return subscription;
+        }
+
+        // 저장한 결제 조건 이력을 이후 상세 조회에서 그대로 돌려준다.
+        private List<SubscriptionBillingHistory> givenSavedBillingHistoriesReturned() {
+            List<SubscriptionBillingHistory> savedBillingHistories = new ArrayList<>();
+            given(subscriptionBillingHistoryCreateService.createBillingHistory(any())).willAnswer(invocation -> {
+                savedBillingHistories.add(invocation.getArgument(0));
+                return invocation.getArgument(0);
+            });
+            given(subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(any()))
+                .willReturn(savedBillingHistories);
+            return savedBillingHistories;
+        }
+
         // 연 1회 120,000원 → 월 환산 10,000원 → 연 환산 120,000원
         private UpdateSubscriptionRequest request(String serviceName) {
             return new UpdateSubscriptionRequest(serviceName, Category.PRODUCTIVITY_AI, 120000, 1,
@@ -979,7 +1061,7 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
-        @DisplayName("구독 중이면 카테고리 · 금액 · 결제 주기 · 결제한 곳을 바꾸고 다음 결제일을 결제 기준일로 저장한 뒤 재계산한 연 환산 · 다음 결제일을 반환한다")
+        @DisplayName("구독 중이면 카테고리 · 금액 · 결제 주기 · 결제한 곳을 바꾸고 다음 결제일을 결제 기준일로 저장한 뒤 재계산한 연 환산 · 다음 결제일을 반환하며, 결제한 적 없는 조건은 이력을 남기지 않는다")
         void updatesPaymentInfo() {
             // given
             Subscription subscription = catalogSubscription();
@@ -1000,6 +1082,7 @@ class SubscriptionUseCaseTest {
             assertThat(response.subscriptionId()).isEqualTo(subscription.getId());
             assertThat(response.yearlyAmount()).isEqualTo(120000);
             assertThat(response.nextBillingDate()).isEqualTo(today.plusDays(10));
+            verify(subscriptionBillingHistoryCreateService, never()).createBillingHistory(any());
         }
 
         @Test
@@ -1052,10 +1135,10 @@ class SubscriptionUseCaseTest {
         @Test
         @DisplayName("다음 결제일을 한 주기보다 먼 날짜로 수정하면 요청한 날짜를 반환하고, 상세도 같은 날짜와 수정 전 결제 횟수를 유지한다")
         void keepsRequestedNextBillingDateAndPaidHistory() {
-            // given — 4주 전 등록한 구독을 매주 결제, 다음 결제일 3주 뒤로 수정
-            Subscription subscription = catalogSubscription();
-            ReflectionTestUtils.setField(subscription, "createdAt", today.minusWeeks(4).atStartOfDay());
+            // given — 27일 전 등록한 매주 10,000원 구독(27 · 20 · 13 · 6일 전 결제, 다음 결제일 1일 뒤)을 다음 결제일 3주 뒤로 수정
+            Subscription subscription = paidSubscription(10000, BillingCycleUnit.WEEK, today.minusDays(27));
             givenSubscription(subscription);
+            givenSavedBillingHistoriesReturned();
             LocalDate requestedNextBillingDate = today.plusWeeks(3);
             UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.ETC, 10000, 1,
                 BillingCycleUnit.WEEK, requestedNextBillingDate, PaymentMethod.WEB_DIRECT);
@@ -1066,11 +1149,115 @@ class SubscriptionUseCaseTest {
             SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId,
                 subscription.getId(), null);
 
-            // then — 수정한 오늘 ~ 3주 뒤 사이(오늘 · 1주 뒤 · 2주 뒤)는 결제일이 아니고,
-            //        오늘 이전 결제일(1 · 2 · 3 · 4주 전)은 수정 전 기록으로 유지한다
+            // then — 수정 전 조건의 1일 뒤와, 수정한 오늘 ~ 3주 뒤 사이(1주 뒤 · 2주 뒤)는 결제일이 아니고,
+            //        오늘 이전 결제일(27 · 20 · 13 · 6일 전)은 수정 전 기록으로 유지한다
             assertThat(response.nextBillingDate()).isEqualTo(requestedNextBillingDate);
             assertThat(detail.nextBillingDate()).isEqualTo(requestedNextBillingDate);
             assertThat(detail.paidCount()).isEqualTo(4);
+        }
+
+        @Test
+        @DisplayName("결제한 뒤 다음 결제일과 금액을 수정하면, 상세는 수정 전 결제를 그때 금액으로 유지하고 요청한 날짜를 다음 결제일로 반환한다")
+        void keepsPaymentBeforeUpdate() {
+            // given — 16일 전 등록, 2일 전(예: 12/1) 13,500원 결제한 월 구독을 오늘(12/3) 다음 결제일 7일 뒤(12/10) · 17,000원으로 수정
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
+            Subscription subscription = persisted(Subscription.createFromCatalog(user, netflix, Category.VIDEO_OTT,
+                13500, 1, BillingCycleUnit.MONTH, today.minusDays(2), PaymentMethod.APP_STORE,
+                RegistrationSource.MANUAL));
+            ReflectionTestUtils.setField(subscription, "createdAt", today.minusDays(16).atStartOfDay());
+            givenSubscription(subscription);
+            List<SubscriptionBillingHistory> savedBillingHistories = givenSavedBillingHistoriesReturned();
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.VIDEO_OTT, 17000, 1,
+                BillingCycleUnit.MONTH, today.plusDays(7), PaymentMethod.APP_STORE);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+            SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.nextBillingDate()).isEqualTo(today.plusDays(7));
+            assertThat(detail.nextBillingDate()).isEqualTo(today.plusDays(7));
+            assertThat(detail.paidCount()).isEqualTo(1);
+            assertThat(detail.totalPaidAmount()).isEqualTo(13500);
+            assertThat(savedBillingHistories).singleElement().satisfies(billingHistory -> {
+                assertThat(billingHistory.getSubscription()).isSameAs(subscription);
+                assertThat(billingHistory.getAmount()).isEqualTo(13500);
+                assertThat(billingHistory.getBillingCycleValue()).isEqualTo(1);
+                assertThat(billingHistory.getBillingCycleUnit()).isEqualTo(BillingCycleUnit.MONTH);
+                assertThat(billingHistory.getBillingAnchorOn()).isEqualTo(today.minusDays(2));
+                assertThat(billingHistory.getEndedOn()).isEqualTo(today);
+            });
+        }
+
+        @Test
+        @DisplayName("결제일 당일에 다음 결제일을 뒤로 미루면 오늘 결제를 수정 전 조건으로 세고, 다음 결제일은 요청한 날짜로 반환한다")
+        void countsTodayPaymentWhenPostponedOnBillingDay() {
+            // given — 1주 전 등록한 매주 10,000원 구독(1주 전 · 오늘 결제)을 오늘 다음 결제일 10일 뒤 · 12,000원으로 수정
+            Subscription subscription = paidSubscription(10000, BillingCycleUnit.WEEK, today.minusWeeks(1));
+            givenSubscription(subscription);
+            givenSavedBillingHistoriesReturned();
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.VIDEO_OTT, 12000, 1,
+                BillingCycleUnit.WEEK, today.plusDays(10), PaymentMethod.APP_STORE);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+            SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.nextBillingDate()).isEqualTo(today.plusDays(10));
+            assertThat(detail.nextBillingDate()).isEqualTo(today.plusDays(10));
+            assertThat(detail.dDay()).isEqualTo(10);
+            assertThat(detail.paidCount()).isEqualTo(2);
+            assertThat(detail.totalPaidAmount()).isEqualTo(10000 * 2);
+        }
+
+        @Test
+        @DisplayName("결제일 당일에 다음 결제일을 오늘로 두고 금액을 바꾸면 오늘 결제를 새 금액으로 한 번만 센다")
+        void countsTodayPaymentOnceWithNewAmount() {
+            // given — 1주 전 등록한 매주 10,000원 구독(1주 전 · 오늘 결제)을 오늘 12,000원 · 다음 결제일 오늘로 수정
+            Subscription subscription = paidSubscription(10000, BillingCycleUnit.WEEK, today.minusWeeks(1));
+            givenSubscription(subscription);
+            List<SubscriptionBillingHistory> savedBillingHistories = givenSavedBillingHistoriesReturned();
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.VIDEO_OTT, 12000, 1,
+                BillingCycleUnit.WEEK, today, PaymentMethod.APP_STORE);
+
+            // when
+            subscriptionUseCase.updateSubscription(userId, subscription.getId(), request);
+            SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then — 1주 전 10,000원(수정 전 조건) + 오늘 12,000원(새 조건)
+            assertThat(savedBillingHistories).hasSize(1);
+            assertThat(detail.nextBillingDate()).isEqualTo(today);
+            assertThat(detail.paidCount()).isEqualTo(2);
+            assertThat(detail.totalPaidAmount()).isEqualTo(10000 + 12000);
+        }
+
+        @Test
+        @DisplayName("결제 금액 · 주기 · 다음 결제일을 그대로 두고 카테고리 · 결제한 곳만 바꾸면 결제 기준일을 유지하고 결제 조건 이력을 남기지 않는다")
+        void keepsBillingAnchorWhenBillingUnchanged() {
+            // given — 기준일이 지난 월 구독. 수정 화면은 지금 다음 결제일을 그대로 보낸다
+            LocalDate billingAnchorOn = today.minusMonths(1).minusDays(3);
+            Subscription subscription = paidSubscription(13500, BillingCycleUnit.MONTH, billingAnchorOn);
+            givenSubscription(subscription);
+            LocalDate nextBillingDate = subscription.nextBillingOn(today);
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.ETC, 13500, 1,
+                BillingCycleUnit.MONTH, nextBillingDate, PaymentMethod.GOOGLE_PLAY);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+
+            // then
+            assertThat(subscription.getCategory()).isEqualTo(Category.ETC);
+            assertThat(subscription.getPaymentMethod()).isEqualTo(PaymentMethod.GOOGLE_PLAY);
+            assertThat(subscription.getBillingAnchorOn()).isEqualTo(billingAnchorOn);
+            assertThat(response.nextBillingDate()).isEqualTo(nextBillingDate);
+            verify(subscriptionBillingHistoryCreateService, never()).createBillingHistory(any());
         }
 
         @Test
@@ -1172,7 +1359,7 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
-        @DisplayName("선택한 구독과 그 점검 기록 · 해지 이유 · 알림을 모두 Soft Delete 하고 삭제 개수를 반환한다")
+        @DisplayName("선택한 구독과 그 점검 기록 · 해지 이유 · 알림 · 결제 조건 이력을 모두 Soft Delete 하고 삭제 개수를 반환한다")
         void softDeletesSubscriptionsWithRelatedData() {
             // given
             Subscription netflix = subscription("넷플릭스");
@@ -1181,6 +1368,8 @@ class SubscriptionUseCaseTest {
             SubscriptionCheckCancelReason cancelReason = SubscriptionCheckCancelReason.create(netflixCheck,
                 CancelReason.PRICE_BURDEN);
             Notification melonNotification = notification(melon);
+            SubscriptionBillingHistory netflixBillingHistory = SubscriptionBillingHistory.create(netflix, 10000, 1,
+                BillingCycleUnit.MONTH, billingOn, billingOn.plusDays(2));
             givenUser();
             given(subscriptionGetService.findSubscriptionsByIds(user, Set.of(netflix.getId(), melon.getId())))
                 .willReturn(List.of(netflix, melon));
@@ -1190,6 +1379,8 @@ class SubscriptionUseCaseTest {
                 .willReturn(List.of(cancelReason));
             given(notificationGetService.findNotificationsBySubscriptions(List.of(netflix, melon)))
                 .willReturn(List.of(melonNotification));
+            given(subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(List.of(netflix, melon)))
+                .willReturn(List.of(netflixBillingHistory));
 
             // when
             SubscriptionDeletionResponse response = subscriptionUseCase.deleteSubscriptions(userId,
@@ -1201,6 +1392,7 @@ class SubscriptionUseCaseTest {
             assertThat(netflixCheck.isDeleted()).isTrue();
             assertThat(cancelReason.isDeleted()).isTrue();
             assertThat(melonNotification.isDeleted()).isTrue();
+            assertThat(netflixBillingHistory.isDeleted()).isTrue();
         }
 
         @Test
