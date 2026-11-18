@@ -13,12 +13,14 @@ import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -32,12 +34,18 @@ import org.hibernate.type.SqlTypes;
     indexes = {
         @Index(name = "idx_subscriptions_user_status", columnList = "user_id, status"),
         @Index(name = "idx_subscriptions_service_id", columnList = "service_id")
-    }
+    },
+    uniqueConstraints = @UniqueConstraint(
+        name = Subscription.ACTIVE_SERVICE_UNIQUE_CONSTRAINT,
+        columnNames = {"user_id", "active_service_id"}
+    )
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class Subscription extends BaseEntity {
+
+    public static final String ACTIVE_SERVICE_UNIQUE_CONSTRAINT = "uk_subscriptions_user_active_service";
 
     private static final int MONTHS_PER_YEAR = 12;
     private static final int WEEKS_PER_YEAR = 52;
@@ -90,6 +98,16 @@ public class Subscription extends BaseEntity {
     @Column(name = "registration_source", nullable = false, length = 20)
     private RegistrationSource registrationSource;
 
+    /**
+     * 회원별 사전 등록 서비스의 ACTIVE 구독을 1건으로 제한하는 DB 계산 컬럼 (동시 등록 방지). 애플리케이션은 쓰지 않는다.
+     * 삭제되지 않은 ACTIVE 구독이면 service_id, 아니면 NULL — 고유 인덱스는 NULL끼리 충돌하지 않으므로 종료 · 삭제된 구독과 직접 입력 구독은
+     * 제한하지 않는다.
+     */
+    @Column(name = "active_service_id", insertable = false, updatable = false,
+        columnDefinition = "BINARY(16) GENERATED ALWAYS AS "
+            + "(CASE WHEN status = 'ACTIVE' AND deleted = FALSE THEN service_id END)")
+    private UUID activeServiceId;
+
     public static Subscription createFromCatalog(
         User user,
         ServiceCatalog serviceCatalog,
@@ -103,7 +121,7 @@ public class Subscription extends BaseEntity {
     ) {
         return new Subscription(user, serviceCatalog, serviceCatalog.getName(), category, amount,
             billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource);
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
     }
 
     public static Subscription createCustom(
@@ -119,7 +137,7 @@ public class Subscription extends BaseEntity {
     ) {
         return new Subscription(user, null, name, category, amount,
             billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource);
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
     }
 
     public void updatePaymentInfo(
