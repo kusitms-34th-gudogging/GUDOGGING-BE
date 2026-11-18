@@ -12,6 +12,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Del
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
@@ -94,6 +95,17 @@ public class SubscriptionUseCase {
         Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
             .orElseThrow(SubscriptionNotFoundException::new);
         return SubscriptionDetailResponse.of(subscription, LocalDate.now(), baseDate);
+    }
+
+    /**
+     * 본인 구독의 결제 경로(paymentMethod)와 서비스 해지 링크 유무에 따른 해지 안내를 조회한다. 구독 상태(ACTIVE/ENDED)는 검사하지 않는다.
+     */
+    public CancelGuideResponse getCancelGuide(UUID userId, UUID subscriptionId) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
+            .orElseThrow(SubscriptionNotFoundException::new);
+        return CancelGuideResponse.from(subscription);
     }
 
     /**
