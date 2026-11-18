@@ -1,10 +1,10 @@
 # Feature Specification
 # Status: Draft
-# Last Updated: 2026-11-17
+# Last Updated: 2026-11-18
 
 meta:
   id: SUBSCRIPTION-001
-  title: 구독 직접 등록 (일괄)
+  title: 구독 일괄 등록 (직접·스크린샷·Gmail 공통)
   type: Feature
   author: 1winhyun
   source: "Figma 디자인 작업소 › 구독 등록(직접 등록 및 공통 화면) › SUB-002 (A-04, A-03, A-03s), SUB-003 (입력 필드), SUB-004 (A-05)"
@@ -16,26 +16,30 @@ meta:
 overview:
   summary: >
     선택한 구독 확인 화면(A-04)에서 'N개 구독 등록하기'를 누르면, 사전 등록 서비스와 직접 입력 서비스의
-    결제 정보를 한 번에 받아 subscriptions에 저장하고(registration_source = MANUAL),
-    등록 완료 화면(A-05)에 표시할 등록된 구독 목록을 반환한다. 하나라도 등록 불가면 전체 실패.
+    결제 정보를 한 번에 받아 subscriptions에 저장하고(registration_source = 요청 source),
+    등록 완료 화면(A-05)에 표시할 등록 개수와 등록된 구독 목록을 반환한다. 하나라도 등록 불가면 전체 실패.
   user_story: >
     As a 로그인한 회원, I want to 여러 구독의 결제 정보를 입력해 한 번에 등록하기를,
     so that 결제 일정과 구독 정보를 앱에서 관리할 수 있다.
   goals:
-    - 사전 등록 서비스(serviceId) + 직접 입력 서비스(name) 혼합 일괄 등록
+    - 사전 등록 서비스(serviceId) + 직접 입력 서비스(serviceName) 혼합 일괄 등록
     - 이미 구독 중(ACTIVE)인 사전 등록 서비스 중복 등록 방지
     - 전체 성공 또는 전체 실패 (부분 저장 없음)
-    - A-05 표시용 등록 결과 반환 (요청 순서 유지)
+    - A-05 표시용 등록 개수·등록 결과 반환 (요청 순서 유지)
 
 technical_spec:
   api:
     - method: POST
       path: /api/v1/subscriptions
-      summary: 구독 직접 등록 (일괄)
+      summary: 구독 일괄 등록 (직접·스크린샷·Gmail 공통)
       auth: Required (Authorization Bearer Access Token)
       request:
         dto: CreateSubscriptionsRequest
         fields:
+          - name: source
+            type: RegistrationSource
+            required: true
+            validation: "@NotNull (MANUAL / SCREENSHOT / GMAIL) → registration_source에 저장"
           - name: subscriptions
             type: List<SubscriptionItemRequest>
             required: true
@@ -46,12 +50,12 @@ technical_spec:
             type: UUID
             required: false
             validation: "있으면 사전 등록 서비스(A-03), null이면 직접 입력 서비스(A-03s)"
-          - name: name
+          - name: serviceName
             type: String
             required: "serviceId가 null일 때만"
             validation: >
               @Size(max = 30). serviceId가 null이면 strip() 후 1~30자 필수 —
-              @AssertTrue boolean isNameValid() (serviceId != null || name이 공백 아님).
+              @AssertTrue boolean isServiceNameValid() (serviceId != null || serviceName이 공백 아님).
               serviceId가 있으면 무시 (services.name 스냅샷 사용)
           - name: category
             type: Category
@@ -69,7 +73,7 @@ technical_spec:
             type: BillingCycleUnit
             required: true
             validation: "@NotNull (DAY / WEEK / MONTH / YEAR)"
-          - name: nextBillingOn
+          - name: nextBillingDate
             type: LocalDate
             required: true
             validation: "@NotNull, @FutureOrPresent (과거 날짜 불가, 오늘 가능). 형식 yyyy-MM-dd → billing_anchor_on에 저장"
@@ -79,55 +83,72 @@ technical_spec:
             validation: "@NotNull (WEB_DIRECT / APP_STORE / GOOGLE_PLAY)"
         example: |
           {
+            "source": "MANUAL",
             "subscriptions": [
-              { "serviceId": "0b6f...", "category": "VIDEO_OTT", "amount": 13500,
+              { "serviceId": "0b6f...", "serviceName": null, "category": "VIDEO_OTT", "amount": 13500,
                 "billingCycleValue": 1, "billingCycleUnit": "MONTH",
-                "nextBillingOn": "2026-12-01", "paymentMethod": "WEB_DIRECT" },
-              { "serviceId": null, "name": "동네 헬스장", "category": "ETC", "amount": 50000,
+                "nextBillingDate": "2026-12-01", "paymentMethod": "WEB_DIRECT" },
+              { "serviceId": null, "serviceName": "동네 헬스장", "category": "ETC", "amount": 50000,
                 "billingCycleValue": 1, "billingCycleUnit": "MONTH",
-                "nextBillingOn": "2026-11-25", "paymentMethod": "WEB_DIRECT" }
+                "nextBillingDate": "2026-11-25", "paymentMethod": "WEB_DIRECT" }
             ]
           }
       response:
-        dto: SubscriptionResponse
+        dto: SubscriptionCreationResponse
         http_status: 201 Created
-        response_code: "SubscriptionResponseCode.SUBSCRIPTIONS_CREATED (201, HttpStatus.CREATED, \"구독이 등록되었습니다.\")"
-        wrapper: CommonResponse<List<SubscriptionResponse>>
-        order: "요청 subscriptions 순서와 동일"
+        response_code: "SubscriptionResponseCode.SUBSCRIPTIONS_CREATED (201, HttpStatus.CREATED, \"구독을 등록했습니다.\")"
+        wrapper: CommonResponse<SubscriptionCreationResponse>
         fields:
+          - name: createdCount
+            type: Integer
+            description: "등록된 구독 개수 — A-05 '등록된 구독 N'"
+          - name: subscriptions
+            type: List<SubscriptionResponse>
+            description: "방금 등록한 구독 목록. 요청 subscriptions 순서와 동일"
+        item_dto: SubscriptionResponse
+        item_fields:
           - name: subscriptionId
             type: UUID
-          - name: serviceId
-            type: UUID (nullable)
-            description: "직접 입력 서비스는 null"
-          - name: name
+          - name: serviceName
             type: String
           - name: logoUrl
             type: String (nullable)
             description: "사전 등록 서비스의 services.logo_url. 직접 입력·로고 없음은 null → 클라이언트 기본 이미지"
-          - name: category
-            type: Category
           - name: amount
             type: Integer
           - name: billingCycleValue
             type: Integer
           - name: billingCycleUnit
             type: BillingCycleUnit
-          - name: nextBillingOn
+          - name: nextBillingDate
             type: LocalDate
             description: "등록 직후라 billing_anchor_on(≥ 오늘)이 곧 다음 결제일"
           - name: paymentMethod
             type: PaymentMethod
-        factory: "SubscriptionResponse.from(Subscription)"
+        factory: "SubscriptionCreationResponse.from(List<Subscription>) → 항목은 SubscriptionResponse.from(Subscription)"
+        example: |
+          {
+            "code": 201,
+            "message": "구독을 등록했습니다.",
+            "data": {
+              "createdCount": 1,
+              "subscriptions": [
+                { "subscriptionId": "3f2b...", "serviceName": "넷플릭스",
+                  "logoUrl": "https://cdn.gudogging.com/logos/netflix.png", "amount": 13500,
+                  "billingCycleValue": 1, "billingCycleUnit": "MONTH",
+                  "nextBillingDate": "2026-12-01", "paymentMethod": "WEB_DIRECT" }
+              ]
+            }
+          }
         display_note: "A-05 문구('11월 12일 결제·매월·웹·직접 결제', '29,000원', '등록된 구독 N')는 클라이언트가 조합"
 
   data_flow:
     - step: 1
       layer: Presentation (SubscriptionController)
-      action: "@CurrentUserId UUID userId, @Valid @RequestBody CreateSubscriptionsRequest → SubscriptionUseCase.createSubscriptions(userId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, data)"
+      action: "@CurrentUserId UUID userId, @Valid @RequestBody CreateSubscriptionsRequest → SubscriptionUseCase.createSubscriptions(userId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, SubscriptionCreationResponse)"
     - step: 2
       layer: UseCase (SubscriptionUseCase.createSubscriptions)
-      action: "회원 조회 → 요청 내 serviceId 중복 검사 → 서비스 조회·존재 검사 → 이미 구독 중 검사 → 엔티티 생성 → saveAll → List<SubscriptionResponse>"
+      action: "회원 조회 → 요청 내 serviceId 중복 검사 → 서비스 조회·존재 검사 → 이미 구독 중 검사 → 엔티티 생성 → saveAll → SubscriptionCreationResponse"
       transaction: true (@Transactional)
     - step: 3
       layer: Domain Service (UserGetService)
@@ -146,15 +167,15 @@ technical_spec:
     - step: 7
       layer: Domain (Subscription)
       action: >
-        serviceId 있음 → Subscription.createFromCatalog(user, serviceCatalog, category, amount, cycleValue, cycleUnit, nextBillingOn, paymentMethod, RegistrationSource.MANUAL)
-        / serviceId 없음 → Subscription.createCustom(user, name.strip(), category, ..., RegistrationSource.MANUAL).
-        status = ACTIVE, is_steady_use = false, billing_anchor_on = nextBillingOn
+        serviceId 있음 → Subscription.createFromCatalog(user, serviceCatalog, category, amount, cycleValue, cycleUnit, nextBillingDate, paymentMethod, request.source())
+        / serviceId 없음 → Subscription.createCustom(user, serviceName.strip(), category, ..., request.source()).
+        status = ACTIVE, is_steady_use = false, billing_anchor_on = nextBillingDate
     - step: 8
       layer: Domain Service (SubscriptionCreateService) — 신규
       action: "createSubscriptions(List<Subscription>) → SubscriptionRepository.saveAll() (반복 save 금지)"
     - step: 9
       layer: UseCase
-      action: "저장 결과를 SubscriptionResponse.from()으로 변환. logoUrl은 5단계에서 이미 로딩한 ServiceCatalog라 추가 쿼리 없음"
+      action: "저장 결과를 SubscriptionCreationResponse.from()으로 변환 (createdCount + 항목 SubscriptionResponse.from()). logoUrl은 5단계에서 이미 로딩한 ServiceCatalog라 추가 쿼리 없음"
 
   database:
     entities:
@@ -164,8 +185,8 @@ technical_spec:
         fields:
           - "user_id, service_id(직접 입력은 NULL), name(사전 등록은 services.name 스냅샷)"
           - "category, amount, billing_cycle_value, billing_cycle_unit"
-          - "billing_anchor_on = 요청 nextBillingOn"
-          - "payment_method, status = ACTIVE, canceled_on = NULL, is_steady_use = false, registration_source = MANUAL"
+          - "billing_anchor_on = 요청 nextBillingDate"
+          - "payment_method, status = ACTIVE, canceled_on = NULL, is_steady_use = false, registration_source = 요청 source"
       - name: ServiceCatalog
         action: Read
         table: services
@@ -219,8 +240,9 @@ technical_spec:
   validation_rules:
     - "본인 구독으로만 등록 — userId는 Access Token에서만 받는다"
     - "subscriptions 1~50개"
-    - "serviceId가 null이면 name 필수(strip 후 1~30자), serviceId가 있으면 name 무시하고 services.name 스냅샷"
-    - "amount > 0, billingCycleValue 1~31, nextBillingOn ≥ 오늘, category·billingCycleUnit·paymentMethod 필수"
+    - "source 필수 (MANUAL / SCREENSHOT / GMAIL)"
+    - "serviceId가 null이면 serviceName 필수(strip 후 1~30자), serviceId가 있으면 serviceName 무시하고 services.name 스냅샷"
+    - "amount > 0, billingCycleValue 1~31, nextBillingDate ≥ 오늘, category·billingCycleUnit·paymentMethod 필수"
     - "같은 요청에 같은 serviceId 중복 불가 (A-02 '동일 서비스 중복 선택 불가')"
     - "삭제·비활성 서비스로 등록 불가"
     - "회원이 ACTIVE로 구독 중인 사전 등록 서비스는 다시 등록 불가 (ERD 4.4). ENDED만 있으면 새 행으로 재등록 가능"
@@ -235,7 +257,8 @@ package_structure:
     - "domain/subscription/application/usecase/SubscriptionUseCase.java (신규)"
     - "domain/subscription/application/dto/request/CreateSubscriptionsRequest.java (신규, record)"
     - "domain/subscription/application/dto/request/SubscriptionItemRequest.java (신규, record)"
-    - "domain/subscription/application/dto/response/SubscriptionResponse.java (신규, record + from())"
+    - "domain/subscription/application/dto/response/SubscriptionResponse.java (신규, record + from() — 등록 항목)"
+    - "domain/subscription/application/dto/response/SubscriptionCreationResponse.java (신규, record + from() — createdCount + subscriptions)"
     - "domain/subscription/application/exception/SubscriptionErrorCode.java (신규)"
     - "domain/subscription/application/exception/DuplicateSubscriptionException.java (신규)"
     - "domain/subscription/application/exception/DuplicateServiceInRequestException.java (신규)"
@@ -253,10 +276,11 @@ testing_strategy:
   # Subscription/ServiceCatalog는 실제 객체 (ServiceCatalog는 ReflectionTestUtils 픽스처)
   # saveAll 인자는 ArgumentCaptor로 검증
   happy_path:
-    - "createSubscriptions: 사전 등록 서비스와 직접 입력 서비스를 함께 등록하면 각각 createFromCatalog/createCustom으로 만들어 한 번에 저장하고, 요청 순서대로 응답한다"
-    - "createSubscriptions: 사전 등록 서비스는 name을 services.name 스냅샷으로, logoUrl을 서비스 로고로 응답하며 요청의 name은 무시한다"
-    - "createSubscriptions: 저장된 구독은 status = ACTIVE, registrationSource = MANUAL, billingAnchorOn = 요청 nextBillingOn이다"
-    - "createSubscriptions: 직접 입력 서비스만 있으면 서비스 조회 없이 serviceId = null, logoUrl = null로 저장하고 이름은 앞뒤 공백을 제거한다"
+    - "createSubscriptions: 사전 등록 서비스와 직접 입력 서비스를 함께 등록하면 각각 createFromCatalog/createCustom으로 만들어 한 번에 저장하고, 등록 개수와 함께 요청 순서대로 응답한다"
+    - "createSubscriptions: 사전 등록 서비스는 serviceName을 services.name 스냅샷으로, logoUrl을 서비스 로고로 응답하며 요청의 serviceName은 무시한다"
+    - "createSubscriptions: 저장된 구독은 status = ACTIVE, billingAnchorOn = 요청 nextBillingDate이다"
+    - "createSubscriptions: registrationSource는 요청 source로 저장한다 (예: SCREENSHOT)"
+    - "createSubscriptions: 직접 입력 서비스만 있으면 서비스 조회 없이 저장하고 logoUrl = null, 이름은 앞뒤 공백을 제거해 응답한다"
     - "createSubscriptions: 같은 서비스의 ENDED 구독만 있으면 새 구독으로 등록한다"
   edge_cases:
     - "createSubscriptions: 같은 serviceId가 요청에 두 번 있으면 DUPLICATE_SERVICE_IN_REQUEST 예외를 던지고 저장하지 않는다"
@@ -267,13 +291,17 @@ testing_strategy:
     - "test/.../domain/subscription/application/usecase/SubscriptionUseCaseTest.java (신규)"
 
 notes:
-  - "결정 (2026-11-17): 일괄 등록은 전체 성공/전체 실패. 직접 등록 전용 (registration_source = MANUAL 고정)"
+  - "결정 (2026-11-17): 일괄 등록은 전체 성공/전체 실패"
+  - "변경 (2026-11-18, Notion API 명세서 대조): 공통 API는 Notion 명세('직접·스크린샷·Gmail 공통', A-04·A-05·A-09·A-13) 기준. Figma는 공통 API를 명시하지 않지만 A-09/A-13 '선택한 구독 등록하기'가 A-04와 같은 항목(A-15 = A-03 입력 필드)·같은 검증·완료 화면(A-10/A-14 = 개수 + 목록)이라 충돌 없음 (ERD 9장: 분석 결과는 응답으로만 전달하고 '선택한 구독 등록하기'에서 subscriptions로 저장). 코딩 규칙과도 충돌하지 않아 Notion에 맞춤 — 요청 source 추가(MANUAL 고정 제거), name → serviceName, nextBillingOn → nextBillingDate, 응답 data를 { createdCount, subscriptions } 로 감싸고 항목에서 serviceId·category 제거, 메시지 '구독을 등록했습니다.'. 필드명은 SUBSCRIPTION-002~005와 동일"
+  - "[보류] Notion '등록 성공 시 서버 임시저장 삭제' — ERD 10.1 #1(임시 정보는 클라이언트 로컬)과 Figma A-01s '저장 정책 확인 필요'로 미확정. 임시저장 API 스펙에서 다룸 (2026-11-18 사용자 결정)"
+  - "[가정] source는 요청 단위 (Notion). A-09/A-13 '구독 추가하기'(A-02)로 직접 추가한 항목도 그 요청의 source로 저장됨 — registration_source는 기록용이라 동작 영향 없음"
+  - "[가정] source가 SCREENSHOT / GMAIL이어도 검증·저장 규칙은 MANUAL과 동일 (registration_source만 다름). 분석 결과와의 대조 등 추가 검증은 스크린샷(A-09)·Gmail(A-13) 스펙에서 정의"
   - "A-03/A-03s '저장하기', A-04 목록·버튼 활성화, A-03c 이탈 팝업, A-01s 불러오기 팝업은 모두 클라이언트 처리 — 임시 등록 정보는 클라이언트 로컬 (ERD 9장, 10.1 #1). 서버는 'N개 구독 등록하기' 한 번만 호출됨"
   - "디자인 반영 요청 (ERD 10.2 #2): A-03 '사전 등록된 요금제 가격이 있으면 결제 금액에 반영' 문구는 요금제 없음 결정과 충돌 → 결제 금액은 항상 사용자 입력"
   - "디자인 반영 요청: SUB-003 카테고리 드롭다운 '쇼핑 멤버십' → '쇼핑·배달 멤버십' (ERD 10.1 #11)"
   - "[가정] 1회 최대 50개 — Figma에 상한 없음. 비정상 대량 요청 방지용"
   - "[가정] '오늘' 기준은 서버 JVM 기본 타임존. 현재 타임존 설정이 없으므로 배포 환경이 UTC면 KST 00~09시에 하루 어긋남 → JVM 타임존을 Asia/Seoul로 고정 필요 (구현 시 확인)"
   - "[가정] 동시 중복 요청(더블 탭) 방지는 클라이언트 버튼 비활성화로 처리. ACTIVE 중복은 상태 조건이라 DB UNIQUE로 막을 수 없어, 극히 드문 동시 요청에서 중복 행이 생길 수 있음 (MVP 허용)"
-  - "[가정] 응답 nextBillingOn은 billing_anchor_on 그대로. 다음 결제일 계산(ERD 6.2, nextBillingOn(base))은 구독 조회 기능 스펙에서 추가"
-  - "범위 외: 스크린샷(A-09)·Gmail(A-13) 등록 — 분석 방식 확정 후 별도 스펙"
+  - "[가정] 응답 nextBillingDate는 billing_anchor_on 그대로. 다음 결제일 계산(ERD 6.2, nextBillingOn(base))은 구독 조회 기능 스펙에서 추가"
+  - "범위 외: 스크린샷 분석(A-08)·Gmail 불러오기 — 분석 방식 확정 후 별도 스펙. 분석 후 등록은 이 API를 source = SCREENSHOT / GMAIL로 호출"
   - "범위 외: 구독 수정(M-06)·삭제·해지"
