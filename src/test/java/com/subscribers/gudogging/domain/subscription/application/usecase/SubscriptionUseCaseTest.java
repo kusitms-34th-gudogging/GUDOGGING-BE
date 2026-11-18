@@ -27,6 +27,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Sub
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
@@ -103,7 +104,7 @@ class SubscriptionUseCaseTest {
     private ArgumentCaptor<List<Subscription>> subscriptionsCaptor;
 
     private static ServiceCatalog service(String name, Category category, String logoUrl) {
-        ServiceCatalog service = ServiceCatalog.create(name, null, null, category, logoUrl, 1);
+        ServiceCatalog service = ServiceCatalog.create(name, null, null, category, logoUrl, null, 1);
         // id는 JPA 저장 시 생성되므로, 요청 serviceId와의 매칭 검증을 위해 테스트에서만 지정한다.
         ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
         return service;
@@ -115,24 +116,28 @@ class SubscriptionUseCaseTest {
 
         private final UUID userId = UUID.randomUUID();
         private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
-        private final LocalDate nextBillingOn = LocalDate.now().plusDays(7);
+        private final LocalDate nextBillingDate = LocalDate.now().plusDays(7);
 
         private final ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT,
             "https://logo.example.com/netflix.png");
         private final ServiceCatalog melon = service("멜론", Category.MUSIC, "https://logo.example.com/melon.png");
 
-        private SubscriptionItemRequest catalogItem(ServiceCatalog service, String name) {
-            return new SubscriptionItemRequest(service.getId(), name, service.getCategory(), 13500, 1,
-                BillingCycleUnit.MONTH, nextBillingOn, PaymentMethod.WEB_DIRECT);
+        private SubscriptionItemRequest catalogItem(ServiceCatalog service, String serviceName) {
+            return new SubscriptionItemRequest(service.getId(), serviceName, service.getCategory(), 13500, 1,
+                BillingCycleUnit.MONTH, nextBillingDate, PaymentMethod.WEB_DIRECT);
         }
 
-        private SubscriptionItemRequest customItem(String name) {
-            return new SubscriptionItemRequest(null, name, Category.ETC, 50000, 1,
-                BillingCycleUnit.MONTH, nextBillingOn, PaymentMethod.WEB_DIRECT);
+        private SubscriptionItemRequest customItem(String serviceName) {
+            return new SubscriptionItemRequest(null, serviceName, Category.ETC, 50000, 1,
+                BillingCycleUnit.MONTH, nextBillingDate, PaymentMethod.WEB_DIRECT);
         }
 
         private CreateSubscriptionsRequest request(SubscriptionItemRequest... items) {
-            return new CreateSubscriptionsRequest(List.of(items));
+            return request(RegistrationSource.MANUAL, items);
+        }
+
+        private CreateSubscriptionsRequest request(RegistrationSource source, SubscriptionItemRequest... items) {
+            return new CreateSubscriptionsRequest(source, List.of(items));
         }
 
         private void givenUser() {
@@ -145,7 +150,7 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
-        @DisplayName("사전 등록 서비스와 직접 입력 서비스를 함께 등록하면 각각 createFromCatalog/createCustom으로 만들어 한 번에 저장하고, 요청 순서대로 응답한다")
+        @DisplayName("사전 등록 서비스와 직접 입력 서비스를 함께 등록하면 각각 createFromCatalog/createCustom으로 만들어 한 번에 저장하고, 등록 개수와 함께 요청 순서대로 응답한다")
         void createsCatalogAndCustomSubscriptionsInRequestOrder() {
             // given
             givenUser();
@@ -155,7 +160,7 @@ class SubscriptionUseCaseTest {
             givenSaveReturnsArgument();
 
             // when
-            List<SubscriptionResponse> responses = subscriptionUseCase.createSubscriptions(userId,
+            SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId,
                 request(catalogItem(netflix, null), customItem("동네 헬스장"), catalogItem(melon, null)));
 
             // then
@@ -165,13 +170,15 @@ class SubscriptionUseCaseTest {
             assertThat(saved).extracting(Subscription::getServiceCatalog).containsExactly(netflix, null, melon);
             assertThat(saved).extracting(Subscription::getUser).containsOnly(user);
 
-            assertThat(responses).extracting(SubscriptionResponse::name).containsExactly("넷플릭스", "동네 헬스장", "멜론");
-            assertThat(responses).extracting(SubscriptionResponse::serviceId)
-                .containsExactly(netflix.getId(), null, melon.getId());
+            assertThat(response.createdCount()).isEqualTo(3);
+            assertThat(response.subscriptions()).extracting(SubscriptionResponse::serviceName)
+                .containsExactly("넷플릭스", "동네 헬스장", "멜론");
+            assertThat(response.subscriptions()).extracting(SubscriptionResponse::logoUrl)
+                .containsExactly(netflix.getLogoUrl(), null, melon.getLogoUrl());
         }
 
         @Test
-        @DisplayName("사전 등록 서비스는 name을 services.name 스냅샷으로, logoUrl을 서비스 로고로 응답하며 요청의 name은 무시한다")
+        @DisplayName("사전 등록 서비스는 serviceName을 services.name 스냅샷으로, logoUrl을 서비스 로고로 응답하며 요청의 serviceName은 무시한다")
         void usesCatalogNameAndLogoForCatalogService() {
             // given
             givenUser();
@@ -181,23 +188,22 @@ class SubscriptionUseCaseTest {
             givenSaveReturnsArgument();
 
             // when
-            List<SubscriptionResponse> responses = subscriptionUseCase.createSubscriptions(userId,
+            SubscriptionCreationResponse creation = subscriptionUseCase.createSubscriptions(userId,
                 request(catalogItem(netflix, "내 넷플릭스")));
 
             // then
-            SubscriptionResponse response = responses.getFirst();
-            assertThat(response.name()).isEqualTo("넷플릭스");
+            SubscriptionResponse response = creation.subscriptions().getFirst();
+            assertThat(response.serviceName()).isEqualTo("넷플릭스");
             assertThat(response.logoUrl()).isEqualTo("https://logo.example.com/netflix.png");
-            assertThat(response.category()).isEqualTo(Category.VIDEO_OTT);
             assertThat(response.amount()).isEqualTo(13500);
             assertThat(response.billingCycleValue()).isEqualTo(1);
             assertThat(response.billingCycleUnit()).isEqualTo(BillingCycleUnit.MONTH);
-            assertThat(response.nextBillingOn()).isEqualTo(nextBillingOn);
+            assertThat(response.nextBillingDate()).isEqualTo(nextBillingDate);
             assertThat(response.paymentMethod()).isEqualTo(PaymentMethod.WEB_DIRECT);
         }
 
         @Test
-        @DisplayName("저장된 구독은 status = ACTIVE, registrationSource = MANUAL, billingAnchorOn = 요청 nextBillingOn이다")
+        @DisplayName("저장된 구독은 status = ACTIVE, billingAnchorOn = 요청 nextBillingDate이다")
         void savesActiveManualSubscriptionWithBillingAnchor() {
             // given
             givenUser();
@@ -213,15 +219,34 @@ class SubscriptionUseCaseTest {
             verify(subscriptionCreateService).createSubscriptions(subscriptionsCaptor.capture());
             assertThat(subscriptionsCaptor.getValue()).allSatisfy(subscription -> {
                 assertThat(subscription.getStatus()).isEqualTo(SubscriptionStatus.ACTIVE);
-                assertThat(subscription.getRegistrationSource()).isEqualTo(RegistrationSource.MANUAL);
-                assertThat(subscription.getBillingAnchorOn()).isEqualTo(nextBillingOn);
+                assertThat(subscription.getBillingAnchorOn()).isEqualTo(nextBillingDate);
                 assertThat(subscription.getCanceledOn()).isNull();
                 assertThat(subscription.isSteadyUse()).isFalse();
             });
         }
 
         @Test
-        @DisplayName("직접 입력 서비스만 있으면 서비스 조회 없이 serviceId = null, logoUrl = null로 저장하고 이름은 앞뒤 공백을 제거한다")
+        @DisplayName("registrationSource는 요청 source로 저장한다 (예: SCREENSHOT)")
+        void savesRegistrationSourceFromRequest() {
+            // given
+            givenUser();
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId()))).willReturn(
+                List.of(netflix));
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+            givenSaveReturnsArgument();
+
+            // when
+            subscriptionUseCase.createSubscriptions(userId,
+                request(RegistrationSource.SCREENSHOT, catalogItem(netflix, null), customItem("동네 헬스장")));
+
+            // then
+            verify(subscriptionCreateService).createSubscriptions(subscriptionsCaptor.capture());
+            assertThat(subscriptionsCaptor.getValue()).extracting(Subscription::getRegistrationSource)
+                .containsOnly(RegistrationSource.SCREENSHOT);
+        }
+
+        @Test
+        @DisplayName("직접 입력 서비스만 있으면 서비스 조회 없이 저장하고 logoUrl = null, 이름은 앞뒤 공백을 제거해 응답한다")
         void createsCustomOnlyWithoutServiceLookup() {
             // given
             givenUser();
@@ -229,16 +254,18 @@ class SubscriptionUseCaseTest {
             givenSaveReturnsArgument();
 
             // when
-            List<SubscriptionResponse> responses = subscriptionUseCase.createSubscriptions(userId,
+            SubscriptionCreationResponse creation = subscriptionUseCase.createSubscriptions(userId,
                 request(customItem("  동네 헬스장  ")));
 
             // then
             verifyNoInteractions(serviceCatalogGetService);
-            SubscriptionResponse response = responses.getFirst();
-            assertThat(response.serviceId()).isNull();
+            verify(subscriptionCreateService).createSubscriptions(subscriptionsCaptor.capture());
+            Subscription saved = subscriptionsCaptor.getValue().getFirst();
+            assertThat(saved.getServiceCatalog()).isNull();
+            assertThat(saved.getCategory()).isEqualTo(Category.ETC);
+            SubscriptionResponse response = creation.subscriptions().getFirst();
             assertThat(response.logoUrl()).isNull();
-            assertThat(response.name()).isEqualTo("동네 헬스장");
-            assertThat(response.category()).isEqualTo(Category.ETC);
+            assertThat(response.serviceName()).isEqualTo("동네 헬스장");
         }
 
         @Test
@@ -252,11 +279,14 @@ class SubscriptionUseCaseTest {
             givenSaveReturnsArgument();
 
             // when
-            List<SubscriptionResponse> responses = subscriptionUseCase.createSubscriptions(userId,
+            SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId,
                 request(catalogItem(netflix, null)));
 
             // then
-            assertThat(responses).extracting(SubscriptionResponse::serviceId).containsExactly(netflix.getId());
+            assertThat(response.createdCount()).isEqualTo(1);
+            verify(subscriptionCreateService).createSubscriptions(subscriptionsCaptor.capture());
+            assertThat(subscriptionsCaptor.getValue()).extracting(Subscription::getServiceCatalog)
+                .containsExactly(netflix);
         }
 
         @Test
