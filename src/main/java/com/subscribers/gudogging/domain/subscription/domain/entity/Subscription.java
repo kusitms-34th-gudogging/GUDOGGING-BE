@@ -14,12 +14,14 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -33,12 +35,18 @@ import org.hibernate.type.SqlTypes;
     indexes = {
         @Index(name = "idx_subscriptions_user_status", columnList = "user_id, status"),
         @Index(name = "idx_subscriptions_service_id", columnList = "service_id")
-    }
+    },
+    uniqueConstraints = @UniqueConstraint(
+        name = Subscription.ACTIVE_SERVICE_UNIQUE_CONSTRAINT,
+        columnNames = {"user_id", "active_service_id"}
+    )
 )
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class Subscription extends BaseEntity {
+
+    public static final String ACTIVE_SERVICE_UNIQUE_CONSTRAINT = "uk_subscriptions_user_active_service";
 
     private static final int MONTHS_PER_YEAR = 12;
     private static final int WEEKS_PER_YEAR = 52;
@@ -73,6 +81,12 @@ public class Subscription extends BaseEntity {
     @Column(name = "billing_anchor_on", nullable = false)
     private LocalDate billingAnchorOn;
 
+    /**
+     * 결제 기준일을 마지막으로 정한 날(구독 정보 수정일). NULL이면 등록일. 이 날짜부터 billingAnchorOn 전까지는 결제일을 만들지 않는다 (ERD 6.2).
+     */
+    @Column(name = "billing_anchor_changed_on")
+    private LocalDate billingAnchorChangedOn;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, length = 20)
     private PaymentMethod paymentMethod;
@@ -94,6 +108,16 @@ public class Subscription extends BaseEntity {
     @Column(name = "started_on", nullable = false)
     private LocalDate startedOn;
 
+    /**
+     * 회원별 사전 등록 서비스의 ACTIVE 구독을 1건으로 제한하는 DB 계산 컬럼 (동시 등록 방지). 애플리케이션은 쓰지 않는다.
+     * 삭제되지 않은 ACTIVE 구독이면 service_id, 아니면 NULL — 고유 인덱스는 NULL끼리 충돌하지 않으므로 종료 · 삭제된 구독과 직접 입력 구독은
+     * 제한하지 않는다.
+     */
+    @Column(name = "active_service_id", insertable = false, updatable = false,
+        columnDefinition = "BINARY(16) GENERATED ALWAYS AS "
+            + "(CASE WHEN status = 'ACTIVE' AND deleted = FALSE THEN service_id END)")
+    private UUID activeServiceId;
+
     public static Subscription createFromCatalog(
         User user,
         ServiceCatalog serviceCatalog,
@@ -106,8 +130,8 @@ public class Subscription extends BaseEntity {
         RegistrationSource registrationSource
     ) {
         return new Subscription(user, serviceCatalog, serviceCatalog.getName(), category, amount,
-            billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
+            billingCycleValue, billingCycleUnit, billingAnchorOn, null, paymentMethod,
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null, null);
     }
 
     public static Subscription createCustom(
@@ -122,8 +146,8 @@ public class Subscription extends BaseEntity {
         RegistrationSource registrationSource
     ) {
         return new Subscription(user, null, name, category, amount,
-            billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
+            billingCycleValue, billingCycleUnit, billingAnchorOn, null, paymentMethod,
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null, null);
     }
 
     /**
@@ -142,13 +166,15 @@ public class Subscription extends BaseEntity {
         int billingCycleValue,
         BillingCycleUnit billingCycleUnit,
         LocalDate billingAnchorOn,
-        PaymentMethod paymentMethod
+        PaymentMethod paymentMethod,
+        LocalDate today
     ) {
         this.category = category;
         this.amount = amount;
         this.billingCycleValue = billingCycleValue;
         this.billingCycleUnit = billingCycleUnit;
         this.billingAnchorOn = billingAnchorOn;
+        this.billingAnchorChangedOn = today;
         this.paymentMethod = paymentMethod;
     }
 
@@ -167,18 +193,20 @@ public class Subscription extends BaseEntity {
 
     /**
      * 구독 종료 구독 재등록 (M-05). 같은 행을 되살리며 시작일을 재등록일로 다시 잡아 쉬었던 기간이 결제 횟수 · 캘린더에 들어가지 않게 한다.
+     * 다음 결제일을 새로 받으므로 결제 기준일을 정한 날(billingAnchorChangedOn)도 오늘로 바꾼다 (구독 정보 수정과 같은 규칙).
      */
     public void reactivate(LocalDate billingAnchorOn, LocalDate today) {
         this.status = SubscriptionStatus.ACTIVE;
         this.canceledOn = null;
         this.billingAnchorOn = billingAnchorOn;
+        this.billingAnchorChangedOn = today;
         this.startedOn = today;
     }
 
     /**
      * 월 환산 금액 (ERD 6.1). 원 단위 반올림.
      */
-    public int monthlyAmount() {
+    public long monthlyAmount() {
         BigDecimal numerator = BigDecimal.valueOf(amount);
         BigDecimal denominator = BigDecimal.valueOf(billingCycleValue);
         switch (billingCycleUnit) {
@@ -194,13 +222,13 @@ public class Subscription extends BaseEntity {
                 denominator = denominator.multiply(BigDecimal.valueOf(MONTHS_PER_YEAR));
             }
         }
-        return numerator.divide(denominator, 0, RoundingMode.HALF_UP).intValueExact();
+        return numerator.divide(denominator, 0, RoundingMode.HALF_UP).longValueExact();
     }
 
     /**
      * 연 환산 금액 = 월 환산 금액 × 12 (ERD 6.1).
      */
-    public int yearlyAmount() {
+    public long yearlyAmount() {
         return Math.multiplyExact(monthlyAmount(), MONTHS_PER_YEAR);
     }
 
@@ -215,6 +243,7 @@ public class Subscription extends BaseEntity {
 
     /**
      * base 이후(포함) 첫 결제일 (ERD 6.2). 결제일은 매번 billingAnchorOn에서 계산하므로 월말이 밀리지 않는다.
+     * 기준일을 정한 날(등록일 · 마지막 수정일) 이후에는 사용자가 입력한 다음 결제일(billingAnchorOn)이 첫 결제일이다.
      */
     public LocalDate nextBillingOn(LocalDate base) {
         return billingDateAt(firstBillingIndexOnOrAfter(base));
@@ -232,7 +261,8 @@ public class Subscription extends BaseEntity {
      */
     public List<LocalDate> billingDatesBetween(LocalDate from, LocalDate to) {
         List<LocalDate> billingDates = new ArrayList<>();
-        for (long index = firstBillingIndexOnOrAfter(from); !billingDateAt(index).isAfter(to); index++) {
+        for (long index = firstBillingIndexOnOrAfter(from); !billingDateAt(index).isAfter(to);
+             index = firstBillingIndexOnOrAfter(billingDateAt(index).plusDays(1))) {
             billingDates.add(billingDateAt(index));
         }
         return billingDates;
@@ -246,8 +276,8 @@ public class Subscription extends BaseEntity {
         return billingDatesBetween(startedOn(), end).size();
     }
 
-    public int totalPaidAmount(LocalDate today) {
-        return Math.multiplyExact(paidCount(today), amount);
+    public long totalPaidAmount(LocalDate today) {
+        return Math.multiplyExact((long) paidCount(today), amount);
     }
 
     /**
@@ -301,6 +331,11 @@ public class Subscription extends BaseEntity {
         };
         while (billingDateAt(index).isBefore(date)) {
             index++;
+        }
+        // 기준일 이전 결제일은 기준일을 정한 날(NULL이면 등록일)보다 앞선 날짜만 인정하고, 그 사이 날짜는 기준일(index 0)로 건너뛴다.
+        LocalDate anchorChangedOn = billingAnchorChangedOn != null ? billingAnchorChangedOn : startedOn();
+        if (index < 0 && !billingDateAt(index).isBefore(anchorChangedOn)) {
+            return 0;
         }
         return index;
     }

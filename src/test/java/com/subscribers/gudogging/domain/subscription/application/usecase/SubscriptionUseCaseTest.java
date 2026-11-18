@@ -344,6 +344,25 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("동시 등록으로 중복 조회를 통과했어도 저장할 때 같은 서비스의 ACTIVE 구독과 충돌하면 DUPLICATE_SUBSCRIPTION 예외를 던진다")
+        void throwsWhenActiveSubscriptionConflictsOnSave() {
+            // given — 다른 요청이 먼저 저장해 DB 고유 제약(uk_subscriptions_user_active_service)에 걸린 상황
+            givenUser();
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId())))
+                .willReturn(List.of(netflix));
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+            given(subscriptionCreateService.createSubscriptions(any()))
+                .willThrow(new DuplicateSubscriptionException());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.createSubscriptions(userId,
+                request(catalogItem(netflix, null), customItem("동네 헬스장"))))
+                .isInstanceOf(DuplicateSubscriptionException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.DUPLICATE_SUBSCRIPTION);
+        }
+
+        @Test
         @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 저장하지 않는다")
         void throwsWhenUserNotFound() {
             // given
@@ -499,6 +518,21 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("등록할 때 한 주기보다 먼 다음 결제일을 입력했으면 그 날짜를 다음 결제일로 반환한다")
+        void returnsRequestedNextBillingDateBeyondOneCycle() {
+            // given — 1개월 전 등록, 무료 체험 등으로 다음 결제일을 2개월 뒤로 입력한 월 구독
+            LocalDate firstBillingOn = today.plusMonths(2);
+            Subscription trial = active("무료 체험", 17000, 1, BillingCycleUnit.MONTH, firstBillingOn);
+            givenSubscriptions(trial);
+
+            // when
+            SubscriptionListResponse response = subscriptionUseCase.getSubscriptions(userId, null, null);
+
+            // then — 입력한 날짜 이전(1개월 뒤)은 결제일이 아니다
+            assertThat(response.subscriptions().getFirst().nextBillingDate()).isEqualTo(firstBillingOn);
+        }
+
+        @Test
         @DisplayName("기준일이 지난 구독은 오늘 이후 첫 결제일과 D-n을 반환하고, 오늘이 결제일이면 D-0이다")
         void returnsNextBillingDateFromPastAnchor() {
             // given — 매주 결제: 기준일 10일 전 → 다음 결제일은 4일 뒤, 기준일 14일 전 → 오늘
@@ -560,6 +594,28 @@ class SubscriptionUseCaseTest {
             assertThat(responses.get("3개월").monthlyAmount()).isEqualTo(10000);   // 30,000 / 3
             assertThat(responses.get("매년").monthlyAmount()).isEqualTo(8333);     // 100,000 / 12 = 8,333.33
             assertThat(response.monthlyTotal()).isEqualTo(30417 + 43333 + 10000 + 8333);
+        }
+
+        @Test
+        @DisplayName("월 환산 금액 · 합계 · 총 지출이 int 범위를 넘어도 목록 조회에 성공하고 long 금액으로 반환한다")
+        void returnsAmountsBeyondIntRange() {
+            // given — 매일 1억 원 → 월 환산 3,041,666,667원 (int 최대 2,147,483,647 초과)
+            Subscription daily = active("매일 1억", 100_000_000, 1, BillingCycleUnit.DAY, today.plusDays(1));
+            Subscription monthly = active("매월 20억", 2_000_000_000, 1, BillingCycleUnit.MONTH, today.plusDays(1));
+            // 결제일 1/10, 2/10, 3/10, 4/10 → 4번 × 20억 = 80억
+            Subscription canceled = ended("종료 20억", 2_000_000_000, 1, BillingCycleUnit.MONTH,
+                LocalDate.of(2026, 1, 10), LocalDate.of(2026, 1, 10), LocalDate.of(2026, 4, 10));
+            givenSubscriptions(daily, monthly, canceled);
+
+            // when
+            SubscriptionListResponse activeTab = subscriptionUseCase.getSubscriptions(userId, null, null);
+            SubscriptionListResponse endedTab = subscriptionUseCase.getSubscriptions(userId,
+                SubscriptionStatus.ENDED, null);
+
+            // then
+            assertThat(byName(activeTab).get("매일 1억").monthlyAmount()).isEqualTo(3_041_666_667L);
+            assertThat(activeTab.monthlyTotal()).isEqualTo(3_041_666_667L + 2_000_000_000L);
+            assertThat(endedTab.subscriptions().getFirst().totalPaidAmount()).isEqualTo(8_000_000_000L);
         }
 
         @Test
@@ -696,10 +752,12 @@ class SubscriptionUseCaseTest {
         @Test
         @DisplayName("구독 중이면 결제 금액 · 연 환산 · 다음 결제일 · D-n · 구독 시작일 · 지금까지 결제 횟수와 금액을 반환하고 해지일은 null이다")
         void returnsActiveSubscriptionDetail() {
-            // given — 2개월 전 등록, 5일 뒤가 결제일인 월 구독 → 등록 후 결제일 2번 지남
+            // given — 2개월 전 등록, 오늘 결제 정보를 수정해 5일 뒤가 결제일인 월 구독 → 오늘 이전 결제일 2번 지남
             ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
             LocalDate startedOn = today.minusMonths(2);
             Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), startedOn);
+            subscription.updatePaymentInfo(Category.VIDEO_OTT, 13500, 1, BillingCycleUnit.MONTH, today.plusDays(5),
+                PaymentMethod.APP_STORE, today);
             givenSubscription(subscription);
 
             // when
@@ -785,6 +843,25 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("등록할 때 한 주기보다 먼 다음 결제일을 입력했으면 그 날짜를 다음 결제일로 반환하고 그 전 날짜는 결제 횟수에 세지 않는다")
+        void excludesBillingDatesBeforeRequestedNextBillingDate() {
+            // given — 2개월 전 등록 때 다음 결제일을 3개월 뒤(오늘 기준 1개월 뒤)로 입력한 월 구독 → 아직 결제한 적 없음
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
+            LocalDate firstBillingOn = today.plusMonths(1);
+            Subscription subscription = activeFromCatalog(netflix, firstBillingOn, today.minusMonths(2));
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.nextBillingDate()).isEqualTo(firstBillingOn);
+            assertThat(response.paidCount()).isZero();
+            assertThat(response.totalPaidAmount()).isZero();
+        }
+
+        @Test
         @DisplayName("직접 입력 서비스는 logoUrl을 null로 반환한다")
         void returnsNullLogoForCustomService() {
             // given
@@ -798,6 +875,26 @@ class SubscriptionUseCaseTest {
             // then
             assertThat(response.serviceName()).isEqualTo("왓챠");
             assertThat(response.logoUrl()).isNull();
+        }
+
+        @Test
+        @DisplayName("연 환산 금액 · 지금까지 결제 금액이 int 범위를 넘어도 상세 조회에 성공하고 long 금액으로 반환한다")
+        void returnsDetailAmountsBeyondIntRange() {
+            // given — 매월 20억 원, 1/15 ~ 10/15 결제 10번
+            Subscription subscription = Subscription.createCustom(user, "고액 구독", Category.ETC, 2_000_000_000, 1,
+                BillingCycleUnit.MONTH, endedAnchor, PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            subscription.cancel(endedCanceledOn);
+            persisted(subscription, endedStartedOn);
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.yearlyAmount()).isEqualTo(24_000_000_000L);
+            assertThat(response.paidCount()).isEqualTo(10);
+            assertThat(response.totalPaidAmount()).isEqualTo(20_000_000_000L);
         }
 
         @Test
@@ -938,6 +1035,49 @@ class SubscriptionUseCaseTest {
             // then
             assertThat(subscription.getName()).isEqualTo("헬스장");
             assertThat(subscription.getAmount()).isEqualTo(120000);
+        }
+
+        @Test
+        @DisplayName("연 환산 금액이 int 범위를 넘어도 수정에 성공하고 long 금액으로 반환한다")
+        void returnsYearlyAmountBeyondIntRange() {
+            // given — 매월 2억 원 → 연 환산 24억 원 (int 최대 2,147,483,647 초과)
+            Subscription subscription = catalogSubscription();
+            givenSubscription(subscription);
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.ETC, 200_000_000, 1,
+                BillingCycleUnit.MONTH, today.plusDays(10), PaymentMethod.WEB_DIRECT);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+
+            // then
+            assertThat(subscription.getAmount()).isEqualTo(200_000_000);
+            assertThat(response.yearlyAmount()).isEqualTo(2_400_000_000L);
+        }
+
+        @Test
+        @DisplayName("다음 결제일을 한 주기보다 먼 날짜로 수정하면 요청한 날짜를 반환하고, 상세도 같은 날짜와 수정 전 결제 횟수를 유지한다")
+        void keepsRequestedNextBillingDateAndPaidHistory() {
+            // given — 4주 전 등록한 구독을 매주 결제, 다음 결제일 3주 뒤로 수정
+            Subscription subscription = catalogSubscription();
+            ReflectionTestUtils.setField(subscription, "createdAt", today.minusWeeks(4).atStartOfDay());
+            ReflectionTestUtils.setField(subscription, "startedOn", today.minusWeeks(4));
+            givenSubscription(subscription);
+            LocalDate requestedNextBillingDate = today.plusWeeks(3);
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.ETC, 10000, 1,
+                BillingCycleUnit.WEEK, requestedNextBillingDate, PaymentMethod.WEB_DIRECT);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+            SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then — 수정한 오늘 ~ 3주 뒤 사이(오늘 · 1주 뒤 · 2주 뒤)는 결제일이 아니고,
+            //        오늘 이전 결제일(1 · 2 · 3 · 4주 전)은 수정 전 기록으로 유지한다
+            assertThat(response.nextBillingDate()).isEqualTo(requestedNextBillingDate);
+            assertThat(detail.nextBillingDate()).isEqualTo(requestedNextBillingDate);
+            assertThat(detail.paidCount()).isEqualTo(4);
         }
 
         @Test

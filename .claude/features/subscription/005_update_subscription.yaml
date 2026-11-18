@@ -84,8 +84,8 @@ technical_spec:
         wrapper: CommonResponse<SubscriptionBillingResponse>
         fields:
           - "subscriptionId (UUID)"
-          - "yearlyAmount (int): 재계산된 연 환산 금액"
-          - "nextBillingDate (LocalDate): 다음 결제일 — nextBillingOn(today) (요청값이 오늘 이후라 요청 nextBillingDate와 같음)"
+          - "yearlyAmount (long): 재계산된 연 환산 금액"
+          - "nextBillingDate (LocalDate): 다음 결제일 — nextBillingOn(today). 오늘 ~ 요청 nextBillingDate 사이에는 결제일을 만들지 않으므로 요청 nextBillingDate와 같고, 목록 · 상세도 같은 날짜 ([변경 2026-11-18] 한 주기보다 먼 날짜도 동일)"
         factory: "SubscriptionBillingResponse.from(Subscription, LocalDate today)"
         example: |
           { "code": 200, "message": "구독 정보를 수정했습니다.",
@@ -111,7 +111,7 @@ technical_spec:
     - step: 6
       layer: Domain (Subscription) — 기존 메서드
       action: >
-        updatePaymentInfo(category, amount, billingCycleValue, billingCycleUnit, nextBillingDate → billingAnchorOn, paymentMethod).
+        updatePaymentInfo(category, amount, billingCycleValue, billingCycleUnit, nextBillingDate → billingAnchorOn, paymentMethod, today → billingAnchorChangedOn).
         serviceCatalog == null AND request.serviceName != null 이면 updateCustomName(serviceName.strip())
     - step: 7
       layer: Domain (Subscription)
@@ -122,7 +122,7 @@ technical_spec:
       - name: Subscription
         action: Update
         table: subscriptions
-        fields: "category, amount, billing_cycle_value, billing_cycle_unit, billing_anchor_on, payment_method, name(직접 입력만)"
+        fields: "category, amount, billing_cycle_value, billing_cycle_unit, billing_anchor_on, billing_anchor_changed_on, payment_method, name(직접 입력만)"
       - name: User
         action: Read
         table: users
@@ -151,7 +151,7 @@ technical_spec:
     - target: "SubscriptionResponseCode"
       change: "SUBSCRIPTION_UPDATED(200) 추가"
     - target: "Subscription (엔티티)"
-      change: "변경 없음 — 기존 updatePaymentInfo, updateCustomName 사용"
+      change: "[변경 2026-11-18] billing_anchor_changed_on 컬럼 추가, updatePaymentInfo에 today 인자 추가 (ERD v1.4). updateCustomName은 그대로"
 
   security_config:
     note: "변경 없음 — anyRequest().authenticated()로 보호됨"

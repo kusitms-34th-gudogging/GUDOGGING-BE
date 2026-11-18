@@ -12,9 +12,8 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 구독 상세 — M-03 구독 중 · M-05 구독 종료 · C-03 캘린더 구독 상세.
- * baseDate가 있으면 그 날짜 기준으로 상태 · 다음 결제일 · D-n을 계산하고, 지금까지 결제 금액 · 횟수는 항상 오늘 기준이다.
- * 점검 필드(latestCheckup · pastCheckups · pastCheckupAverage)는 구독 점검 후속 스펙 전까지 null · 빈 목록으로 반환한다.
+ * 구독 상세 — M-03 구독 중 · M-05 구독 종료 · C-03 캘린더 구독 상세. baseDate가 있으면 그 날짜 기준으로 상태 · 다음 결제일 · D-n을 계산하고, 지금까지 결제 금액 · 횟수는 항상
+ * 오늘 기준이다. 점검 필드(latestCheckup · pastCheckups · pastCheckupAverage)는 구독 점검 후속 스펙 전까지 null · 빈 목록으로 반환한다.
  */
 public record SubscriptionDetailResponse(
     UUID subscriptionId,
@@ -30,8 +29,8 @@ public record SubscriptionDetailResponse(
     PaymentMethod paymentMethod,
     boolean isSteady,
     LocalDate canceledAt,
-    int yearlyAmount,
-    int totalPaidAmount,
+    long yearlyAmount,
+    long totalPaidAmount,
     int paidCount,
     Integer dDay,
     LatestCheckupResponse latestCheckup,

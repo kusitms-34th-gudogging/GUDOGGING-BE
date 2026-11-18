@@ -201,7 +201,7 @@ public class SubscriptionUseCase {
         }
 
         subscription.updatePaymentInfo(request.category(), request.amount(), request.billingCycleValue(),
-            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod());
+            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod(), LocalDate.now());
         if (subscription.getServiceCatalog() == null && request.serviceName() != null) {
             subscription.updateCustomName(request.serviceName().strip());
         }
@@ -257,7 +257,7 @@ public class SubscriptionUseCase {
             subscription -> subscription.nextBillingOn(today));
         Comparator<Subscription> byAmountDesc = Comparator.comparingInt(Subscription::getAmount).reversed();
         Comparator<Subscription> byCanceledOnDesc = Comparator.comparing(Subscription::getCanceledOn).reversed();
-        Comparator<Subscription> byMonthlyAmountDesc = Comparator.comparingInt(Subscription::monthlyAmount).reversed();
+        Comparator<Subscription> byMonthlyAmountDesc = Comparator.comparingLong(Subscription::monthlyAmount).reversed();
 
         return switch (sortType) {
             case NEXT_BILLING_DATE -> byNextBillingDate.thenComparing(byAmountDesc);
