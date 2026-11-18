@@ -18,6 +18,13 @@ public class ServiceCatalogGetService {
         return serviceCatalogRepository.findAllByIsActiveTrueAndDeletedFalseOrderBySortOrderAscNameAsc();
     }
 
+    /**
+     * 삭제(soft delete)·비활성 서비스를 포함한 전체 서비스를 조회한다 (시드 동기화용).
+     */
+    public List<ServiceCatalog> findAllServices() {
+        return serviceCatalogRepository.findAll();
+    }
+
     public List<ServiceCatalog> findActiveServicesByIds(Collection<UUID> serviceIds) {
         return serviceCatalogRepository.findAllByIdInAndIsActiveTrueAndDeletedFalse(serviceIds);
     }
