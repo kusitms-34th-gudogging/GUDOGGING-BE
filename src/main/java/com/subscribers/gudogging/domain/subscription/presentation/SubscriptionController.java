@@ -3,7 +3,7 @@ package com.subscribers.gudogging.domain.subscription.presentation;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
-import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
@@ -134,6 +134,38 @@ public class SubscriptionController {
     ) {
         SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId, subscriptionId, baseDate);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_FOUND, response);
+    }
+
+    @Operation(
+        summary = "해지 안내 조회 (결제 경로별)",
+        description = """
+            **기능**
+            구독 해지 안내 화면(X-01 / X-03 / X-04 / X-05)에 보여줄 해지 방법 3단계 · 주의 문구 · 해지 링크를 조회합니다.
+            구독의 결제 경로(paymentMethod)와 서비스 해지 링크 유무로 안내가 정해집니다 (구독 상태 ACTIVE/ENDED는 검사하지 않음).
+            - APP_STORE: App Store 구독 관리 링크 / GOOGLE_PLAY: Google Play 정기 결제 링크
+            - WEB_DIRECT + 서비스 해지 링크 있음: 그 해지 링크 / WEB_DIRECT + 링크 없음(직접 입력 구독 포함): cancelUrl = null
+            - steps의 서비스명은 받침에 맞는 목적격 조사(을/를)와 함께 채워집니다. 버튼 문구 · 화면 제목은 클라이언트가 처리합니다.
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+
+            **응답값**
+            - serviceName (String): 서비스명
+            - paymentMethod (String): 결제한 곳 (APP_STORE, GOOGLE_PLAY, WEB_DIRECT)
+            - steps (List<String>): 해지 방법 3단계
+            - cancelUrl (String, nullable): 해지 페이지 링크. 없으면 null
+            - caution (String): 주의 문구
+            """
+    )
+    @GetMapping("/{subscriptionId}/cancel-guide")
+    public CommonResponse<CancelGuideResponse> getCancelGuide(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId
+    ) {
+        CancelGuideResponse response = subscriptionUseCase.getCancelGuide(userId, subscriptionId);
+        return CommonResponse.success(SubscriptionResponseCode.CANCEL_GUIDE_FOUND, response);
     }
 
     @Operation(
