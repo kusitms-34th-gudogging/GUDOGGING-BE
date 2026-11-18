@@ -4,7 +4,7 @@ architecture:
   flow: Controller -> UseCase(Tx) -> Domain(Entity/Service) -> Repository
   flow(external/infra): Controller -> UseCase -> Domain(Interface) <- [Implements] - Infrastructure/External
   patterns:
-    - "Snapshot: Use for immutable history (Currently applied to -> subscription_checks.category, subscriptions.name/category copied from services)."
+    - "Snapshot: Use for immutable history (Currently applied to -> subscription_checks.category, subscriptions.name/category copied from services, subscription_billing_histories = 결제 정보 수정 전 조건)."
     - Factory Method: Use static `create()` method in Entity.
     - Rich Model: Encapsulate business logic in Entity methods.
   layers:
@@ -60,7 +60,9 @@ api:
     domains:
       auth: "401xx — 소셜 로그인(Apple/Google), 토큰"
       user: "402xx — 회원, 알림 설정, 푸시 토큰"
-    allocation: "그 외 도메인은 구현 시점에 403xx부터 순서대로 할당하고 여기에 추가"
+      catalog: "403xx — 서비스 목록(services)"
+      subscription: "404xx — 구독 등록·편집·해지"
+    allocation: "그 외 도메인은 구현 시점에 405xx부터 순서대로 할당하고 여기에 추가"
     note: "상세 코드 목록은 references/conventions/coding-style.yaml 참고. domain/example(Post)은 예시용이라 대역 정책에서 제외"
 
 

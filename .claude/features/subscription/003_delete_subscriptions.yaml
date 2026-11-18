@@ -1,0 +1,193 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-19
+
+meta:
+  id: SUBSCRIPTION-003
+  title: 구독 선택 삭제 (일괄)
+  type: Feature
+  author: 1winhyun
+  source: "Figma 디자인 작업소 › 구독 관리 › MNG-002 (M-02.1, M-02.2, M-02.3)"
+  api_doc: "Notion API 명세서 › 구독 선택 삭제 (구독 관리 목록) — https://app.notion.com/p/09b885ef2821837f93df01596ee1c411"
+  depends_on:
+    - AUTH-001      # JWT 인증 필터, @CurrentUserId
+    - USER-001      # UserErrorCode.USER_NOT_FOUND, UserNotFoundException
+    - SUBSCRIPTION-002  # SubscriptionErrorCode 40403 다음 번호, SubscriptionResponseCode
+
+overview:
+  summary: >
+    삭제 선택 모드(M-02.2)에서 고른 구독들을 삭제 확인 모달(M-02.3)의 '삭제하기'로 한 번에 Soft Delete 한다.
+    구독과 함께 해당 구독의 점검 기록 · 해지 이유 · 알림도 Soft Delete 한다 (Figma '삭제하면 모든 정보가 사라져요', ERD 8장).
+    하나라도 삭제할 수 없으면 전체 실패. 캘린더 구독 상세(C-03, C-04)의 삭제도 같은 API를 구독 1건으로 호출한다.
+  user_story: >
+    As a 로그인한 회원, I want to 더 이상 관리하지 않을 구독 여러 개를 한 번에 지우기를,
+    so that 구독 목록을 정리할 수 있다.
+  goals:
+    - 선택한 구독(구독 중 · 구독 종료 모두) 일괄 Soft Delete
+    - 연관 데이터(subscription_checks, subscription_check_cancel_reasons, notifications, subscription_billing_histories) 함께 Soft Delete ([변경 2026-11-19] 결제 조건 이력 추가, ERD 8장)
+    - 전체 성공 또는 전체 실패 (부분 삭제 없음), 삭제 개수 반환
+
+technical_spec:
+  api:
+    - method: DELETE
+      path: /api/v1/subscriptions
+      summary: 구독 선택 삭제 (일괄)
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        dto: DeleteSubscriptionsRequest
+        body: "DELETE 요청 본문 사용"
+        fields:
+          - name: subscriptionIds
+            type: List<UUID>
+            required: true
+            validation: "@NotEmpty, @Size(max = 100), 요소 @NotNull"
+        example: |
+          { "subscriptionIds": ["3f2b8c1e-...-000000000001", "3f2b8c1e-...-000000000002"] }
+      response:
+        dto: SubscriptionDeletionResponse
+        http_status: 200 OK
+        response_code: "SubscriptionResponseCode.SUBSCRIPTIONS_DELETED (200, HttpStatus.OK, \"구독을 삭제했습니다.\")"
+        wrapper: CommonResponse<SubscriptionDeletionResponse>
+        fields:
+          - "deletedCount (int): 삭제된 구독 개수 (중복 제거 후)"
+        factory: "SubscriptionDeletionResponse.from(List<Subscription> deletedSubscriptions)"
+        example: |
+          { "code": 200, "message": "구독을 삭제했습니다.", "data": { "deletedCount": 2 } }
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: "@CurrentUserId UUID userId, @Valid @RequestBody DeleteSubscriptionsRequest → SubscriptionUseCase.deleteSubscriptions(userId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_DELETED, data)"
+    - step: 2
+      layer: UseCase (SubscriptionUseCase.deleteSubscriptions)
+      action: "회원 조회 → 요청 ID 중복 제거 → 본인 구독 조회 · 개수 검사 → 점검 기록 · 해지 이유 · 알림 조회 → 전부 softDelete() (변경 감지) → SubscriptionDeletionResponse"
+      transaction: true (@Transactional)
+    - step: 3
+      layer: Domain Service (UserGetService)
+      action: "findUserById(userId) — 없으면 UserNotFoundException"
+    - step: 4
+      layer: Domain Service (SubscriptionGetService)
+      action: >
+        findSubscriptionsByIds(User, Collection<UUID>) — user 일치 AND deleted = false.
+        조회 개수 ≠ 중복 제거한 요청 ID 개수면 SubscriptionNotFoundException (없음 · 이미 삭제 · 다른 회원 구독 구분 없이 404)
+    - step: 5
+      layer: Domain Service (SubscriptionCheckGetService) — 신규 (check 도메인)
+      action: "findChecksBySubscriptions(Collection<Subscription>) — deleted = false"
+    - step: 6
+      layer: Domain Service (SubscriptionCheckCancelReasonGetService) — 신규 (check 도메인)
+      action: "findCancelReasonsByChecks(Collection<SubscriptionCheck>) — deleted = false. 점검 기록이 없으면 호출하지 않음"
+    - step: 7
+      layer: Domain Service (NotificationGetService) — 신규 (notification 도메인)
+      action: "findNotificationsBySubscriptions(Collection<Subscription>) — deleted = false"
+    - step: 8
+      layer: Domain (BaseEntity)
+      action: "해지 이유 → 점검 기록 → 알림 → 결제 조건 이력(SubscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions, [변경 2026-11-19]) → 구독 순으로 softDelete(). 트랜잭션 커밋 시 변경 감지로 UPDATE"
+
+  database:
+    entities:
+      - name: Subscription
+        action: Soft Delete
+        table: subscriptions
+        fields: "deleted = true, deleted_at = now"
+      - name: SubscriptionCheck
+        action: Soft Delete
+        table: subscription_checks
+      - name: SubscriptionCheckCancelReason
+        action: Soft Delete
+        table: subscription_check_cancel_reasons
+      - name: Notification
+        action: Soft Delete
+        table: notifications
+      - name: SubscriptionBillingHistory
+        action: "Soft Delete — [변경 2026-11-19]"
+        table: subscription_billing_histories
+      - name: User
+        action: Read
+        table: users
+
+  error_codes:
+    domain_range:
+      subscription: "404xx (SUBSCRIPTION-001에서 할당)"
+    codes:
+      - code: 40404
+        enum: SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND
+        status: 404 Not Found
+        message: "구독을 찾을 수 없습니다."
+        trigger: "요청 ID 중 없거나 이미 삭제됐거나 다른 회원의 구독이 있음"
+        note: "SUBSCRIPTION-004 · 005와 공유 — 먼저 구현되는 스펙에서 추가"
+    reused:
+      - "40001 INVALID_ARGUMENT (400) — subscriptionIds 비어 있음 · 100개 초과 · null 요소"
+      - "40002 JSON_PARSE_ERROR (400) — UUID 형식 오류"
+      - "40201 UserErrorCode.USER_NOT_FOUND (404)"
+      - "40005 / 40103 / 40104 — 인증 실패 (AUTH-001)"
+    exceptions:
+      - "subscription/application/exception/SubscriptionNotFoundException (신규)"
+
+  changes_to_existing_code:
+    - target: "SubscriptionRepository"
+      change: "findAllByIdInAndUserAndDeletedFalse(Collection<UUID> ids, User user) 추가"
+    - target: "SubscriptionGetService"
+      change: "findSubscriptionsByIds(User, Collection<UUID>) 추가"
+    - target: "SubscriptionCheckRepository (빈 Repository)"
+      change: "findAllBySubscriptionInAndDeletedFalse(Collection<Subscription>) 추가"
+    - target: "SubscriptionCheckCancelReasonRepository (빈 Repository)"
+      change: "findAllBySubscriptionCheckInAndDeletedFalse(Collection<SubscriptionCheck>) 추가"
+    - target: "NotificationRepository (빈 Repository)"
+      change: "findAllBySubscriptionInAndDeletedFalse(Collection<Subscription>) 추가"
+    - target: "SubscriptionErrorCode"
+      change: "SUBSCRIPTION_NOT_FOUND(40404) 추가 + system-design.yaml · coding-style.yaml 에러코드 목록 갱신"
+    - target: "SubscriptionResponseCode"
+      change: "SUBSCRIPTIONS_DELETED(200) 추가"
+
+  security_config:
+    note: "변경 없음 — anyRequest().authenticated()로 보호됨"
+
+  validation_rules:
+    - "본인 구독만 삭제 — userId는 Access Token에서만 받는다"
+    - "subscriptionIds 1~100개, 같은 ID가 여러 번 있으면 한 번으로 처리"
+    - "구독 중(ACTIVE) · 구독 종료(ENDED) 모두 삭제 가능 (Figma · Notion: 구독 종료 탭에서도 같은 방식)"
+    - "없거나 이미 삭제됐거나 다른 회원의 구독이 하나라도 있으면 전체 실패 — 아무것도 삭제하지 않음"
+    - "Hard Delete 금지 — 모든 대상은 softDelete()"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  subscription:
+    - "domain/subscription/presentation/SubscriptionController.java (수정 — DELETE 추가)"
+    - "domain/subscription/presentation/response/SubscriptionResponseCode.java (수정)"
+    - "domain/subscription/application/usecase/SubscriptionUseCase.java (수정 — deleteSubscriptions)"
+    - "domain/subscription/application/dto/request/DeleteSubscriptionsRequest.java (신규, record)"
+    - "domain/subscription/application/dto/response/SubscriptionDeletionResponse.java (신규, record + from())"
+    - "domain/subscription/application/exception/SubscriptionErrorCode.java (수정)"
+    - "domain/subscription/application/exception/SubscriptionNotFoundException.java (신규)"
+    - "domain/subscription/domain/service/SubscriptionGetService.java (수정)"
+    - "domain/subscription/domain/repository/SubscriptionRepository.java (수정)"
+  check:
+    - "domain/check/domain/service/SubscriptionCheckGetService.java (신규)"
+    - "domain/check/domain/service/SubscriptionCheckCancelReasonGetService.java (신규)"
+    - "domain/check/domain/repository/SubscriptionCheckRepository.java (수정)"
+    - "domain/check/domain/repository/SubscriptionCheckCancelReasonRepository.java (수정)"
+  notification:
+    - "domain/notification/domain/service/NotificationGetService.java (신규)"
+    - "domain/notification/domain/repository/NotificationRepository.java (수정)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest only (JUnit5 + Mockito) — @Nested DeleteSubscriptions
+  # Mock: UserGetService, SubscriptionGetService, SubscriptionCheckGetService, SubscriptionCheckCancelReasonGetService, NotificationGetService
+  # Subscription · SubscriptionCheck · SubscriptionCheckCancelReason · Notification은 정적 팩토리로 만든 실제 객체 → isDeleted()로 검증
+  happy_path:
+    - "deleteSubscriptions: 선택한 구독과 그 점검 기록 · 해지 이유 · 알림을 모두 Soft Delete 하고 삭제 개수를 반환한다"
+    - "deleteSubscriptions: 구독 종료(ENDED) 구독도 삭제한다"
+    - "deleteSubscriptions: 점검 기록이 없으면 해지 이유를 조회하지 않고 구독과 알림만 삭제한다"
+    - "deleteSubscriptions: 요청에 같은 ID가 여러 번 있어도 한 번만 조회해 삭제하고 삭제 개수는 중복을 제외한다"
+  edge_cases:
+    - "deleteSubscriptions: 없거나 다른 회원의 구독이 하나라도 있으면 SUBSCRIPTION_NOT_FOUND 예외를 던지고 아무것도 삭제하지 않는다"
+    - "deleteSubscriptions: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 아무것도 삭제하지 않는다"
+
+notes:
+  - "기준: Figma 우선, 그다음 Notion API 명세서 (2026-11-17 대조). 경로 · 요청 · 응답(deletedCount) · 메시지는 Notion을 따름"
+  - "[Notion 수정 필요] 알림 처리: Notion은 '삭제한 구독의 알림은 subscription_id만 NULL로 두고 남긴다'지만, Figma 모달 문구 '삭제하면 모든 정보가 사라져요'와 ERD 8장(알림 Soft Delete), notifications.subscription_id NOT NULL과 충돌 → 알림도 Soft Delete (알림 목록 H-04에서도 사라짐)"
+  - "[가정] 1회 최대 100개 — Figma · Notion에 상한 없음(Notion: 1개 이상). 비정상 대량 요청 방지용"
+  - "[가정] 다른 회원의 구독 ID도 404(SUBSCRIPTION_NOT_FOUND)로 응답 — 존재 여부를 노출하지 않음"
+  - "[가정] 삭제 대상을 조회한 뒤 엔티티 softDelete()로 처리 (규칙: Soft Delete는 softDelete() 사용). 대상 수만큼 UPDATE가 나가지만 회원당 구독 · 점검 수가 적어 허용. 대량 처리가 필요해지면 벌크 UPDATE 검토"
+  - "UseCase가 subscription · check · notification 도메인 서비스를 각각 호출 (Domain Service 간 호출 금지 규칙 준수)"
+  - "범위 외: 더보기 팝오버(M-02.1) · 선택 모드 · 체크박스 · 삭제 확인 모달(M-02.3) · 목록 재조회는 클라이언트 처리. 삭제 완료 토스트 없음. 캘린더(C-04) 삭제 후 C-01 이동도 클라이언트"

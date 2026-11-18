@@ -1,0 +1,204 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-19
+
+meta:
+  id: SUBSCRIPTION-005
+  title: 구독 정보 수정
+  type: Feature
+  author: 1winhyun
+  source: "Figma 디자인 작업소 › 구독 관리 › MNG-004 (M-06, A-03 화면 재사용)"
+  api_doc: "Notion API 명세서 › 구독 정보 수정 — https://app.notion.com/p/5f5885ef2821822490ff8104931d5cfd"
+  depends_on:
+    - AUTH-001      # JWT 인증 필터, @CurrentUserId
+    - USER-001      # UserErrorCode.USER_NOT_FOUND, UserNotFoundException
+    - SUBSCRIPTION-001  # 입력값 검증 규칙 (SubscriptionItemRequest와 동일)
+    - SUBSCRIPTION-002  # Subscription.yearlyAmount 계산 기반 (monthlyAmount, nextBillingOn)
+    - SUBSCRIPTION-004  # SubscriptionGetService.findSubscription(User, UUID), Subscription.yearlyAmount, SUBSCRIPTION_NOT_FOUND
+
+overview:
+  summary: >
+    구독 상세(M-03) 더보기 › 편집(M-06)에서 구독 중인 구독의 카테고리 · 결제 금액 · 결제 주기 · 다음 결제일 · 결제한 곳을 수정한다.
+    서비스명은 직접 입력한 구독만 바꿀 수 있다. 다음 결제일을 billing_anchor_on에 다시 저장하므로
+    연 환산 · 다음 결제일 · 캘린더 · 점검 알림 일정은 계산 시점에 자동으로 바뀐다 (ERD 6.2).
+  user_story: >
+    As a 로그인한 회원, I want to 등록한 구독의 결제 정보를 고치기를,
+    so that 요금이나 결제일이 바뀌어도 일정과 금액을 정확히 관리할 수 있다.
+  goals:
+    - 구독 중(ACTIVE) 구독의 결제 정보 수정 (Subscription.updatePaymentInfo)
+    - 직접 입력 서비스만 서비스명 수정 (Subscription.updateCustomName), 사전 등록 서비스명은 스냅샷 유지
+    - 재계산한 연 환산 금액 · 다음 결제일 반환
+
+technical_spec:
+  api:
+    - method: PATCH
+      path: /api/v1/subscriptions/{subscriptionId}
+      summary: 구독 정보 수정
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        dto: UpdateSubscriptionRequest
+        path_variables:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        note: "편집 화면은 저장된 값이 채워진 상태로 전체 값을 보내므로 serviceName 외 필드는 모두 필수 (부분 수정 아님)"
+        fields:
+          - name: serviceName
+            type: String
+            required: false
+            validation: >
+              @Size(max = 30), @Pattern(regexp = ".*\\S.*") — 보내면 공백만은 불가 (null은 통과).
+              직접 입력 서비스: 있으면 strip() 후 저장, null이면 기존 이름 유지 / 사전 등록 서비스: 무시 (services.name 스냅샷 유지)
+          - name: category
+            type: Category
+            required: true
+            validation: "@NotNull"
+          - name: amount
+            type: Integer
+            required: true
+            validation: "@NotNull, @Positive (원 단위)"
+          - name: billingCycleValue
+            type: Integer
+            required: true
+            validation: "@NotNull, @Min(1), @Max(31)"
+          - name: billingCycleUnit
+            type: BillingCycleUnit
+            required: true
+            validation: "@NotNull (DAY / WEEK / MONTH / YEAR)"
+          - name: nextBillingDate
+            type: LocalDate
+            required: true
+            validation: "@NotNull, @FutureOrPresent (오늘 가능). yyyy-MM-dd → billing_anchor_on에 저장"
+          - name: paymentMethod
+            type: PaymentMethod
+            required: true
+            validation: "@NotNull (WEB_DIRECT / APP_STORE / GOOGLE_PLAY)"
+        example: |
+          { "serviceName": "넷플릭스", "category": "VIDEO_OTT", "amount": 13500,
+            "billingCycleValue": 1, "billingCycleUnit": "MONTH",
+            "nextBillingDate": "2026-12-01", "paymentMethod": "APP_STORE" }
+      response:
+        dto: SubscriptionBillingResponse
+        http_status: 200 OK
+        response_code: "SubscriptionResponseCode.SUBSCRIPTION_UPDATED (200, HttpStatus.OK, \"구독 정보를 수정했습니다.\")"
+        wrapper: CommonResponse<SubscriptionBillingResponse>
+        fields:
+          - "subscriptionId (UUID)"
+          - "yearlyAmount (long): 재계산된 연 환산 금액"
+          - "nextBillingDate (LocalDate): 다음 결제일 — nextBillingOn(today). 오늘 ~ 요청 nextBillingDate 사이에는 결제일을 만들지 않으므로 요청 nextBillingDate와 같고, 목록 · 상세도 같은 날짜 ([변경 2026-11-18] 한 주기보다 먼 날짜도 동일)"
+        factory: "SubscriptionBillingResponse.from(Subscription, LocalDate today)"
+        example: |
+          { "code": 200, "message": "구독 정보를 수정했습니다.",
+            "data": { "subscriptionId": "3f2b...", "yearlyAmount": 162000, "nextBillingDate": "2026-12-01" } }
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: "@CurrentUserId UUID userId, @PathVariable UUID subscriptionId, @Valid @RequestBody UpdateSubscriptionRequest → SubscriptionUseCase.updateSubscription(userId, subscriptionId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_UPDATED, data)"
+    - step: 2
+      layer: UseCase (SubscriptionUseCase.updateSubscription)
+      action: "회원 조회 → 본인 구독 조회 → ACTIVE 검사 → updatePaymentInfo → (반환된 결제 조건 이력이 있으면) SubscriptionBillingHistoryCreateService.createBillingHistory → (직접 입력 + serviceName 있음) updateCustomName → 변경 감지로 저장 → SubscriptionBillingResponse"
+      transaction: true (@Transactional)
+    - step: 3
+      layer: Domain Service (UserGetService)
+      action: "findUserById(userId) — 없으면 UserNotFoundException"
+    - step: 4
+      layer: Domain Service (SubscriptionGetService)
+      action: "findSubscription(User, UUID) (SUBSCRIPTION-004) — 없으면 SubscriptionNotFoundException"
+    - step: 5
+      layer: UseCase
+      action: "status != ACTIVE 이면 SubscriptionNotActiveException"
+    - step: 6
+      layer: Domain (Subscription) — 기존 메서드
+      action: >
+        [변경 2026-11-19] updatePaymentInfo(category, amount, billingCycleValue, billingCycleUnit, nextBillingDate, paymentMethod, today) → Optional<SubscriptionBillingHistory>.
+        금액 · 주기 · 다음 결제일(= 지금 nextBillingOn(today))이 그대로면 category · paymentMethod만 바꾸고 기준일 유지(월말 유지) · 이력 없음.
+        바뀌면 지금 조건으로 결제한 적이 있을 때(billingAnchorOn ≤ today, 새 다음 결제일이 today면 ≤ today − 1) 지금 조건을 ended_on = today 이력으로 반환하고, nextBillingDate를 새 billingAnchorOn으로 저장 (ERD 4.4.1 v1.7).
+        결제일 당일 수정: 새 다음 결제일이 뒤면 오늘 결제는 수정 전 조건, 오늘이면 새 조건으로 1번.
+        serviceCatalog == null AND request.serviceName != null 이면 updateCustomName(serviceName.strip())
+    - step: 7
+      layer: Domain (Subscription)
+      action: "응답 계산: yearlyAmount(), nextBillingOn(today) (SUBSCRIPTION-002 · 004)"
+
+  database:
+    entities:
+      - name: Subscription
+        action: Update
+        table: subscriptions
+        fields: "category, amount, billing_cycle_value, billing_cycle_unit, billing_anchor_on, payment_method, name(직접 입력만)"
+      - name: SubscriptionBillingHistory
+        action: "Create — [변경 2026-11-19] 수정 전 조건으로 결제한 적이 있을 때만 1행"
+        table: subscription_billing_histories
+      - name: User
+        action: Read
+        table: users
+
+  error_codes:
+    domain_range:
+      subscription: "404xx (SUBSCRIPTION-001에서 할당)"
+    codes:
+      - code: 40405
+        enum: SubscriptionErrorCode.SUBSCRIPTION_NOT_ACTIVE
+        status: 409 Conflict
+        message: "구독 중인 구독만 수정할 수 있습니다."
+        trigger: "구독 종료(ENDED) 구독을 수정 요청"
+    reused:
+      - "40404 SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND (404) — 없음 · 삭제됨 · 다른 회원 구독"
+      - "40001 INVALID_ARGUMENT (400) — DTO 검증 실패 (data = List<ErrorResponse>)"
+      - "40002 JSON_PARSE_ERROR (400) — 잘못된 enum 값 · 날짜 형식 · int 범위 초과"
+      - "40201 UserErrorCode.USER_NOT_FOUND (404)"
+      - "40005 / 40103 / 40104 — 인증 실패 (AUTH-001)"
+    exceptions:
+      - "subscription/application/exception/SubscriptionNotActiveException (신규)"
+
+  changes_to_existing_code:
+    - target: "SubscriptionErrorCode"
+      change: "SUBSCRIPTION_NOT_ACTIVE(40405) 추가 + system-design.yaml · coding-style.yaml 에러코드 목록 갱신"
+    - target: "SubscriptionResponseCode"
+      change: "SUBSCRIPTION_UPDATED(200) 추가"
+    - target: "Subscription (엔티티)"
+      change: "[변경 2026-11-18] billing_anchor_changed_on 컬럼 추가, updatePaymentInfo에 today 인자 추가 (ERD v1.4). [변경 2026-11-19] billing_anchor_changed_on 제거, updatePaymentInfo가 Optional<SubscriptionBillingHistory> 반환 — SubscriptionBillingHistory 엔티티 · Repository · Get/CreateService 신규 (ERD v1.7). updateCustomName은 그대로"
+
+  security_config:
+    note: "변경 없음 — anyRequest().authenticated()로 보호됨"
+
+  validation_rules:
+    - "본인 구독만 수정 — 다른 회원 구독 · 삭제된 구독은 SUBSCRIPTION_NOT_FOUND"
+    - "구독 중(ACTIVE)만 수정 가능 — ENDED는 SUBSCRIPTION_NOT_ACTIVE (Figma: 편집은 구독 중일 때만 노출, Notion 동일)"
+    - "입력값 규칙은 구독 등록(SUBSCRIPTION-001)과 동일: amount > 0, billingCycleValue 1~31, nextBillingDate ≥ 오늘, category · billingCycleUnit · paymentMethod 필수"
+    - "서비스명: 직접 입력 서비스만 수정 (strip 후 1~30자), 사전 등록 서비스는 요청 serviceName 무시"
+    - "서비스(serviceId)는 바꿀 수 없음 — 다른 서비스로 바꾸려면 삭제 후 새로 등록"
+    - "registration_source · status · is_steady_use · created_at(구독 시작일)은 변경하지 않음"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  subscription:
+    - "domain/subscription/presentation/SubscriptionController.java (수정 — PATCH /{subscriptionId} 추가)"
+    - "domain/subscription/presentation/response/SubscriptionResponseCode.java (수정)"
+    - "domain/subscription/application/usecase/SubscriptionUseCase.java (수정 — updateSubscription)"
+    - "domain/subscription/application/dto/request/UpdateSubscriptionRequest.java (신규, record)"
+    - "domain/subscription/application/dto/response/SubscriptionBillingResponse.java (신규, record + from())"
+    - "domain/subscription/application/exception/SubscriptionErrorCode.java (수정)"
+    - "domain/subscription/application/exception/SubscriptionNotActiveException.java (신규)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest only (JUnit5 + Mockito) — @Nested UpdateSubscription
+  # Mock: UserGetService, SubscriptionGetService
+  # Subscription은 정적 팩토리로 만든 실제 객체 → 필드 변경을 getter로 검증 (저장 호출 없음, 변경 감지)
+  happy_path:
+    - "updateSubscription: 구독 중이면 카테고리 · 금액 · 결제 주기 · 결제한 곳을 바꾸고 다음 결제일을 결제 기준일로 저장한 뒤 재계산한 연 환산 · 다음 결제일을 반환한다"
+    - "updateSubscription: 직접 입력 서비스는 요청한 서비스명을 앞뒤 공백을 제거해 저장한다"
+    - "updateSubscription: 직접 입력 서비스에 서비스명을 보내지 않으면 기존 이름을 유지한다"
+    - "updateSubscription: 사전 등록 서비스는 요청한 서비스명을 무시하고 서비스명 스냅샷을 유지한다"
+  edge_cases:
+    - "updateSubscription: 구독 종료된 구독이면 SUBSCRIPTION_NOT_ACTIVE 예외를 던지고 값을 바꾸지 않는다"
+    - "updateSubscription: 없거나 다른 회원의 구독이면 SUBSCRIPTION_NOT_FOUND 예외를 던진다"
+    - "updateSubscription: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던진다"
+
+notes:
+  - "기준: Figma 우선, 그다음 Notion API 명세서 (2026-11-17 대조). 경로 · 메서드(PATCH) · 요청 · 응답 · 메시지는 Notion을 따름. Figma와 충돌 없음"
+  - "Figma: 편집 화면은 A-03 구독 정보 입력 화면 재사용 (타이틀 '구독 정보 편집', 버튼 '저장하기'만 다름)"
+  - "[Notion 보완] serviceName 필수 여부가 Notion에 없음 → 선택(null이면 유지), 사전 등록 서비스는 무시로 정의"
+  - "다음 결제일 · 결제 주기가 바뀌면 캘린더 · D-n · 점검 알림 대상은 billing_anchor_on 기준 계산이라 별도 처리 없이 반영 (ERD 6.2, 배치 없음). 이미 저장된 subscription_checks.target_billing_on · notifications는 그대로 둠"
+  - "[확인 필요] 경로 변수 UUID 형식 오류는 현재 Spring 기본 400 응답 — SUBSCRIPTION-002 notes와 동일"
+  - "범위 외: 이탈 확인 팝업(A-03c), 변경 여부 판단, 저장 후 상세 이동은 클라이언트 처리"
