@@ -128,6 +128,8 @@ business_logic:
   - "startedOn(): 구독 시작일 = created_at 날짜"
   - "billingDatesBetween(from, to): from ~ to (양끝 포함) 사이 결제일 목록"
   - "paidCount(today) / totalPaidAmount(today): 등록일 ~ (ENDED면 canceledOn, ACTIVE면 today) 결제 횟수 / 횟수 × amount"
+  - "cancelGuideType(): 해지 안내 4분기 (X-01/X-03/X-04/X-05) — APP_STORE · GOOGLE_PLAY는 결제 경로로, WEB_DIRECT는 serviceCatalog.cancelUrl이 비어 있지 않으면 WEB_WITH_URL, 아니면(직접 입력 구독 포함) WEB_WITHOUT_URL (SUBSCRIPTION-006)"
+  - "objectParticle(): 서비스명 뒤 목적격 조사 — 마지막 글자가 한글 음절이면 받침 유무로 '을'/'를', 그 외는 serviceCatalog.objectParticle, 없으면 '를' (SUBSCRIPTION-006)"
 
 
 notes:
