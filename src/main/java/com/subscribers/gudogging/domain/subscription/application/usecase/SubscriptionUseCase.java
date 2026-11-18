@@ -9,19 +9,24 @@ import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGet
 import com.subscribers.gudogging.domain.notification.domain.service.NotificationGetService;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCancelResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
+import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionAlreadyEndedException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotActiveException;
+import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotEndedException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
@@ -106,6 +111,47 @@ public class SubscriptionUseCase {
         Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
             .orElseThrow(SubscriptionNotFoundException::new);
         return CancelGuideResponse.from(subscription);
+    }
+
+    /**
+     * 해지 완료 확인 모달(X-06)에서 구독 중인 구독을 구독 종료로 바꾸고 해지일을 오늘로 저장한다.
+     */
+    @Transactional
+    public SubscriptionCancelResponse cancelSubscription(UUID userId, UUID subscriptionId) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
+            .orElseThrow(SubscriptionNotFoundException::new);
+        if (subscription.getStatus() == SubscriptionStatus.ENDED) {
+            throw new SubscriptionAlreadyEndedException();
+        }
+
+        subscription.cancel(LocalDate.now());
+        return SubscriptionCancelResponse.from(subscription);
+    }
+
+    /**
+     * 구독 종료 구독을 같은 행 그대로 구독 중으로 되살린다 (M-05). 다음 결제일을 결제 기준일로, 시작일을 오늘로 다시 잡고 점검 기록은 유지한다.
+     * 사전 등록 서비스는 같은 서비스를 이미 구독 중이면 재등록할 수 없다.
+     */
+    @Transactional
+    public SubscriptionReactivationResponse reactivateSubscription(UUID userId, UUID subscriptionId,
+                                                                   ReactivateSubscriptionRequest request) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
+            .orElseThrow(SubscriptionNotFoundException::new);
+        if (subscription.getStatus() != SubscriptionStatus.ENDED) {
+            throw new SubscriptionNotEndedException();
+        }
+        ServiceCatalog serviceCatalog = subscription.getServiceCatalog();
+        if (serviceCatalog != null
+            && subscriptionGetService.findActiveServiceIds(user).contains(serviceCatalog.getId())) {
+            throw new DuplicateSubscriptionException();
+        }
+
+        subscription.reactivate(request.nextBillingDate(), LocalDate.now());
+        return SubscriptionReactivationResponse.from(subscription);
     }
 
     /**
