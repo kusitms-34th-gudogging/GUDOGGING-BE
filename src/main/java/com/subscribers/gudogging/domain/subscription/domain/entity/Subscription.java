@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.subscription.domain.entity;
 
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
+import com.subscribers.gudogging.domain.subscription.domain.billing.BillingCycle;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
@@ -18,9 +19,7 @@ import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -81,12 +80,6 @@ public class Subscription extends BaseEntity {
     @Column(name = "billing_anchor_on", nullable = false)
     private LocalDate billingAnchorOn;
 
-    /**
-     * 결제 기준일을 마지막으로 정한 날(구독 정보 수정일). NULL이면 등록일. 이 날짜부터 billingAnchorOn 전까지는 결제일을 만들지 않는다 (ERD 6.2).
-     */
-    @Column(name = "billing_anchor_changed_on")
-    private LocalDate billingAnchorChangedOn;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, length = 20)
     private PaymentMethod paymentMethod;
@@ -130,7 +123,7 @@ public class Subscription extends BaseEntity {
         RegistrationSource registrationSource
     ) {
         return new Subscription(user, serviceCatalog, serviceCatalog.getName(), category, amount,
-            billingCycleValue, billingCycleUnit, billingAnchorOn, null, paymentMethod,
+            billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
             SubscriptionStatus.ACTIVE, null, false, registrationSource, null, null);
     }
 
@@ -146,7 +139,7 @@ public class Subscription extends BaseEntity {
         RegistrationSource registrationSource
     ) {
         return new Subscription(user, null, name, category, amount,
-            billingCycleValue, billingCycleUnit, billingAnchorOn, null, paymentMethod,
+            billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
             SubscriptionStatus.ACTIVE, null, false, registrationSource, null, null);
     }
 
@@ -160,22 +153,39 @@ public class Subscription extends BaseEntity {
         }
     }
 
-    public void updatePaymentInfo(
+    /**
+     * 구독 정보 편집 (M-06). 입력한 다음 결제일을 새 결제 기준일로 저장하고, 지금 조건으로 결제한 적이 있으면 그 조건을 수정일(today)까지의 결제 조건 이력으로
+     * 반환한다 (ERD 4.4.1). 오늘 결제일은 새 다음 결제일이 오늘이 아니면 지금 조건으로 센다. 금액 · 주기 · 다음 결제일이 그대로면 기준일을 바꾸지 않는다 (월말 기준일 유지).
+     */
+    public Optional<SubscriptionBillingHistory> updatePaymentInfo(
         Category category,
         int amount,
         int billingCycleValue,
         BillingCycleUnit billingCycleUnit,
-        LocalDate billingAnchorOn,
+        LocalDate nextBillingDate,
         PaymentMethod paymentMethod,
         LocalDate today
     ) {
         this.category = category;
+        this.paymentMethod = paymentMethod;
+        boolean billingUnchanged = this.amount == amount
+            && this.billingCycleValue == billingCycleValue
+            && this.billingCycleUnit == billingCycleUnit
+            && nextBillingOn(today).equals(nextBillingDate);
+        if (billingUnchanged) {
+            return Optional.empty();
+        }
+
+        LocalDate lastPaidOn = nextBillingDate.isAfter(today) ? today : today.minusDays(1);
+        Optional<SubscriptionBillingHistory> history = billingAnchorOn.isAfter(lastPaidOn)
+            ? Optional.empty()
+            : Optional.of(SubscriptionBillingHistory.create(this, this.amount, this.billingCycleValue,
+                this.billingCycleUnit, this.billingAnchorOn, today));
         this.amount = amount;
         this.billingCycleValue = billingCycleValue;
         this.billingCycleUnit = billingCycleUnit;
-        this.billingAnchorOn = billingAnchorOn;
-        this.billingAnchorChangedOn = today;
-        this.paymentMethod = paymentMethod;
+        this.billingAnchorOn = nextBillingDate;
+        return history;
     }
 
     public void updateCustomName(String name) {
@@ -193,13 +203,11 @@ public class Subscription extends BaseEntity {
 
     /**
      * 구독 종료 구독 재등록 (M-05). 같은 행을 되살리며 시작일을 재등록일로 다시 잡아 쉬었던 기간이 결제 횟수 · 캘린더에 들어가지 않게 한다.
-     * 다음 결제일을 새로 받으므로 결제 기준일을 정한 날(billingAnchorChangedOn)도 오늘로 바꾼다 (구독 정보 수정과 같은 규칙).
      */
     public void reactivate(LocalDate billingAnchorOn, LocalDate today) {
         this.status = SubscriptionStatus.ACTIVE;
         this.canceledOn = null;
         this.billingAnchorOn = billingAnchorOn;
-        this.billingAnchorChangedOn = today;
         this.startedOn = today;
     }
 
@@ -242,11 +250,17 @@ public class Subscription extends BaseEntity {
     }
 
     /**
-     * base 이후(포함) 첫 결제일 (ERD 6.2). 결제일은 매번 billingAnchorOn에서 계산하므로 월말이 밀리지 않는다.
-     * 기준일을 정한 날(등록일 · 마지막 수정일) 이후에는 사용자가 입력한 다음 결제일(billingAnchorOn)이 첫 결제일이다.
+     * 현재 결제 조건 — 결제 기준일 + k × 주기 (ERD 6.2).
+     */
+    public BillingCycle billingCycle() {
+        return new BillingCycle(billingCycleValue, billingCycleUnit, billingAnchorOn);
+    }
+
+    /**
+     * 현재 조건으로 base 이후(포함) 첫 결제일. 결제 조건 이력은 모두 오늘까지 끝났으므로 오늘 이후 다음 결제일은 이 값이다. 과거 날짜 기준은 BillingSchedule을 쓴다.
      */
     public LocalDate nextBillingOn(LocalDate base) {
-        return billingDateAt(firstBillingIndexOnOrAfter(base));
+        return billingCycle().firstDateOnOrAfter(base);
     }
 
     /**
@@ -254,30 +268,6 @@ public class Subscription extends BaseEntity {
      */
     public LocalDate startedOn() {
         return startedOn;
-    }
-
-    /**
-     * from ~ to (양끝 포함) 사이 결제일 목록.
-     */
-    public List<LocalDate> billingDatesBetween(LocalDate from, LocalDate to) {
-        List<LocalDate> billingDates = new ArrayList<>();
-        for (long index = firstBillingIndexOnOrAfter(from); !billingDateAt(index).isAfter(to);
-             index = firstBillingIndexOnOrAfter(billingDateAt(index).plusDays(1))) {
-            billingDates.add(billingDateAt(index));
-        }
-        return billingDates;
-    }
-
-    /**
-     * 지금까지 결제 횟수: 등록일 ~ (구독 종료면 해지일, 구독 중이면 today) 사이 결제일 수.
-     */
-    public int paidCount(LocalDate today) {
-        LocalDate end = status == SubscriptionStatus.ENDED ? canceledOn : today;
-        return billingDatesBetween(startedOn(), end).size();
-    }
-
-    public long totalPaidAmount(LocalDate today) {
-        return Math.multiplyExact((long) paidCount(today), amount);
     }
 
     /**
@@ -309,35 +299,6 @@ public class Subscription extends BaseEntity {
     private boolean hasServiceCancelUrl() {
         return serviceCatalog != null && serviceCatalog.getCancelUrl() != null
             && !serviceCatalog.getCancelUrl().isBlank();
-    }
-
-    private LocalDate billingDateAt(long index) {
-        long cycles = index * billingCycleValue;
-        return switch (billingCycleUnit) {
-            case DAY -> billingAnchorOn.plusDays(cycles);
-            case WEEK -> billingAnchorOn.plusWeeks(cycles);
-            case MONTH -> billingAnchorOn.plusMonths(cycles);
-            case YEAR -> billingAnchorOn.plusMonths(cycles * MONTHS_PER_YEAR);
-        };
-    }
-
-    private long firstBillingIndexOnOrAfter(LocalDate date) {
-        long index = switch (billingCycleUnit) {
-            case DAY -> Math.ceilDiv(ChronoUnit.DAYS.between(billingAnchorOn, date), billingCycleValue);
-            case WEEK -> Math.ceilDiv(ChronoUnit.DAYS.between(billingAnchorOn, date), 7L * billingCycleValue);
-            case MONTH -> Math.floorDiv(ChronoUnit.MONTHS.between(billingAnchorOn, date), billingCycleValue) - 1;
-            case YEAR -> Math.floorDiv(ChronoUnit.MONTHS.between(billingAnchorOn, date),
-                (long) MONTHS_PER_YEAR * billingCycleValue) - 1;
-        };
-        while (billingDateAt(index).isBefore(date)) {
-            index++;
-        }
-        // 기준일 이전 결제일은 기준일을 정한 날(NULL이면 등록일)보다 앞선 날짜만 인정하고, 그 사이 날짜는 기준일(index 0)로 건너뛴다.
-        LocalDate anchorChangedOn = billingAnchorChangedOn != null ? billingAnchorChangedOn : startedOn();
-        if (index < 0 && !billingDateAt(index).isBefore(anchorChangedOn)) {
-            return 0;
-        }
-        return index;
     }
 
 }

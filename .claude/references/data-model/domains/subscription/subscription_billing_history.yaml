@@ -1,0 +1,61 @@
+# SubscriptionBillingHistory Entity
+# Last Updated: 2026-11-19
+# Source: docs/ERD.md v1.7 §4.4.1 subscription_billing_histories, §6.2 결제일
+
+entity: SUBSCRIPTION_BILLING_HISTORY
+description: 구독 결제 조건 이력. 결제 정보를 수정(M-06)할 때 수정 전 조건(금액 · 주기 · 기준일)으로 결제한 적이 있으면 수정일과 함께 남깁니다. 현재 조건은 subscriptions에 있습니다.
+table: subscription_billing_histories
+domain: Subscription
+extends: BaseEntity
+
+relationships:
+  - subscription:
+      type: "@ManyToOne(fetch = FetchType.LAZY)"
+      target: Subscription
+      join_column: subscription_id
+      nullable: false
+
+columns:
+  - subscription_id:
+      type: BINARY(16)
+      nullable: false
+      fk: subscriptions.id
+      description: "구독 FK"
+  - amount:
+      type: INT
+      nullable: false
+      description: "이 조건의 1회 결제 금액(원)"
+  - billing_cycle_value:
+      type: TINYINT
+      nullable: false
+      description: "결제 주기 숫자"
+  - billing_cycle_unit:
+      type: VARCHAR(10)
+      nullable: false
+      enum: BillingCycleUnit
+      description: "결제 주기 단위. @Enumerated(EnumType.STRING)"
+  - billing_anchor_on:
+      type: DATE
+      nullable: false
+      description: "이 조건의 결제 기준일 (첫 결제일)"
+  - ended_on:
+      type: DATE
+      nullable: false
+      description: "이 조건을 바꾼 날(수정일). 이 날까지의 결제일을 이 조건으로 세되, 다음 조건의 기준일이 같은 날이면 그 날은 다음 조건으로 셈"
+
+indexes:
+  - "idx_subscription_billing_histories_subscription_id (subscription_id)"
+
+constraints:
+  - "생성은 Subscription.updatePaymentInfo가 반환할 때만 — 금액 · 주기 · 다음 결제일이 바뀌었고 수정 전 조건으로 결제가 한 번이라도 있었을 때(billing_anchor_on ≤ 수정일, 새 다음 결제일이 수정일이면 ≤ 수정일 전날). 결제 전에 다시 바꾼 조건은 남기지 않음"
+  - "수정 · 직접 삭제 API 없음. 구독 삭제 시 함께 Soft Delete (ERD 8장)"
+  - "조회는 항상 deleted = false 조건"
+
+business_logic:
+  - "create(subscription, amount, cycleValue, cycleUnit, billingAnchorOn, endedOn): 정적 팩토리"
+  - "billingCycle(): BillingCycle(billingCycleValue, billingCycleUnit, billingAnchorOn)"
+  - "계산은 domain/subscription/domain/billing/BillingSchedule — 이력을 기준일 순(같으면 저장 순)으로 이어 붙이고, 각 이력의 결제일 상한 = min(ended_on, 다음 조건 기준일 − 1)"
+
+notes:
+  - "Domain Service: SubscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(Collection<Subscription>) (목록은 구독 종료 탭만 IN 1회, 상세는 1건), SubscriptionBillingHistoryCreateService.createBillingHistory"
+  - "H-02 연 금액(미구현)의 등록 전 기간은 첫 조건(가장 이른 이력, 없으면 현재 조건)의 기준일에서 같은 주기로 거꾸로 셈 (ERD 6.3)"

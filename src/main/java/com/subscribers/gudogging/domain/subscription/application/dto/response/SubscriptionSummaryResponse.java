@@ -1,15 +1,19 @@
 package com.subscribers.gudogging.domain.subscription.application.dto.response;
 
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
+import com.subscribers.gudogging.domain.subscription.domain.billing.BillingSchedule;
 import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleUnit;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * 구독 목록 항목. 구독 중이면 nextBillingDate · dDay, 구독 종료면 canceledAt · totalPaidAmount만 채운다.
+ * 구독 목록 항목. 구독 중이면 nextBillingDate · dDay, 구독 종료면 canceledAt · totalPaidAmount만 채운다. totalPaidAmount는 결제 조건 이력(수정 전
+ * 조건)의 결제를 그때 금액으로 포함한다.
  */
 public record SubscriptionSummaryResponse(
     UUID subscriptionId,
@@ -25,7 +29,8 @@ public record SubscriptionSummaryResponse(
     Long totalPaidAmount
 ) {
 
-    public static SubscriptionSummaryResponse from(Subscription subscription, LocalDate today) {
+    public static SubscriptionSummaryResponse from(Subscription subscription,
+                                                   List<SubscriptionBillingHistory> billingHistories, LocalDate today) {
         ServiceCatalog serviceCatalog = subscription.getServiceCatalog();
         boolean active = subscription.getStatus() == SubscriptionStatus.ACTIVE;
         LocalDate nextBillingDate = active ? subscription.nextBillingOn(today) : null;
@@ -40,7 +45,7 @@ public record SubscriptionSummaryResponse(
             nextBillingDate,
             active ? (int) ChronoUnit.DAYS.between(today, nextBillingDate) : null,
             active ? null : subscription.getCanceledOn(),
-            active ? null : subscription.totalPaidAmount(today)
+            active ? null : BillingSchedule.of(subscription, billingHistories).totalPaidAmount(today)
         );
     }
 }

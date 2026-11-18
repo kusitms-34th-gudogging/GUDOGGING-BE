@@ -1,6 +1,6 @@
 # Feature Specification
 # Status: Draft
-# Last Updated: 2026-11-17
+# Last Updated: 2026-11-19
 
 meta:
   id: SUBSCRIPTION-002
@@ -67,7 +67,7 @@ technical_spec:
           - "nextBillingDate (LocalDate, nullable): 다음 결제일 (오늘 포함 이후 첫 결제일). ENDED면 null"
           - "dDay (Integer, nullable): nextBillingDate − 오늘 (오늘이면 0). ENDED면 null"
           - "canceledAt (LocalDate, nullable): 해지일 (subscriptions.canceled_on). ACTIVE면 null"
-          - "totalPaidAmount (Long, nullable): 총 지출 — 등록일 ~ 해지일 결제 횟수 × amount. ACTIVE면 null"
+          - "totalPaidAmount (Long, nullable): 총 지출 — 등록일 ~ 해지일 결제일마다 그때 조건의 금액 합계 (결제 조건 이력 포함, [변경 2026-11-19] ERD v1.7). ACTIVE면 null"
         factory: "SubscriptionListResponse.of(SubscriptionStatus, List<Subscription> tabSubscriptions, int activeCount, int endedCount, LocalDate today), SubscriptionSummaryResponse.from(Subscription, LocalDate today)"
         display_note: "'매월 17일 · D-1', '10월 16일 해지 · 총 지출 47,600원', 빈 상태(M-01) 문구는 클라이언트가 조합"
         example: |
@@ -105,11 +105,10 @@ technical_spec:
       layer: Domain (Subscription) — 계산 메서드 추가 (ERD 4.4 도메인 메서드)
       action: >
         monthlyAmount(): 월 환산 (ERD 6.1, 원 단위 반올림 HALF_UP) ·
-        nextBillingOn(LocalDate base): billing_anchor_on + k × 주기(k는 음수 포함 정수) 중 base 이상인 가장 이른 날짜. 단 billing_anchor_changed_on(NULL이면 등록일) 이후의 음수 k 날짜는 제외 — 입력한 다음 결제일이 그대로 다음 결제일 ([변경 2026-11-18] ERD 6.2 v1.4) ·
+        nextBillingOn(LocalDate base): 현재 조건 billing_anchor_on + k × 주기(k ≥ 0) 중 base 이상인 가장 이른 날짜 — 입력한 다음 결제일이 그대로 다음 결제일 ([변경 2026-11-19] ERD 6.2 v1.7, 음수 k · billing_anchor_changed_on 제거) ·
         startedOn(): createdAt 날짜 ·
-        billingDatesBetween(LocalDate from, LocalDate to): 양끝 포함 결제일 목록 ·
-        paidCount(LocalDate today): billingDatesBetween(startedOn(), ENDED면 canceledOn / ACTIVE면 today).size() ·
-        totalPaidAmount(LocalDate today): paidCount(today) × amount
+        [변경 2026-11-19] 지금까지 결제(구독 종료 탭 totalPaidAmount)는 domain/subscription/domain/billing/BillingSchedule.of(subscription, 결제 조건 이력).totalPaidAmount(today) — 조건마다 등록일 ~ (ENDED면 canceledOn / ACTIVE면 today) 결제 횟수(BillingCycle.countBetween, 반복 없이 인덱스 차이) × 그때 금액의 합.
+        결제 조건 이력은 구독 종료 탭일 때만 SubscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(탭 구독)로 한 번에 조회해 구독 ID별로 묶는다 (N+1 방지)
     - step: 7
       layer: UseCase — 정렬
       action: >
@@ -123,6 +122,9 @@ technical_spec:
         action: Read
         table: subscriptions
         fields: "status, amount, billing_cycle_value, billing_cycle_unit, billing_anchor_on, canceled_on, created_at, name"
+      - name: SubscriptionBillingHistory
+        action: "Read — [변경 2026-11-19] 구독 종료 탭만, subscription_id IN (...) 1회"
+        table: subscription_billing_histories
       - name: ServiceCatalog
         action: Read (fetch join)
         table: services
@@ -153,7 +155,7 @@ technical_spec:
     - target: "SubscriptionGetService"
       change: "findSubscriptions(User) 추가"
     - target: "Subscription (엔티티)"
-      change: "계산 메서드 추가: monthlyAmount(), nextBillingOn(LocalDate), startedOn(), billingDatesBetween(LocalDate, LocalDate), paidCount(LocalDate), totalPaidAmount(LocalDate) — 컬럼 변경 없음"
+      change: "계산 메서드 추가: monthlyAmount(), nextBillingOn(LocalDate), startedOn(), billingDatesBetween(LocalDate, LocalDate), paidCount(LocalDate), totalPaidAmount(LocalDate) — 컬럼 변경 없음. [변경 2026-11-19] billingDatesBetween · paidCount · totalPaidAmount는 BillingSchedule로 이동, billingCycle() 추가 (ERD v1.7)"
     - target: "SubscriptionErrorCode"
       change: "INVALID_SUBSCRIPTION_SORT(40403) 추가 + system-design.yaml · coding-style.yaml 에러코드 목록 갱신"
     - target: "SubscriptionResponseCode"

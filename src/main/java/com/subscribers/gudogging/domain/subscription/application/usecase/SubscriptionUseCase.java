@@ -30,7 +30,10 @@ import com.subscribers.gudogging.domain.subscription.application.exception.Subsc
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
+import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryCreateService;
+import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryGetService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionCreateService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
@@ -60,6 +63,8 @@ public class SubscriptionUseCase {
     private final ServiceCatalogGetService serviceCatalogGetService;
     private final SubscriptionGetService subscriptionGetService;
     private final SubscriptionCreateService subscriptionCreateService;
+    private final SubscriptionBillingHistoryGetService subscriptionBillingHistoryGetService;
+    private final SubscriptionBillingHistoryCreateService subscriptionBillingHistoryCreateService;
     private final SubscriptionCheckGetService subscriptionCheckGetService;
     private final SubscriptionCheckCancelReasonGetService subscriptionCheckCancelReasonGetService;
     private final NotificationGetService notificationGetService;
@@ -87,8 +92,11 @@ public class SubscriptionUseCase {
         List<Subscription> tabSubscriptions = subscriptionsByStatus.getOrDefault(tab, List.of()).stream()
             .sorted(comparatorOf(tab, sortType, today))
             .toList();
-        return SubscriptionListResponse.of(tabSubscriptions, activeSubscriptions.size(), endedSubscriptions.size(),
-            today);
+        // 결제 조건 이력은 구독 종료 항목의 총 지출에만 쓰므로 그 탭에서만 한 번에 조회한다.
+        Map<UUID, List<SubscriptionBillingHistory>> billingHistoriesBySubscriptionId =
+            tab == SubscriptionStatus.ENDED ? findBillingHistoriesBySubscriptionId(tabSubscriptions) : Map.of();
+        return SubscriptionListResponse.of(tabSubscriptions, billingHistoriesBySubscriptionId,
+            activeSubscriptions.size(), endedSubscriptions.size(), today);
     }
 
     /**
@@ -99,7 +107,9 @@ public class SubscriptionUseCase {
             .orElseThrow(UserNotFoundException::new);
         Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
             .orElseThrow(SubscriptionNotFoundException::new);
-        return SubscriptionDetailResponse.of(subscription, LocalDate.now(), baseDate);
+        List<SubscriptionBillingHistory> billingHistories = subscriptionBillingHistoryGetService
+            .findBillingHistoriesBySubscriptions(List.of(subscription));
+        return SubscriptionDetailResponse.of(subscription, billingHistories, LocalDate.now(), baseDate);
     }
 
     /**
@@ -187,7 +197,7 @@ public class SubscriptionUseCase {
 
     /**
      * 구독 중인 구독의 결제 정보를 수정한다. 서비스명은 직접 입력 서비스만 바꾸고, 사전 등록 서비스는 요청 serviceName을 무시한다. 다음 결제일은 결제 기준일(billing_anchor_on)로
-     * 저장하므로 일정 · 금액은 계산 시점에 자동으로 바뀐다 (ERD 6.2).
+     * 저장하고, 수정 전 조건으로 결제한 적이 있으면 그 조건을 결제 조건 이력으로 남겨 지난 결제를 유지한다 (ERD 4.4.1, 6.2).
      */
     @Transactional
     public SubscriptionBillingResponse updateSubscription(UUID userId, UUID subscriptionId,
@@ -200,17 +210,19 @@ public class SubscriptionUseCase {
             throw new SubscriptionNotActiveException();
         }
 
+        LocalDate today = LocalDate.now();
         subscription.updatePaymentInfo(request.category(), request.amount(), request.billingCycleValue(),
-            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod(), LocalDate.now());
+                request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod(), today)
+            .ifPresent(subscriptionBillingHistoryCreateService::createBillingHistory);
         if (subscription.getServiceCatalog() == null && request.serviceName() != null) {
             subscription.updateCustomName(request.serviceName().strip());
         }
 
-        return SubscriptionBillingResponse.from(subscription, LocalDate.now());
+        return SubscriptionBillingResponse.from(subscription, today);
     }
 
     /**
-     * 선택한 구독과 그 점검 기록 · 해지 이유 · 알림을 Soft Delete 한다 (ERD 8장). 하나라도 삭제할 수 없으면 아무것도 삭제하지 않는다.
+     * 선택한 구독과 그 점검 기록 · 해지 이유 · 알림 · 결제 조건 이력을 Soft Delete 한다 (ERD 8장). 하나라도 삭제할 수 없으면 아무것도 삭제하지 않는다.
      */
     @Transactional
     public SubscriptionDeletionResponse deleteSubscriptions(UUID userId, DeleteSubscriptionsRequest request) {
@@ -231,6 +243,8 @@ public class SubscriptionUseCase {
         }
         subscriptionChecks.forEach(BaseEntity::softDelete);
         notificationGetService.findNotificationsBySubscriptions(subscriptions)
+            .forEach(BaseEntity::softDelete);
+        subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(subscriptions)
             .forEach(BaseEntity::softDelete);
         subscriptions.forEach(BaseEntity::softDelete);
 
@@ -266,6 +280,15 @@ public class SubscriptionUseCase {
                 ? byAmountDesc.thenComparing(byNextBillingDate)
                 : byMonthlyAmountDesc.thenComparing(byCanceledOnDesc);
         };
+    }
+
+    private Map<UUID, List<SubscriptionBillingHistory>> findBillingHistoriesBySubscriptionId(
+        List<Subscription> subscriptions) {
+        if (subscriptions.isEmpty()) {
+            return Map.of();
+        }
+        return subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(subscriptions).stream()
+            .collect(Collectors.groupingBy(billingHistory -> billingHistory.getSubscription().getId()));
     }
 
     private Map<UUID, ServiceCatalog> findServicesById(Set<UUID> serviceIds) {
