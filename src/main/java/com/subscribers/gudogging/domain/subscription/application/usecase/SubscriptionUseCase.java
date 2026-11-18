@@ -13,10 +13,10 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Sub
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
-import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
@@ -97,10 +97,10 @@ public class SubscriptionUseCase {
     }
 
     /**
-     * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(MANUAL). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다.
+     * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(registration_source = 요청 source). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다.
      */
     @Transactional
-    public List<SubscriptionResponse> createSubscriptions(UUID userId, CreateSubscriptionsRequest request) {
+    public SubscriptionCreationResponse createSubscriptions(UUID userId, CreateSubscriptionsRequest request) {
         User user = userGetService.findUserById(userId)
             .orElseThrow(UserNotFoundException::new);
 
@@ -121,12 +121,10 @@ public class SubscriptionUseCase {
         }
 
         List<Subscription> subscriptions = request.subscriptions().stream()
-            .map(item -> toSubscription(user, item, servicesById))
+            .map(item -> toSubscription(user, item, request.source(), servicesById))
             .toList();
 
-        return subscriptionCreateService.createSubscriptions(subscriptions).stream()
-            .map(SubscriptionResponse::from)
-            .toList();
+        return SubscriptionCreationResponse.from(subscriptionCreateService.createSubscriptions(subscriptions));
     }
 
     /**
@@ -224,15 +222,15 @@ public class SubscriptionUseCase {
             .collect(Collectors.toMap(ServiceCatalog::getId, Function.identity()));
     }
 
-    private Subscription toSubscription(User user, SubscriptionItemRequest item,
+    private Subscription toSubscription(User user, SubscriptionItemRequest item, RegistrationSource source,
                                         Map<UUID, ServiceCatalog> servicesById) {
         if (item.serviceId() != null) {
             return Subscription.createFromCatalog(user, servicesById.get(item.serviceId()), item.category(),
-                item.amount(), item.billingCycleValue(), item.billingCycleUnit(), item.nextBillingOn(),
-                item.paymentMethod(), RegistrationSource.MANUAL);
+                item.amount(), item.billingCycleValue(), item.billingCycleUnit(), item.nextBillingDate(),
+                item.paymentMethod(), source);
         }
-        return Subscription.createCustom(user, item.name().strip(), item.category(),
-            item.amount(), item.billingCycleValue(), item.billingCycleUnit(), item.nextBillingOn(),
-            item.paymentMethod(), RegistrationSource.MANUAL);
+        return Subscription.createCustom(user, item.serviceName().strip(), item.category(),
+            item.amount(), item.billingCycleValue(), item.billingCycleUnit(), item.nextBillingDate(),
+            item.paymentMethod(), source);
     }
 }
