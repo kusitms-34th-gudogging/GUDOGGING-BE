@@ -105,7 +105,7 @@ technical_spec:
       layer: Domain (Subscription) — 계산 메서드 추가 (ERD 4.4 도메인 메서드)
       action: >
         monthlyAmount(): 월 환산 (ERD 6.1, 원 단위 반올림 HALF_UP) ·
-        nextBillingOn(LocalDate base): billing_anchor_on + k × 주기(k는 음수 포함 정수) 중 base 이상인 가장 이른 날짜 (ERD 6.2) ·
+        nextBillingOn(LocalDate base): billing_anchor_on + k × 주기(k는 음수 포함 정수) 중 base 이상인 가장 이른 날짜. 단 billing_anchor_changed_on(NULL이면 등록일) 이후의 음수 k 날짜는 제외 — 입력한 다음 결제일이 그대로 다음 결제일 ([변경 2026-11-18] ERD 6.2 v1.4) ·
         startedOn(): createdAt 날짜 ·
         billingDatesBetween(LocalDate from, LocalDate to): 양끝 포함 결제일 목록 ·
         paidCount(LocalDate today): billingDatesBetween(startedOn(), ENDED면 canceledOn / ACTIVE면 today).size() ·
