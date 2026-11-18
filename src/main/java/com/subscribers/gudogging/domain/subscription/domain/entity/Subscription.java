@@ -226,6 +226,37 @@ public class Subscription extends BaseEntity {
         return Math.multiplyExact(paidCount(today), amount);
     }
 
+    /**
+     * 결제 경로 + 서비스 해지 링크 유무로 해지 안내 4분기 결정 (X-01 / X-03 / X-04 / X-05). 직접 입력 구독(serviceCatalog = null)은 링크 없음으로 본다.
+     */
+    public CancelGuideType cancelGuideType() {
+        return switch (paymentMethod) {
+            case APP_STORE -> CancelGuideType.APP_STORE;
+            case GOOGLE_PLAY -> CancelGuideType.GOOGLE_PLAY;
+            case WEB_DIRECT -> hasServiceCancelUrl() ? CancelGuideType.WEB_WITH_URL : CancelGuideType.WEB_WITHOUT_URL;
+        };
+    }
+
+    /**
+     * 서비스명 뒤에 붙는 목적격 조사. 한글 음절로 끝나면 받침 유무로 '을'/'를', 그 외(영문·숫자 등)는 services.object_particle, 없으면 '를'.
+     */
+    public String objectParticle() {
+        char last = name.charAt(name.length() - 1);
+        if (last >= '가' && last <= '힣') {
+            return (last - '가') % 28 == 0 ? "를" : "을";
+        }
+        if (serviceCatalog != null && serviceCatalog.getObjectParticle() != null
+            && !serviceCatalog.getObjectParticle().isBlank()) {
+            return serviceCatalog.getObjectParticle();
+        }
+        return "를";
+    }
+
+    private boolean hasServiceCancelUrl() {
+        return serviceCatalog != null && serviceCatalog.getCancelUrl() != null
+            && !serviceCatalog.getCancelUrl().isBlank();
+    }
+
     private LocalDate billingDateAt(long index) {
         long cycles = index * billingCycleValue;
         return switch (billingCycleUnit) {
