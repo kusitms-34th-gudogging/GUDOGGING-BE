@@ -1,5 +1,5 @@
 # Subscription Entity
-# Last Updated: 2026-11-17 (SUBSCRIPTION-002 목록 조회 계산 메서드 반영)
+# Last Updated: 2026-11-18 (SUBSCRIPTION-007 해지 완료 · SUBSCRIPTION-008 재등록, started_on 추가)
 # Source: docs/ERD.md v1.1 §4.4 subscriptions, §6 계산 규칙
 
 entity: SUBSCRIPTION
@@ -86,6 +86,11 @@ columns:
       nullable: false
       enum: RegistrationSource
       description: "등록 경로. @Enumerated(EnumType.STRING)"
+  - started_on:
+      type: DATE
+      nullable: false
+      description: "구독 시작일. 등록 시 = 등록일(@PrePersist에서 LocalDate.now()), 재등록 시 = 재등록일 (SUBSCRIPTION-008). 결제 횟수 · 금액, 캘린더 상태는 이 날짜부터 계산"
+
 
 enums:
   BillingCycleUnit:
@@ -111,7 +116,7 @@ indexes:
 
 constraints:
   - "amount > 0, billing_cycle_value 1~31, 직접 입력 서비스명 1~30자, billing_anchor_on 과거 불가 — 요청 DTO에서 검증 (엔티티는 검증하지 않음)"
-  - "편집(updatePaymentInfo, updateCustomName)·해지(cancel)는 ACTIVE 구독만, 서비스명 수정은 직접 입력 서비스만 — 도메인 서비스/UseCase에서 검증 후 엔티티 메서드 호출"
+  - "편집(updatePaymentInfo, updateCustomName)·해지(cancel)는 ACTIVE 구독만(해지는 ENDED면 40406), 재등록(reactivate)은 ENDED 구독만(ACTIVE면 40407), 서비스명 수정은 직접 입력 서비스만 — UseCase에서 검증 후 엔티티 메서드 호출"
   - "같은 회원이 같은 service_id를 ACTIVE 상태로 중복 등록 불가 — 애플리케이션에서 검증 (A-02, A-09, A-13). 직접 등록은 SubscriptionUseCase.createSubscriptions에서 SubscriptionGetService.findActiveServiceIds(user)로 검사 (40401)"
   - "조회는 항상 deleted = false 조건"
 
@@ -121,21 +126,23 @@ business_logic:
   - "updatePaymentInfo(category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod): 구독 정보 편집 (M-06)"
   - "updateCustomName(name): 직접 입력 서비스명 수정 (M-06)"
   - "changeSteadyUse(enabled): 꾸준히 쓰는 구독 토글 (M-03)"
-  - "cancel(today): 해지 완료 (X-06). status = ENDED, canceledOn = today"
+  - "cancel(today): 해지 완료 (X-06, SUBSCRIPTION-007). status = ENDED, canceledOn = today"
+  - "reactivate(billingAnchorOn, today): 구독 종료 구독 재등록 (M-05, SUBSCRIPTION-008). status = ACTIVE, canceledOn = null, billingAnchorOn = 새 다음 결제일, startedOn = today"
   - "softDelete(): 구독 삭제 (M-02.3, C-04) → BaseEntity 위임"
   - "monthlyAmount(): 월 환산 금액 (ERD 6.1) — MONTH n: amount/n · YEAR n: amount/(12n) · WEEK n: amount×52/(12n) · DAY n: amount×365/(12n), 원 단위 반올림(HALF_UP)"
   - "nextBillingOn(base): billingAnchorOn + k × 주기(k는 음수 포함 정수) 중 base 이상인 가장 이른 날짜 (ERD 6.2). 매번 기준일에서 계산(MONTH · YEAR는 plusMonths)해 월말 결제일 유지"
-  - "startedOn(): 구독 시작일 = created_at 날짜"
+  - "startedOn(): 구독 시작일 = started_on (등록일, 재등록하면 재등록일)"
   - "billingDatesBetween(from, to): from ~ to (양끝 포함) 사이 결제일 목록"
-  - "paidCount(today) / totalPaidAmount(today): 등록일 ~ (ENDED면 canceledOn, ACTIVE면 today) 결제 횟수 / 횟수 × amount"
+  - "paidCount(today) / totalPaidAmount(today): 시작일(started_on) ~ (ENDED면 canceledOn, ACTIVE면 today) 결제 횟수 / 횟수 × amount"
   - "cancelGuideType(): 해지 안내 4분기 (X-01/X-03/X-04/X-05) — APP_STORE · GOOGLE_PLAY는 결제 경로로, WEB_DIRECT는 serviceCatalog.cancelUrl이 비어 있지 않으면 WEB_WITH_URL, 아니면(직접 입력 구독 포함) WEB_WITHOUT_URL (SUBSCRIPTION-006)"
   - "objectParticle(): 서비스명 뒤 목적격 조사 — 마지막 글자가 한글 음절이면 받침 유무로 '을'/'를', 그 외는 serviceCatalog.objectParticle, 없으면 '를' (SUBSCRIPTION-006)"
 
 
 notes:
-  - "구독 시작일 컬럼 없음 — 등록일(created_at)을 사용 (ERD 10.1 #2)"
+  - "구독 시작일은 started_on 컬럼 (SUBSCRIPTION-008에서 추가, 노션 ERD 반영). 이전 결정(ERD 10.1 #2: created_at 사용)은 재등록 때 쉬었던 기간이 결제 횟수 · 캘린더에 들어가는 문제로 변경 (2026-11-18)"
+  - "[감수] 재등록하면 재등록 전 기간의 결제 횟수 · 금액은 '지금까지 결제'에서 빠지고 캘린더에서도 보이지 않음 (2026-11-18 합의)"
   - "직접 일괄 등록(A-04 → A-05)은 SUBSCRIPTION-001에서 구현 — POST /api/v1/subscriptions, registration_source = MANUAL, 전체 성공/전체 실패, SubscriptionCreateService.createSubscriptions → saveAll()"
-  - "재등록(M-05 '재등록하기'): 기존 ENDED 행은 그대로 두고 새 행 생성 (시작일 = 재등록일)"
+  - "재등록(M-05 '재등록하기'): 새 행을 만들지 않고 같은 행을 ACTIVE로 되살림 — subscriptionId · 점검 기록 유지, canceled_on = NULL, billing_anchor_on = 새 다음 결제일, 시작일(started_on) = 재등록일 (SUBSCRIPTION-008, 2026-11-18 합의)"
   - "구독 삭제 시 해당 subscription_checks, subscription_check_cancel_reasons, notifications도 함께 Soft Delete (ERD 8장) — UseCase에서 각 도메인 서비스를 통해 처리"
   - "홈 연 금액(H-02)은 예외적으로 등록일과 관계없이 올해 1/1~12/31 전체를 계산하며 ACTIVE 구독만 포함 (ERD 6.3)"
   - "저장하지 않는 값: 다음 결제일, D-day, 월/연 환산 금액, 결제 예정액, 캘린더 결제일 (ERD 6장)"
