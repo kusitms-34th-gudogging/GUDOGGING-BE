@@ -84,7 +84,7 @@ technical_spec:
         wrapper: CommonResponse<SubscriptionBillingResponse>
         fields:
           - "subscriptionId (UUID)"
-          - "yearlyAmount (int): 재계산된 연 환산 금액"
+          - "yearlyAmount (long): 재계산된 연 환산 금액"
           - "nextBillingDate (LocalDate): 다음 결제일 — nextBillingOn(today) (요청값이 오늘 이후라 요청 nextBillingDate와 같음)"
         factory: "SubscriptionBillingResponse.from(Subscription, LocalDate today)"
         example: |

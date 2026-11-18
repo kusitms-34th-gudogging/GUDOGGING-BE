@@ -54,7 +54,7 @@ technical_spec:
           - "count (int): 선택한 탭의 구독 개수"
           - "activeCount (int): 구독 중 개수 — 탭 뱃지 '구독 중 N'"
           - "endedCount (int): 구독 종료 개수 — 탭 뱃지 '구독 종료 N'"
-          - "monthlyTotal (int): 선택한 탭 구독의 월 환산 합계 — ACTIVE '월 N원' / ENDED '월 N원 절약'"
+          - "monthlyTotal (long): 선택한 탭 구독의 월 환산 합계 — ACTIVE '월 N원' / ENDED '월 N원 절약'"
           - "subscriptions (List<SubscriptionSummaryResponse>): sort 순서"
         item_dto: SubscriptionSummaryResponse
         item_fields:
@@ -62,12 +62,12 @@ technical_spec:
           - "serviceName (String)"
           - "logoUrl (String, nullable): 사전 등록 서비스의 services.logo_url. 직접 입력 · 로고 없음은 null → 클라이언트 기본 이미지"
           - "amount (int): 1회 결제 금액 — 구독 중 탭 우측 금액"
-          - "monthlyAmount (int): 월 환산 금액 — 구독 종료 탭 우측 '월 금액' (노션에 없음, 피그마 기준 추가)"
+          - "monthlyAmount (long): 월 환산 금액 — 구독 종료 탭 우측 '월 금액' (노션에 없음, 피그마 기준 추가)"
           - "billingCycleValue (int), billingCycleUnit (BillingCycleUnit): '매월 17일' 문구 조합용"
           - "nextBillingDate (LocalDate, nullable): 다음 결제일 (오늘 포함 이후 첫 결제일). ENDED면 null"
           - "dDay (Integer, nullable): nextBillingDate − 오늘 (오늘이면 0). ENDED면 null"
           - "canceledAt (LocalDate, nullable): 해지일 (subscriptions.canceled_on). ACTIVE면 null"
-          - "totalPaidAmount (Integer, nullable): 총 지출 — 등록일 ~ 해지일 결제 횟수 × amount. ACTIVE면 null"
+          - "totalPaidAmount (Long, nullable): 총 지출 — 등록일 ~ 해지일 결제 횟수 × amount. ACTIVE면 null"
         factory: "SubscriptionListResponse.of(SubscriptionStatus, List<Subscription> tabSubscriptions, int activeCount, int endedCount, LocalDate today), SubscriptionSummaryResponse.from(Subscription, LocalDate today)"
         display_note: "'매월 17일 · D-1', '10월 16일 해지 · 총 지출 47,600원', 빈 상태(M-01) 문구는 클라이언트가 조합"
         example: |
