@@ -41,6 +41,9 @@ public class ServiceCatalog extends BaseEntity {
     @Column(name = "logo_url", length = 500)
     private String logoUrl;
 
+    @Column(name = "default_amount")
+    private Integer defaultAmount;
+
     @Column(name = "object_particle", length = 1)
     private String objectParticle;
 
@@ -65,9 +68,10 @@ public class ServiceCatalog extends BaseEntity {
         String searchKeywords,
         Category category,
         String logoUrl,
+        Integer defaultAmount,
         int sortOrder
     ) {
-        return new ServiceCatalog(name, nameEn, searchKeywords, category, logoUrl,
+        return new ServiceCatalog(name, nameEn, searchKeywords, category, logoUrl, defaultAmount,
             null, null, null, null, sortOrder, true);
     }
 
