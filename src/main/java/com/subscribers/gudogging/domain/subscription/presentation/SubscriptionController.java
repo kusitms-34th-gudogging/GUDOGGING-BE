@@ -3,12 +3,16 @@ package com.subscribers.gudogging.domain.subscription.presentation;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
-import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCancelResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import com.subscribers.gudogging.domain.subscription.presentation.response.SubscriptionResponseCode;
@@ -165,6 +169,68 @@ public class SubscriptionController {
     ) {
         CancelGuideResponse response = subscriptionUseCase.getCancelGuide(userId, subscriptionId);
         return CommonResponse.success(SubscriptionResponseCode.CANCEL_GUIDE_FOUND, response);
+    }
+
+    @Operation(
+        summary = "해지 완료 처리",
+        description = """
+            **기능**
+            해지 완료 확인 모달(X-06)에서 '해지 완료'를 누르면 구독 중인 구독을 구독 종료(ENDED)로 바꾸고 해지일을 오늘로 저장합니다.
+            결제 경로와 관계없이 같은 동작이며, 완료 후 구독 종료 상세(M-05)로 돌아갑니다.
+            D-3 · D-1 알림과 홈 · 캘린더 집계는 구독 상태로 계산되므로 구독 종료 후에는 대상에서 빠집니다.
+            - 이미 구독 종료된 구독이면 40406(409)
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+
+            **응답값**
+            - subscriptionId (UUID): 구독 ID
+            - status (String): ENDED
+            - canceledAt (String): 해지일 (yyyy-MM-dd)
+            """
+    )
+    @PatchMapping("/{subscriptionId}/cancel")
+    public CommonResponse<SubscriptionCancelResponse> cancelSubscription(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId
+    ) {
+        SubscriptionCancelResponse response = subscriptionUseCase.cancelSubscription(userId, subscriptionId);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_CANCELED, response);
+    }
+
+    @Operation(
+        summary = "구독 종료 구독 재등록",
+        description = """
+            **기능**
+            구독 종료 상세(M-05)에서 '재등록하기'를 누르면 같은 구독을 다시 구독 중(ACTIVE)으로 바꿉니다 (구독 ID 유지).
+            새 다음 결제일을 결제 기준일로 저장하고, 해지일을 지우고, 구독 시작일을 오늘(재등록일)로 다시 잡습니다.
+            그래서 지금까지 결제 횟수 · 금액과 캘린더는 재등록일부터 계산합니다. 기존 점검 기록과 금액 · 주기 · 결제 경로는 그대로입니다.
+            - 이미 구독 중인 구독이면 40407(409)
+            - 같은 서비스를 다른 구독으로 이미 구독 중이면 40401(409). 직접 입력한 구독은 검사하지 않습니다.
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - 입력값 검증 실패 시 40001(400), 잘못된 날짜 형식은 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+            - nextBillingDate (String, 필수): 새 다음 결제일 (yyyy-MM-dd, 오늘 이후)
+
+            **응답값**
+            - subscriptionId (UUID): 구독 ID
+            - status (String): ACTIVE
+            """
+    )
+    @PatchMapping("/{subscriptionId}/reactivate")
+    public CommonResponse<SubscriptionReactivationResponse> reactivateSubscription(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId,
+        @RequestBody @Valid ReactivateSubscriptionRequest request
+    ) {
+        SubscriptionReactivationResponse response = subscriptionUseCase.reactivateSubscription(userId,
+            subscriptionId, request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_REACTIVATED, response);
     }
 
     @Operation(
