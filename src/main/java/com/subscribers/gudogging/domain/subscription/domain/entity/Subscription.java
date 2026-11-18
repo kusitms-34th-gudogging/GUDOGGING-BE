@@ -12,6 +12,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -90,6 +91,9 @@ public class Subscription extends BaseEntity {
     @Column(name = "registration_source", nullable = false, length = 20)
     private RegistrationSource registrationSource;
 
+    @Column(name = "started_on", nullable = false)
+    private LocalDate startedOn;
+
     public static Subscription createFromCatalog(
         User user,
         ServiceCatalog serviceCatalog,
@@ -103,7 +107,7 @@ public class Subscription extends BaseEntity {
     ) {
         return new Subscription(user, serviceCatalog, serviceCatalog.getName(), category, amount,
             billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource);
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
     }
 
     public static Subscription createCustom(
@@ -119,7 +123,17 @@ public class Subscription extends BaseEntity {
     ) {
         return new Subscription(user, null, name, category, amount,
             billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource);
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
+    }
+
+    /**
+     * 구독 시작일은 등록일 — BaseEntity.createdAt과 같이 저장 시점에 채운다. 재등록하면 reactivate에서 재등록일로 바뀐다.
+     */
+    @PrePersist
+    private void initStartedOn() {
+        if (startedOn == null) {
+            startedOn = LocalDate.now();
+        }
     }
 
     public void updatePaymentInfo(
@@ -197,10 +211,10 @@ public class Subscription extends BaseEntity {
     }
 
     /**
-     * 구독 시작일 = 등록일 (ERD 10.1 #2).
+     * 구독 시작일 = started_on (등록일, 재등록하면 재등록일).
      */
     public LocalDate startedOn() {
-        return getCreatedAt().toLocalDate();
+        return startedOn;
     }
 
     /**
