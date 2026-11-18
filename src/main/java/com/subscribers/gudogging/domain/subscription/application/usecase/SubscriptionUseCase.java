@@ -143,7 +143,7 @@ public class SubscriptionUseCase {
         }
 
         subscription.updatePaymentInfo(request.category(), request.amount(), request.billingCycleValue(),
-            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod());
+            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod(), LocalDate.now());
         if (subscription.getServiceCatalog() == null && request.serviceName() != null) {
             subscription.updateCustomName(request.serviceName().strip());
         }

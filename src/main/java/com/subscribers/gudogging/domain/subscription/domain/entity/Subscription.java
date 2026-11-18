@@ -80,6 +80,12 @@ public class Subscription extends BaseEntity {
     @Column(name = "billing_anchor_on", nullable = false)
     private LocalDate billingAnchorOn;
 
+    /**
+     * 결제 기준일을 마지막으로 정한 날(구독 정보 수정일). NULL이면 등록일. 이 날짜부터 billingAnchorOn 전까지는 결제일을 만들지 않는다 (ERD 6.2).
+     */
+    @Column(name = "billing_anchor_changed_on")
+    private LocalDate billingAnchorChangedOn;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_method", nullable = false, length = 20)
     private PaymentMethod paymentMethod;
@@ -120,7 +126,7 @@ public class Subscription extends BaseEntity {
         RegistrationSource registrationSource
     ) {
         return new Subscription(user, serviceCatalog, serviceCatalog.getName(), category, amount,
-            billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
+            billingCycleValue, billingCycleUnit, billingAnchorOn, null, paymentMethod,
             SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
     }
 
@@ -136,7 +142,7 @@ public class Subscription extends BaseEntity {
         RegistrationSource registrationSource
     ) {
         return new Subscription(user, null, name, category, amount,
-            billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
+            billingCycleValue, billingCycleUnit, billingAnchorOn, null, paymentMethod,
             SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
     }
 
@@ -146,13 +152,15 @@ public class Subscription extends BaseEntity {
         int billingCycleValue,
         BillingCycleUnit billingCycleUnit,
         LocalDate billingAnchorOn,
-        PaymentMethod paymentMethod
+        PaymentMethod paymentMethod,
+        LocalDate today
     ) {
         this.category = category;
         this.amount = amount;
         this.billingCycleValue = billingCycleValue;
         this.billingCycleUnit = billingCycleUnit;
         this.billingAnchorOn = billingAnchorOn;
+        this.billingAnchorChangedOn = today;
         this.paymentMethod = paymentMethod;
     }
 
@@ -209,6 +217,7 @@ public class Subscription extends BaseEntity {
 
     /**
      * base 이후(포함) 첫 결제일 (ERD 6.2). 결제일은 매번 billingAnchorOn에서 계산하므로 월말이 밀리지 않는다.
+     * 기준일을 정한 날(등록일 · 마지막 수정일) 이후에는 사용자가 입력한 다음 결제일(billingAnchorOn)이 첫 결제일이다.
      */
     public LocalDate nextBillingOn(LocalDate base) {
         return billingDateAt(firstBillingIndexOnOrAfter(base));
@@ -226,7 +235,8 @@ public class Subscription extends BaseEntity {
      */
     public List<LocalDate> billingDatesBetween(LocalDate from, LocalDate to) {
         List<LocalDate> billingDates = new ArrayList<>();
-        for (long index = firstBillingIndexOnOrAfter(from); !billingDateAt(index).isAfter(to); index++) {
+        for (long index = firstBillingIndexOnOrAfter(from); !billingDateAt(index).isAfter(to);
+             index = firstBillingIndexOnOrAfter(billingDateAt(index).plusDays(1))) {
             billingDates.add(billingDateAt(index));
         }
         return billingDates;
@@ -264,6 +274,11 @@ public class Subscription extends BaseEntity {
         };
         while (billingDateAt(index).isBefore(date)) {
             index++;
+        }
+        // 기준일 이전 결제일은 기준일을 정한 날(NULL이면 등록일)보다 앞선 날짜만 인정하고, 그 사이 날짜는 기준일(index 0)로 건너뛴다.
+        LocalDate anchorChangedOn = billingAnchorChangedOn != null ? billingAnchorChangedOn : startedOn();
+        if (index < 0 && !billingDateAt(index).isBefore(anchorChangedOn)) {
+            return 0;
         }
         return index;
     }
