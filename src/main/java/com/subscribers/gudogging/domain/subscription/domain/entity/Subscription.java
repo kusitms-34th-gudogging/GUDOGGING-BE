@@ -166,6 +166,16 @@ public class Subscription extends BaseEntity {
     }
 
     /**
+     * 구독 종료 구독 재등록 (M-05). 같은 행을 되살리며 시작일을 재등록일로 다시 잡아 쉬었던 기간이 결제 횟수 · 캘린더에 들어가지 않게 한다.
+     */
+    public void reactivate(LocalDate billingAnchorOn, LocalDate today) {
+        this.status = SubscriptionStatus.ACTIVE;
+        this.canceledOn = null;
+        this.billingAnchorOn = billingAnchorOn;
+        this.startedOn = today;
+    }
+
+    /**
      * 월 환산 금액 (ERD 6.1). 원 단위 반올림.
      */
     public int monthlyAmount() {
