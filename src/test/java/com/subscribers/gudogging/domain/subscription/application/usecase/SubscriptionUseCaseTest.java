@@ -513,6 +513,21 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("등록할 때 한 주기보다 먼 다음 결제일을 입력했으면 그 날짜를 다음 결제일로 반환한다")
+        void returnsRequestedNextBillingDateBeyondOneCycle() {
+            // given — 1개월 전 등록, 무료 체험 등으로 다음 결제일을 2개월 뒤로 입력한 월 구독
+            LocalDate firstBillingOn = today.plusMonths(2);
+            Subscription trial = active("무료 체험", 17000, 1, BillingCycleUnit.MONTH, firstBillingOn);
+            givenSubscriptions(trial);
+
+            // when
+            SubscriptionListResponse response = subscriptionUseCase.getSubscriptions(userId, null, null);
+
+            // then — 입력한 날짜 이전(1개월 뒤)은 결제일이 아니다
+            assertThat(response.subscriptions().getFirst().nextBillingDate()).isEqualTo(firstBillingOn);
+        }
+
+        @Test
         @DisplayName("기준일이 지난 구독은 오늘 이후 첫 결제일과 D-n을 반환하고, 오늘이 결제일이면 D-0이다")
         void returnsNextBillingDateFromPastAnchor() {
             // given — 매주 결제: 기준일 10일 전 → 다음 결제일은 4일 뒤, 기준일 14일 전 → 오늘
@@ -731,10 +746,12 @@ class SubscriptionUseCaseTest {
         @Test
         @DisplayName("구독 중이면 결제 금액 · 연 환산 · 다음 결제일 · D-n · 구독 시작일 · 지금까지 결제 횟수와 금액을 반환하고 해지일은 null이다")
         void returnsActiveSubscriptionDetail() {
-            // given — 2개월 전 등록, 5일 뒤가 결제일인 월 구독 → 등록 후 결제일 2번 지남
+            // given — 2개월 전 등록, 오늘 결제 정보를 수정해 5일 뒤가 결제일인 월 구독 → 오늘 이전 결제일 2번 지남
             ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
             LocalDate startedOn = today.minusMonths(2);
             Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), startedOn);
+            subscription.updatePaymentInfo(Category.VIDEO_OTT, 13500, 1, BillingCycleUnit.MONTH, today.plusDays(5),
+                PaymentMethod.APP_STORE, today);
             givenSubscription(subscription);
 
             // when
@@ -817,6 +834,25 @@ class SubscriptionUseCaseTest {
 
             // then
             assertThat(response.status()).isEqualTo(SubscriptionStatus.ENDED);
+        }
+
+        @Test
+        @DisplayName("등록할 때 한 주기보다 먼 다음 결제일을 입력했으면 그 날짜를 다음 결제일로 반환하고 그 전 날짜는 결제 횟수에 세지 않는다")
+        void excludesBillingDatesBeforeRequestedNextBillingDate() {
+            // given — 2개월 전 등록 때 다음 결제일을 3개월 뒤(오늘 기준 1개월 뒤)로 입력한 월 구독 → 아직 결제한 적 없음
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, "https://logo.example.com/netflix.png");
+            LocalDate firstBillingOn = today.plusMonths(1);
+            Subscription subscription = activeFromCatalog(netflix, firstBillingOn, today.minusMonths(2));
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.nextBillingDate()).isEqualTo(firstBillingOn);
+            assertThat(response.paidCount()).isZero();
+            assertThat(response.totalPaidAmount()).isZero();
         }
 
         @Test
@@ -1011,6 +1047,30 @@ class SubscriptionUseCaseTest {
             // then
             assertThat(subscription.getAmount()).isEqualTo(200_000_000);
             assertThat(response.yearlyAmount()).isEqualTo(2_400_000_000L);
+        }
+
+        @Test
+        @DisplayName("다음 결제일을 한 주기보다 먼 날짜로 수정하면 요청한 날짜를 반환하고, 상세도 같은 날짜와 수정 전 결제 횟수를 유지한다")
+        void keepsRequestedNextBillingDateAndPaidHistory() {
+            // given — 4주 전 등록한 구독을 매주 결제, 다음 결제일 3주 뒤로 수정
+            Subscription subscription = catalogSubscription();
+            ReflectionTestUtils.setField(subscription, "createdAt", today.minusWeeks(4).atStartOfDay());
+            givenSubscription(subscription);
+            LocalDate requestedNextBillingDate = today.plusWeeks(3);
+            UpdateSubscriptionRequest request = new UpdateSubscriptionRequest(null, Category.ETC, 10000, 1,
+                BillingCycleUnit.WEEK, requestedNextBillingDate, PaymentMethod.WEB_DIRECT);
+
+            // when
+            SubscriptionBillingResponse response = subscriptionUseCase.updateSubscription(userId,
+                subscription.getId(), request);
+            SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then — 수정한 오늘 ~ 3주 뒤 사이(오늘 · 1주 뒤 · 2주 뒤)는 결제일이 아니고,
+            //        오늘 이전 결제일(1 · 2 · 3 · 4주 전)은 수정 전 기록으로 유지한다
+            assertThat(response.nextBillingDate()).isEqualTo(requestedNextBillingDate);
+            assertThat(detail.nextBillingDate()).isEqualTo(requestedNextBillingDate);
+            assertThat(detail.paidCount()).isEqualTo(4);
         }
 
         @Test
