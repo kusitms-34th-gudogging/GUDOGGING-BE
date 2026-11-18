@@ -1966,6 +1966,25 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("재등록 후 재등록일 전 날짜로 상세를 조회하면 구독 종료 상태이고 다음 결제일 · D-n을 반환하지 않는다")
+        void hidesNextBillingDateBeforeReactivation() {
+            // given
+            Subscription subscription = endedFromCatalog();
+            givenSubscription(subscription);
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+            reactivate(subscription);
+
+            // when
+            SubscriptionDetailResponse detail = subscriptionUseCase.getSubscription(userId, subscription.getId(),
+                today.minusMonths(3));
+
+            // then
+            assertThat(detail.status()).isEqualTo(SubscriptionStatus.ENDED);
+            assertThat(detail.nextBillingDate()).isNull();
+            assertThat(detail.dDay()).isNull();
+        }
+
+        @Test
         @DisplayName("직접 입력 구독은 중복 검사 없이 재등록한다")
         void reactivatesCustomWithoutDuplicateCheck() {
             // given
