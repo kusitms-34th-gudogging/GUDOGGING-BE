@@ -148,7 +148,7 @@ technical_spec:
       action: "@CurrentUserId UUID userId, @Valid @RequestBody CreateSubscriptionsRequest → SubscriptionUseCase.createSubscriptions(userId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, SubscriptionCreationResponse)"
     - step: 2
       layer: UseCase (SubscriptionUseCase.createSubscriptions)
-      action: "회원 조회 → 요청 내 serviceId 중복 검사 → 서비스 조회·존재 검사 → 이미 구독 중 검사 → 엔티티 생성 → saveAll → SubscriptionCreationResponse"
+      action: "회원 조회 → 요청 내 serviceId 중복 검사 → 서비스 조회·존재 검사 → 이미 구독 중 검사 → 엔티티 생성 → saveAllAndFlush (동시 등록 고유 제약 충돌 → DUPLICATE_SUBSCRIPTION) → SubscriptionCreationResponse"
       transaction: true (@Transactional)
     - step: 3
       layer: Domain Service (UserGetService)
@@ -172,7 +172,7 @@ technical_spec:
         status = ACTIVE, is_steady_use = false, billing_anchor_on = nextBillingDate
     - step: 8
       layer: Domain Service (SubscriptionCreateService) — 신규
-      action: "createSubscriptions(List<Subscription>) → SubscriptionRepository.saveAll() (반복 save 금지)"
+      action: "createSubscriptions(List<Subscription>) → SubscriptionRepository.saveAllAndFlush() (반복 save 금지). uk_subscriptions_user_active_service 충돌은 DuplicateSubscriptionException으로 변환"
     - step: 9
       layer: UseCase
       action: "저장 결과를 SubscriptionCreationResponse.from()으로 변환 (createdCount + 항목 SubscriptionResponse.from()). logoUrl은 5단계에서 이미 로딩한 ServiceCatalog라 추가 쿼리 없음"
@@ -301,7 +301,7 @@ notes:
   - "디자인 반영 요청: SUB-003 카테고리 드롭다운 '쇼핑 멤버십' → '쇼핑·배달 멤버십' (ERD 10.1 #11)"
   - "[가정] 1회 최대 50개 — Figma에 상한 없음. 비정상 대량 요청 방지용"
   - "[가정] '오늘' 기준은 서버 JVM 기본 타임존. 현재 타임존 설정이 없으므로 배포 환경이 UTC면 KST 00~09시에 하루 어긋남 → JVM 타임존을 Asia/Seoul로 고정 필요 (구현 시 확인)"
-  - "[가정] 동시 중복 요청(더블 탭) 방지는 클라이언트 버튼 비활성화로 처리. ACTIVE 중복은 상태 조건이라 DB UNIQUE로 막을 수 없어, 극히 드문 동시 요청에서 중복 행이 생길 수 있음 (MVP 허용)"
+  - "[변경 2026-11-18] 동시 중복 요청(더블 탭 · 재시도)은 DB 고유 제약으로 막음 — 계산 컬럼 subscriptions.active_service_id(미삭제 ACTIVE면 service_id, 아니면 NULL) + uk_subscriptions_user_active_service UNIQUE (user_id, active_service_id). 충돌은 SubscriptionCreateService에서 DUPLICATE_SUBSCRIPTION(409)으로 변환, 일괄 등록은 전체 롤백 (ERD v1.3). 기존 가정(클라이언트 버튼 비활성화, 중복 행 MVP 허용)은 폐기"
   - "[가정] 응답 nextBillingDate는 billing_anchor_on 그대로. 다음 결제일 계산(ERD 6.2, nextBillingOn(base))은 구독 조회 기능 스펙에서 추가"
   - "범위 외: 스크린샷 분석(A-08)·Gmail 불러오기 — 분석 방식 확정 후 별도 스펙. 분석 후 등록은 이 API를 source = SCREENSHOT / GMAIL로 호출"
   - "범위 외: 구독 수정(M-06)·삭제·해지"
