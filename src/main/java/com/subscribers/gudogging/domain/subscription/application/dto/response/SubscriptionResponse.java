@@ -1,6 +1,5 @@
 package com.subscribers.gudogging.domain.subscription.application.dto.response;
 
-import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleUnit;
 import com.subscribers.gudogging.domain.subscription.domain.entity.PaymentMethod;
@@ -8,16 +7,17 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import java.time.LocalDate;
 import java.util.UUID;
 
+/**
+ * 방금 등록한 구독 항목 (A-05). 등록 직후라 결제 기준일(billing_anchor_on)이 곧 다음 결제일이다.
+ */
 public record SubscriptionResponse(
     UUID subscriptionId,
-    UUID serviceId,
-    String name,
+    String serviceName,
     String logoUrl,
-    Category category,
     int amount,
     int billingCycleValue,
     BillingCycleUnit billingCycleUnit,
-    LocalDate nextBillingOn,
+    LocalDate nextBillingDate,
     PaymentMethod paymentMethod
 ) {
 
@@ -25,10 +25,8 @@ public record SubscriptionResponse(
         ServiceCatalog serviceCatalog = subscription.getServiceCatalog();
         return new SubscriptionResponse(
             subscription.getId(),
-            serviceCatalog != null ? serviceCatalog.getId() : null,
             subscription.getName(),
             serviceCatalog != null ? serviceCatalog.getLogoUrl() : null,
-            subscription.getCategory(),
             subscription.getAmount(),
             subscription.getBillingCycleValue(),
             subscription.getBillingCycleUnit(),
