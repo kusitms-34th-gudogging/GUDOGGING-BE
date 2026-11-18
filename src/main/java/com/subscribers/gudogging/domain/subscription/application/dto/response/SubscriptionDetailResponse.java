@@ -72,10 +72,13 @@ public record SubscriptionDetailResponse(
     }
 
     /**
-     * 기준일 이후(포함) 첫 결제일. 구독 종료이고 그 날짜가 해지일 이후면 null.
+     * 기준일 이후(포함) 첫 결제일. 기준일이 구독 시작일(재등록하면 재등록일) 전이거나, 구독 종료이고 그 날짜가 해지일 이후면 null.
      */
     private static LocalDate nextBillingDateOf(Subscription subscription, BillingSchedule billingSchedule,
                                                LocalDate base) {
+        if (base.isBefore(subscription.startedOn())) {
+            return null;
+        }
         LocalDate nextBillingDate = billingSchedule.nextBillingOn(base);
         boolean ended = subscription.getStatus() == SubscriptionStatus.ENDED;
         return ended && nextBillingDate.isAfter(subscription.getCanceledOn()) ? null : nextBillingDate;
