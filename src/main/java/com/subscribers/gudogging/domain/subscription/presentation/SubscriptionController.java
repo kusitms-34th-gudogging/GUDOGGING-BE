@@ -204,18 +204,25 @@ public class SubscriptionController {
         summary = "구독 종료 구독 재등록",
         description = """
             **기능**
-            구독 종료 상세(M-05)에서 '재등록하기'를 누르면 같은 구독을 다시 구독 중(ACTIVE)으로 바꿉니다 (구독 ID 유지).
-            새 다음 결제일을 결제 기준일로 저장하고, 해지일을 지우고, 구독 시작일을 오늘(재등록일)로 다시 잡습니다.
-            그래서 지금까지 결제 횟수 · 금액과 캘린더는 재등록일부터 계산합니다. 기존 점검 기록과 금액 · 주기 · 결제 경로는 그대로입니다.
+            구독 종료 상세(M-05)의 '재등록하기' → 기존 정보가 채워진 구독 정보 입력 화면에서 저장하면, 같은 구독을 다시 구독 중(ACTIVE)으로 바꿉니다 (구독 ID 유지).
+            요청한 구독 정보로 값을 덮어쓰고, 다음 결제일을 결제 기준일로 저장하고, 해지일을 지우고, 구독 시작일을 오늘(재등록일)로 다시 잡습니다.
+            그래서 연 환산 금액 · 다음 결제일 · 지금까지 결제 횟수 · 금액과 캘린더는 재등록일부터 새 조건으로 계산합니다. 기존 점검 기록은 유지합니다.
+            필드 정의와 검증은 구독 정보 수정 API와 같습니다 (부분 수정 아님, serviceName만 선택).
             - 이미 구독 중인 구독이면 40407(409)
             - 같은 서비스를 다른 구독으로 이미 구독 중이면 40401(409). 직접 입력한 구독은 검사하지 않습니다.
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
-            - 입력값 검증 실패 시 40001(400), 잘못된 날짜 형식은 40002(400)
+            - 입력값 검증 실패 시 40001(400), 잘못된 enum · 날짜 형식은 40002(400)
             - 회원이 없거나 탈퇴했으면 40201(404)
 
             **요청값**
             - subscriptionId (UUID, 필수): 구독 ID (path variable)
-            - nextBillingDate (String, 필수): 새 다음 결제일 (yyyy-MM-dd, 오늘 이후)
+            - serviceName (String, 선택): 서비스 이름 (최대 30자, 공백만 불가). 직접 입력 서비스만 반영, null이면 기존 이름 유지
+            - category (String, 필수): 카테고리 코드 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC)
+            - amount (Integer, 필수): 결제 금액 (원, 1 이상)
+            - billingCycleValue (Integer, 필수): 결제 주기 값 (1~31)
+            - billingCycleUnit (String, 필수): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
+            - nextBillingDate (String, 필수): 다음 결제일 (yyyy-MM-dd, 오늘 이후)
+            - paymentMethod (String, 필수): 결제한 곳 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
 
             **응답값**
             - subscriptionId (UUID): 구독 ID
