@@ -1,0 +1,243 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-19
+
+meta:
+  id: CHECK-001
+  title: 점검 엔티티 컬럼 추가 + 구독 점검 문항 조회
+  type: Feature
+  author: parkdo0918
+  issue: "#34"
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, @CurrentUserId
+    - SUBSCRIPTION-001~008   # Subscription(monthlyAmount · yearlyAmount · nextBillingOn · objectParticle), SubscriptionGetService.findSubscription 재사용
+  sources:
+    - "노션 API 명세서 Checkup — 구독 점검 문항 조회 (2026-11-19 확인)"
+    - "노션 ERD subscription_checks — score_percent · stage · decided_at"
+    - "checkup-form-texts.md (ERD 5.2 문항 · 보조 문구 · 선택지, 화면설계서 K-70 메모 예시 문구 · 칩, 화면설계서 기준)"
+
+overview:
+  summary: >
+    (1) subscription_checks에 ERD의 score_percent · stage · decided_at 컬럼을 추가한다 (제출 · 결정 API의 선행 작업).
+    (2) 구독 카테고리에 맞는 점검 문항 3개(이용도 · 만족도 · 다음 달 계획)와 선택지 5개, 보조 문구, 메모 예시 문구 · 칩, 지난 메모를 조회한다 (K-11~K-70).
+    문구는 코드 상수이고, 서비스명 · 조사 · 금액 · 날짜를 서버가 채워 완성된 문장으로 내려준다.
+  user_story: >
+    As a 로그인한 회원, I want to 내 구독 카테고리에 맞는 점검 문항을 보기를,
+    so that 몇 번의 탭으로 이 구독을 계속 쓸지 판단할 수 있다.
+  goals:
+    - SubscriptionCheck에 scorePercent · stage · decidedAt 추가
+    - 카테고리 7개별 문항 · 선택지 · 보조 문구 · 메모 예시 문구 · 칩 상수
+    - 서비스명 조사(을/를, 으로/로) 자동 선택
+    - 지난 메모(가장 최근 점검의 memo) 반환
+    - 구독 종료 구독은 409
+
+technical_spec:
+  entity_change:
+    target: "SubscriptionCheck (subscription_checks)"
+    add_columns:
+      - "score_percent: INT NOT NULL — 활용도 0~100 (제출 시 계산해 저장)"
+      - "stage: VARCHAR(20) NOT NULL — CheckResultStage (KEEP_RECOMMENDED / KEEP_CONSIDER / CANCEL_CONSIDER / CANCEL_RECOMMENDED), @Enumerated(STRING)"
+      - "decided_at: DATETIME NULL — 유지/해지 결정 시각. 결정 전 NULL"
+    methods:
+      - "create(subscription, targetBillingOn, category, usageScore, satisfactionScore, planScore, scorePercent, stage, memo): 정적 팩토리에 scorePercent · stage 추가 (계산은 CHECK-002 제출에서)"
+      - "keep(decidedAt) / cancel(cancelReasonText, decidedAt): 결정과 함께 decidedAt 저장"
+    enum_name: "ERD 표기는 CheckStage지만 기존 enum CheckResultStage(domain/check/domain/result)를 그대로 사용 — 구독 상세 응답(LatestCheckupResponse 등)이 이미 사용 중"
+    migration: "점검을 만드는 API가 아직 없어 dev · 로컬 subscription_checks는 비어 있음 → ddl-auto=update로 NOT NULL 컬럼 추가 가능. 운영은 테이블 최초 생성 시 함께 생성"
+
+  api:
+    - method: GET
+      path: /api/v1/subscriptions/{subscriptionId}/checkups/form
+      summary: 구독 점검 문항 조회
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        body: 없음
+      response:
+        http_status: 200 OK
+        dto: CheckupFormResponse
+        wrapper: CommonResponse<CheckupFormResponse>
+        response_code: "CheckResponseCode.CHECKUP_FORM_FOUND (200, HttpStatus.OK, \"점검 문항을 조회했습니다.\")"
+        fields:
+          - "category (Enum): 구독 카테고리 (subscriptions.category)"
+          - "questions (List<CheckupQuestionResponse>): 문항 3개, USAGE → SATISFACTION → PLAN 순"
+          - "questions[].type (Enum CheckupQuestionType): USAGE / SATISFACTION / PLAN"
+          - "questions[].label (String): 문항 문구 (서비스명 · 조사 채움)"
+          - "questions[].hint (String, nullable): 보조 문구 (금액 · 날짜 채움)"
+          - "questions[].options (List<CheckupOptionResponse>): 선택지 5개, score 1~5 (부정 → 긍정)"
+          - "questions[].options[].score (int) / text (String)"
+          - "lastMemo (String, nullable): 이 구독의 가장 최근 점검 메모 (없으면 null)"
+          - "serviceName (String): subscriptions.name"
+          - "amount (long): 월 환산 금액 (subscription.monthlyAmount())"
+          - "yearlyAmount (long): 연 환산 금액 (subscription.yearlyAmount())"
+          - "nextBillingDate (LocalDate): 오늘 이후(포함) 첫 결제일 (subscription.nextBillingOn(today))"
+          - "memoPlaceholder (String): 메모 입력란 예시 문구 (카테고리별)"
+          - "memoChips (List<String>): 예시 메모 칩 3개 (카테고리별)"
+        mock: |
+          {
+            "code": 200,
+            "message": "점검 문항을 조회했습니다.",
+            "data": {
+              "category": "VIDEO_OTT",
+              "questions": [
+                {
+                  "type": "USAGE",
+                  "label": "최근 한 달 동안 넷플릭스를 얼마나 자주 이용했나요?",
+                  "hint": "에피소드, 영화 모두 1편으로 세어 주세요",
+                  "options": [
+                    { "score": 1, "text": "안 봤어요" }, { "score": 2, "text": "1~2편" },
+                    { "score": 3, "text": "3~5편" }, { "score": 4, "text": "6~10편" }, { "score": 5, "text": "11편 이상" }
+                  ]
+                },
+                {
+                  "type": "SATISFACTION",
+                  "label": "넷플릭스에서 본 콘텐츠, 구독료만큼 가치 있었나요?",
+                  "hint": "월 13,500원 · 1년이면 162,000원",
+                  "options": [ "... 5개" ]
+                },
+                {
+                  "type": "PLAN",
+                  "label": "다음 달에도 넷플릭스를 이용할 계획이 있나요?",
+                  "hint": "다음 결제 11월 17일 · 13,500원",
+                  "options": [ "... 5개" ]
+                }
+              ],
+              "lastMemo": null,
+              "serviceName": "넷플릭스",
+              "amount": 13500,
+              "yearlyAmount": 162000,
+              "nextBillingDate": "2026-11-17",
+              "memoPlaceholder": "예: 시즌 3 공개돼서 이번 달은 유지할래요",
+              "memoChips": ["보고 싶은 작품이 있어요", "이번 달은 바빴어요", "비싸지면 해지할래요"]
+            }
+          }
+
+  form_texts:
+    source: "checkup-form-texts.md 원문 그대로 상수화 (domain/check/domain/form)"
+    usage:
+      label: "최근 한 달 동안 {serviceName}{을/를} 얼마나 자주 이용했나요?"
+      by_category:
+        VIDEO_OTT: { hint: "에피소드, 영화 모두 1편으로 세어 주세요", options: [안 봤어요, 1~2편, 3~5편, 6~10편, 11편 이상] }
+        SHOPPING_DELIVERY: { hint: "주문, 배달, 혜택 사용을 모두 1번으로 세어 주세요", options: [안 썼어요, 1~2번, 3~5번, 6~9번, 10번 이상] }
+        MUSIC · EDUCATION · PRODUCTIVITY_AI · ENTERTAINMENT: { hint: "하루에 여러 번 써도 1일로 세어 주세요", options: [안 썼어요, 한 달에 1~3일, 주 1~2일, 주 3~5일, 거의 매일] }
+        ETC: { hint: "하루에 여러 번 써도 1일로 세어 주세요\n자동으로 쓴 날도 포함해요", options: "위와 같음" }
+    satisfaction:
+      hint: "월 {amount}원 · 1년이면 {yearlyAmount}원 — amount = 월 환산 금액"
+      options: [많이 아까워요, 조금 아까워요, 보통이에요, 구독료만큼 가치 있어요, 구독료보다 더 가치 있어요]
+      label_by_category:
+        VIDEO_OTT: "{serviceName}에서 본 콘텐츠, 구독료만큼 가치 있었나요?"
+        MUSIC: "{serviceName}{으로/로} 들은 음악, 구독료만큼 가치 있었나요?"
+        SHOPPING_DELIVERY: "{serviceName} 혜택으로 아낀 돈, 구독료만큼 됐나요?"
+        EDUCATION: "{serviceName}{으로/로} 한 공부, 구독료만큼 가치 있었나요?"
+        PRODUCTIVITY_AI: "{serviceName} 유료 기능, 구독료만큼 가치 있었나요?"
+        ENTERTAINMENT: "{serviceName}에서 즐긴 콘텐츠, 구독료만큼 가치 있었나요?"
+        ETC: "{serviceName}, 구독료만큼 가치 있었나요?"
+    plan:
+      label: "다음 달에도 {serviceName}{을/를} 이용할 계획이 있나요?"
+      hint: "다음 결제 {M}월 {D}일 · {billingAmount}원 — billingAmount = 실제 1회 결제 금액(subscriptions.amount)"
+      options: [안 쓸 거예요, 거의 안 쓸 것 같아요, 아직 잘 모르겠어요, 아마 계속 쓸 것 같아요, 꼭 계속 쓸 거예요]
+    memo:
+      VIDEO_OTT: { placeholder: "예: 시즌 3 공개돼서 이번 달은 유지할래요", chips: [보고 싶은 작품이 있어요, 이번 달은 바빴어요, 비싸지면 해지할래요] }
+      MUSIC: { placeholder: "예: 출퇴근길에 매일 들어서 계속 쓸래요", chips: [매일 듣고 있어요, 다른 음악 앱이랑 겹쳐요, 가족 요금제로 바꿀래요] }
+      SHOPPING_DELIVERY: { placeholder: "예: 이번 달 배달을 많이 시켜서 본전은 뽑았어요", chips: [배송비로 본전 뽑았어요, 이번 달은 주문이 적었어요, 할인 끝난 뒤 해지할래요] }
+      EDUCATION: { placeholder: "예: 자격증 시험 끝날 때까지만 쓸래요", chips: [목표 달성까지 계속할래요, 이번 달은 공부를 못 했어요, 시험 끝나면 해지할래요] }
+      PRODUCTIVITY_AI: { placeholder: "예: 프로젝트 끝나는 다음 달까지만 쓸래요", chips: [업무에 꼭 필요해요, 무료 버전으로도 충분해요, 다른 AI 툴과 겹쳐요] }
+      ENTERTAINMENT: { placeholder: "예: 읽고 있는 책 다 읽으면 해지할래요", chips: [즐겨 보는 콘텐츠가 있어요, 이번 달은 거의 못 썼어요, 이벤트 끝나면 해지할래요] }
+      ETC: { placeholder: "예: 사진 백업용이라 계속 써야 해요", chips: [자동으로 쓰고 있어요, 이번 달은 안 썼어요, 비싸지면 해지할래요] }
+    formatting:
+      money: "천 단위 쉼표 (13,500)"
+      date: "{M}월 {D}일 (앞자리 0 없음)"
+      particle_object: "을/를 — 기존 Subscription.objectParticle() 재사용 (한글 받침, 영문은 services.object_particle, 없으면 '를')"
+      particle_instrumental: "으로/로 — 한글 음절이면 받침 없음 또는 ㄹ받침 → '로', 그 외 받침 → '으로'. 영문 등은 objectParticle()이 '을'이면 '으로', '를'이면 '로'"
+    client_only: "메모 질문 '{serviceName}에 대해 남기고 싶은 말이 있나요?' · '다음 점검 때 다시 보여드려요'는 화면 고정 문구 — 응답에 포함하지 않음"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (CheckController, 신규)
+      action: "@CurrentUserId userId, @PathVariable subscriptionId → CheckUseCase.getCheckupForm(userId, subscriptionId) → CommonResponse.success(CHECKUP_FORM_FOUND, response)"
+    - step: 2
+      layer: UseCase (CheckUseCase, 신규)
+      action: >
+        회원 확인 → 본인 구독 조회 → status가 ENDED면 CheckSubscriptionNotActiveException(40501)
+        → 가장 최근 점검 조회(lastMemo) → CheckupFormResponse.of(subscription, latestCheck, LocalDate.now())
+      transaction: "readOnly (클래스 레벨)"
+    - step: 3
+      layer: Domain Service
+      action: >
+        UserGetService.findUserById — 없으면 UserNotFoundException(40201) /
+        SubscriptionGetService.findSubscription(user, subscriptionId) — 없거나 삭제 · 다른 회원 것이면 SubscriptionNotFoundException(40404) /
+        SubscriptionCheckGetService.findLatestCheck(subscription) — 신규. deleted = false 중 created_at 최신 1건 (Optional)
+    - step: 4
+      layer: Domain (CheckupForm 상수, 신규)
+      action: "카테고리별 문구 상수 + 서비스명 · 조사 · 금액 · 날짜를 채워 문항 3개를 만든다"
+
+  error_codes:
+    - code: 40501
+      name: CHECK_SUBSCRIPTION_NOT_ACTIVE
+      status: 409 CONFLICT
+      message: "구독 중인 구독만 점검할 수 있습니다."
+      note: "신규 — 점검 도메인 대역 405xx 시작 (2026-11-19 합의)"
+    - code: 40404
+      name: SUBSCRIPTION_NOT_FOUND
+      note: 기존 재사용
+    - code: 40201
+      name: USER_NOT_FOUND
+      note: 기존 재사용
+
+  validation_rules:
+    - "본인 구독만 — 다른 회원 · 삭제된 구독은 40404"
+    - "구독 종료(ENDED) 구독은 40501 (다음 결제가 없어 점검 대상 아님)"
+    - "'꾸준히 쓰는' 구독은 막지 않음 — 화면설계서 M-03 '상세의 구독 점검 버튼으로 직접 점검 가능' (자동 알림 · 홈 유도에서만 제외) (2026-11-19 합의)"
+    - "카테고리가 없는 구독은 없음(category NOT NULL) — ETC 문구는 category = ETC일 때 사용"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.check"
+  files:
+    - "presentation/CheckController.java (신규, @Tag Checkup)"
+    - "presentation/response/CheckResponseCode.java (신규 — CHECKUP_FORM_FOUND)"
+    - "application/usecase/CheckUseCase.java (신규 — getCheckupForm)"
+    - "application/dto/response/CheckupFormResponse.java (신규, record + of)"
+    - "application/dto/response/CheckupQuestionResponse.java (신규, record)"
+    - "application/dto/response/CheckupOptionResponse.java (신규, record)"
+    - "application/exception/CheckErrorCode.java (신규 — 40501)"
+    - "application/exception/CheckSubscriptionNotActiveException.java (신규)"
+    - "domain/form/CheckupQuestionType.java (신규 enum USAGE / SATISFACTION / PLAN)"
+    - "domain/form/CheckupForm.java (신규 — 카테고리별 문구 상수 + 문항 생성)"
+    - "domain/entity/SubscriptionCheck.java (수정 — scorePercent · stage · decidedAt, create · keep · cancel)"
+    - "domain/service/SubscriptionCheckGetService.java (수정 — findLatestCheck)"
+    - "domain/repository/SubscriptionCheckRepository.java (수정 — findFirstBySubscriptionAndDeletedFalseOrderByCreatedAtDesc)"
+  other:
+    - "core/system-design.yaml · coding-style.yaml — check: 405xx 대역과 40501 추가"
+    - "references/data-model/domains/check/subscription_check.yaml — 컬럼 3개 · 메서드 반영 ('활용도 · 단계는 저장하지 않음' 설명 수정)"
+
+testing_strategy:
+  # CheckUseCaseTest (신규) — Mock: UserGetService, SubscriptionGetService, SubscriptionCheckGetService
+  happy_path:
+    - "getCheckupForm: 문항 3개를 USAGE → SATISFACTION → PLAN 순으로, 각 선택지 5개를 score 1~5로 반환한다"
+    - "getCheckupForm: VIDEO_OTT 구독이면 영상 문구(보조 문구 · 선택지 · 만족도 문구 · 메모 예시 문구 · 칩)를 반환한다"
+    - "getCheckupForm: 서비스명 받침에 맞춰 을/를을 붙인다 (넷플릭스를, 티빙을)"
+    - "getCheckupForm: MUSIC · EDUCATION 만족도 문구는 으로/로를 붙인다 (멜론으로, 벅스로, 받침 ㄹ은 로)"
+    - "getCheckupForm: 만족도 보조 문구는 월 환산 · 연 환산 금액, 계획 보조 문구는 다음 결제일 · 실제 결제 금액을 쉼표 형식으로 채운다"
+    - "getCheckupForm: 연 결제 구독은 만족도 '월 ○원'에 월 환산 금액, 계획 '다음 결제 · ○원'에 1회 결제 금액이 들어간다"
+    - "getCheckupForm: 가장 최근 점검의 메모를 lastMemo로 반환한다"
+  edge_cases:
+    - "getCheckupForm: 점검 기록이 없으면 lastMemo는 null"
+    - "getCheckupForm: ETC 이용도 보조 문구는 두 줄(\\n)이다"
+    - "getCheckupForm: 꾸준히 쓰는 구독도 문항을 반환한다"
+    - "getCheckupForm: 구독 종료 구독이면 CHECK_SUBSCRIPTION_NOT_ACTIVE(40501) 예외를 던진다"
+    - "getCheckupForm: 구독이 없거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND(40404) 예외를 던진다"
+    - "getCheckupForm: 회원이 없으면 USER_NOT_FOUND 예외를 던지고 구독을 조회하지 않는다"
+  test_files:
+    - "test/.../domain/check/application/usecase/CheckUseCaseTest.java (신규)"
+    - "test/.../domain/subscription/application/usecase/SubscriptionUseCaseTest.java (수정 — SubscriptionCheck.create 픽스처 인자 추가)"
+
+notes:
+  - "[결정] 금액은 문구마다 맞게 (2026-11-19 합의): 만족도 '월 ○원'은 월 환산, 계획 '다음 결제 · ○원'은 실제 1회 결제 금액. 응답 amount는 노션 설명대로 월 환산 금액"
+  - "[결정] 구독 종료는 40501, 꾸준히 쓰는 구독은 허용 (2026-11-19 합의)"
+  - "[기준] 문구는 checkup-form-texts.md(화면설계서 기준)를 따름 — 노션 mock의 '최근 한 달 동안 얼마나 봤나요?'는 예시라 사용하지 않음"
+  - "[가정] ETC 이용도 보조 문구의 두 문장은 줄바꿈(\\n)으로 이어 한 문자열로 반환"
+  - "[가정] 파일에 언급된 이/가 조사는 현재 문구에 쓰이지 않아 구현하지 않음"
+  - "[범위] 제출 · 결과 조회 · 결정 · 절약 제안은 CHECK-002~ 후속 스펙. 이번 엔티티 변경은 컬럼 · 팩토리 인자 추가만 하고 활용도 · 단계 계산은 CHECK-002에서"
