@@ -15,6 +15,7 @@ import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
 import com.subscribers.gudogging.domain.check.domain.entity.CancelReason;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheckCancelReason;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonGetService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
@@ -1350,7 +1351,8 @@ class SubscriptionUseCaseTest {
         }
 
         private SubscriptionCheck check(Subscription subscription) {
-            return SubscriptionCheck.create(subscription, billingOn, Category.ETC, 3, 3, 3, null);
+            return SubscriptionCheck.create(subscription, billingOn, Category.ETC, 3, 3, 3, 50,
+                CheckResultStage.CANCEL_CONSIDER, null);
         }
 
         private Notification notification(Subscription subscription) {
