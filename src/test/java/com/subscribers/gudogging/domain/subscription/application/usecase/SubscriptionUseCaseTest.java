@@ -1889,9 +1889,17 @@ class SubscriptionUseCaseTest {
                 .willReturn(Optional.of(subscription));
         }
 
+        private ReactivateSubscriptionRequest request(String serviceName) {
+            return new ReactivateSubscriptionRequest(serviceName, Category.ENTERTAINMENT, 19000, 3,
+                BillingCycleUnit.MONTH, nextBillingDate, PaymentMethod.GOOGLE_PLAY);
+        }
+
         private SubscriptionReactivationResponse reactivate(Subscription subscription) {
-            return subscriptionUseCase.reactivateSubscription(userId, subscription.getId(),
-                new ReactivateSubscriptionRequest(nextBillingDate));
+            return reactivate(subscription, null);
+        }
+
+        private SubscriptionReactivationResponse reactivate(Subscription subscription, String serviceName) {
+            return subscriptionUseCase.reactivateSubscription(userId, subscription.getId(), request(serviceName));
         }
 
         @Test
@@ -1929,8 +1937,8 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
-        @DisplayName("금액 · 주기 · 결제 경로 · 꾸준히 쓰는 구독 여부는 바뀌지 않는다")
-        void keepsPaymentInfo() {
+        @DisplayName("카테고리 · 금액 · 결제 주기 · 결제 경로를 요청한 값으로 덮어쓰고, 꾸준히 쓰는 구독 여부는 유지한다")
+        void overwritesPaymentInfo() {
             // given
             Subscription subscription = endedFromCatalog();
             givenSubscription(subscription);
@@ -1940,11 +1948,45 @@ class SubscriptionUseCaseTest {
             reactivate(subscription);
 
             // then
-            assertThat(subscription.getAmount()).isEqualTo(17000);
-            assertThat(subscription.getBillingCycleValue()).isEqualTo(1);
+            assertThat(subscription.getCategory()).isEqualTo(Category.ENTERTAINMENT);
+            assertThat(subscription.getAmount()).isEqualTo(19000);
+            assertThat(subscription.getBillingCycleValue()).isEqualTo(3);
             assertThat(subscription.getBillingCycleUnit()).isEqualTo(BillingCycleUnit.MONTH);
-            assertThat(subscription.getPaymentMethod()).isEqualTo(PaymentMethod.APP_STORE);
+            assertThat(subscription.getPaymentMethod()).isEqualTo(PaymentMethod.GOOGLE_PLAY);
             assertThat(subscription.isSteadyUse()).isTrue();
+        }
+
+        @Test
+        @DisplayName("직접 입력 구독은 요청한 서비스명을 앞뒤 공백을 제거해 저장하고, null이면 기존 이름을 유지한다")
+        void updatesCustomName() {
+            // given
+            Subscription renamed = endedCustom();
+            Subscription kept = endedCustom();
+            givenSubscription(renamed);
+            given(subscriptionGetService.findSubscription(user, kept.getId())).willReturn(Optional.of(kept));
+
+            // when
+            reactivate(renamed, "  동네 필라테스  ");
+            reactivate(kept, null);
+
+            // then
+            assertThat(renamed.getName()).isEqualTo("동네 필라테스");
+            assertThat(kept.getName()).isEqualTo("동네 헬스장");
+        }
+
+        @Test
+        @DisplayName("사전 등록 서비스는 요청한 서비스명을 무시하고 서비스명 스냅샷을 유지한다")
+        void ignoresServiceNameForCatalogService() {
+            // given
+            Subscription subscription = endedFromCatalog();
+            givenSubscription(subscription);
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+
+            // when
+            reactivate(subscription, "다른 이름");
+
+            // then
+            assertThat(subscription.getName()).isEqualTo("넷플릭스");
         }
 
         @Test
@@ -2042,7 +2084,7 @@ class SubscriptionUseCaseTest {
 
             // when & then
             assertThatThrownBy(() -> subscriptionUseCase.reactivateSubscription(userId, subscriptionId,
-                new ReactivateSubscriptionRequest(nextBillingDate)))
+                request(null)))
                 .isInstanceOf(ApplicationException.class)
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND);
@@ -2056,7 +2098,7 @@ class SubscriptionUseCaseTest {
 
             // when & then
             assertThatThrownBy(() -> subscriptionUseCase.reactivateSubscription(userId, UUID.randomUUID(),
-                new ReactivateSubscriptionRequest(nextBillingDate)))
+                request(null)))
                 .isInstanceOf(ApplicationException.class)
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
