@@ -141,8 +141,8 @@ public class SubscriptionUseCase {
     }
 
     /**
-     * 구독 종료 구독을 같은 행 그대로 구독 중으로 되살린다 (M-05). 다음 결제일을 결제 기준일로, 시작일을 오늘로 다시 잡고 점검 기록은 유지한다.
-     * 사전 등록 서비스는 같은 서비스를 이미 구독 중이면 재등록할 수 없다.
+     * 구독 종료 구독을 같은 행 그대로 구독 중으로 되살린다 (M-05). 요청한 구독 정보로 덮어쓰고(서비스명은 직접 입력 서비스만), 다음 결제일을 결제 기준일로,
+     * 시작일을 오늘로 다시 잡는다. 점검 기록은 유지한다. 사전 등록 서비스는 같은 서비스를 이미 구독 중이면 재등록할 수 없다.
      */
     @Transactional
     public SubscriptionReactivationResponse reactivateSubscription(UUID userId, UUID subscriptionId,
@@ -160,7 +160,11 @@ public class SubscriptionUseCase {
             throw new DuplicateSubscriptionException();
         }
 
-        subscription.reactivate(request.nextBillingDate(), LocalDate.now());
+        subscription.reactivate(request.category(), request.amount(), request.billingCycleValue(),
+            request.billingCycleUnit(), request.nextBillingDate(), request.paymentMethod(), LocalDate.now());
+        if (serviceCatalog == null && request.serviceName() != null) {
+            subscription.updateCustomName(request.serviceName().strip());
+        }
         return SubscriptionReactivationResponse.from(subscription);
     }
 
