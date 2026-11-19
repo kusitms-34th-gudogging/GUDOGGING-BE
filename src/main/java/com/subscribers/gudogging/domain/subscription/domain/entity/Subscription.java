@@ -202,12 +202,26 @@ public class Subscription extends BaseEntity {
     }
 
     /**
-     * 구독 종료 구독 재등록 (M-05). 같은 행을 되살리며 시작일을 재등록일로 다시 잡아 쉬었던 기간이 결제 횟수 · 캘린더에 들어가지 않게 한다.
+     * 구독 종료 구독 재등록 (M-05). 같은 행을 되살리며 요청한 구독 정보로 덮어쓰고, 시작일을 재등록일로 다시 잡아 쉬었던 기간이 결제 횟수 · 캘린더에 들어가지 않게 한다.
+     * 재등록 전 결제 조건은 시작일 전이라 결제 횟수에 들어가지 않으므로 결제 조건 이력으로 남기지 않는다.
      */
-    public void reactivate(LocalDate billingAnchorOn, LocalDate today) {
+    public void reactivate(
+        Category category,
+        int amount,
+        int billingCycleValue,
+        BillingCycleUnit billingCycleUnit,
+        LocalDate nextBillingDate,
+        PaymentMethod paymentMethod,
+        LocalDate today
+    ) {
+        this.category = category;
+        this.amount = amount;
+        this.billingCycleValue = billingCycleValue;
+        this.billingCycleUnit = billingCycleUnit;
+        this.billingAnchorOn = nextBillingDate;
+        this.paymentMethod = paymentMethod;
         this.status = SubscriptionStatus.ACTIVE;
         this.canceledOn = null;
-        this.billingAnchorOn = billingAnchorOn;
         this.startedOn = today;
     }
 
