@@ -1,0 +1,172 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-20 (노션 명세 변경 반영 — 응답 checkupId만, 꾸준히 쓰는 구독 제출 명시)
+
+meta:
+  id: CHECK-002
+  title: 구독 점검 제출 (활용도 · 단계 산정)
+  type: Feature
+  author: parkdo0918
+  issue: "#34"
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, @CurrentUserId
+    - CHECK-001   # SubscriptionCheck score_percent · stage 컬럼, CheckUseCase · CheckController · CheckErrorCode(40501)
+  sources:
+    - "노션 API 명세서 Checkup — 구독 점검 제출 (점수·단계 산정) (2026-11-20 확인)"
+    - "이슈 #34 — 활용도 공식, 계획 1점 상한, stage 매핑"
+
+overview:
+  summary: >
+    점검 4/4(K-70)에서 '결과 보기'를 누르면 3문항 응답과 메모를 저장하고, 활용도(%)와 결과 단계(stage)를 계산해 함께 저장한다.
+    점검 대상 결제일(target_billing_on)을 이번 다음 결제일로 저장해 '이번 결제 주기 점검 완료'를 표시한다.
+    응답은 점검 ID(checkupId)만 반환하고, 클라이언트는 결과 화면(K-80)에서 결과 조회 API로 점수 · 단계 등을 조회한다.
+  user_story: >
+    As a 로그인한 회원, I want to 점검 답변을 제출하고 활용도를 확인하기를,
+    so that 이 구독을 계속 쓸지 해지할지 판단할 수 있다.
+  goals:
+    - 활용도 = 반올림((이용도−1)÷4×40 + (만족도−1)÷4×25 + (계획−1)÷4×35), 계획 1점이면 최대 59
+    - 80 이상 KEEP_RECOMMENDED / 60~79 KEEP_CONSIDER / 40~59 CANCEL_CONSIDER / 40 미만 CANCEL_RECOMMENDED
+    - 응답 · 메모 · 활용도 · 단계 · 점검 대상 결제일 저장
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/subscriptions/{subscriptionId}/checkups
+      summary: 구독 점검 제출
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        body:
+          dto: SubmitCheckupRequest (record, @Valid)
+          fields:
+            - "answers (List<CheckupAnswerRequest>, 필수): @NotNull @Size(min = 3, max = 3) @Valid"
+            - "answers[].type (CheckupQuestionType, 필수): @NotNull — USAGE / SATISFACTION / PLAN"
+            - "answers[].score (Integer, 필수): @NotNull @Min(1) @Max(5)"
+            - "memo (String, 선택): @Size(max = 100)"
+          mock: |
+            {
+              "answers": [
+                { "type": "USAGE", "score": 4 },
+                { "type": "SATISFACTION", "score": 5 },
+                { "type": "PLAN", "score": 5 }
+              ],
+              "memo": "볼 작품 있음"
+            }
+      response:
+        http_status: 201 CREATED
+        dto: CheckupSubmissionResponse
+        wrapper: CommonResponse<CheckupSubmissionResponse>
+        response_code: "CheckResponseCode.CHECKUP_SUBMITTED (201, HttpStatus.CREATED, \"구독 점검을 제출했습니다.\")"
+        fields:
+          - "checkupId (UUID): 저장한 점검 ID (subscription_checks.id). 활용도 · 단계는 저장만 하고 응답하지 않음 — 결과 조회 API에서 반환"
+        mock: |
+          {
+            "code": 201,
+            "message": "구독 점검을 제출했습니다.",
+            "data": {
+              "checkupId": "b1d7a2c4-5a4d-4e7b-9c21-000000000001"
+            }
+          }
+
+  score_rules:
+    formula: "활용도 = (이용도−1)×10 + (만족도−1)×6.25 + (계획−1)×8.75 를 소수 첫째 자리에서 반올림(HALF_UP). 0~100"
+    plan_cap: "계획 = 1점이면 min(활용도, 59) (기획 설정값, 코드 상수)"
+    stage: "80 이상 KEEP_RECOMMENDED(본전 뽑는 중) / 60~79 KEEP_CONSIDER(아끼는 최애) / 40~59 CANCEL_CONSIDER(환승 대기 중) / 40 미만 CANCEL_RECOMMENDED(텅장 범인)"
+    examples:
+      - "4 · 5 · 5 → 30 + 25 + 35 = 90 → KEEP_RECOMMENDED"
+      - "5 · 5 · 1 → 40 + 25 + 0 = 65 → 상한 59 → CANCEL_CONSIDER"
+      - "3 · 3 · 3 → 20 + 12.5 + 17.5 = 50 → CANCEL_CONSIDER"
+      - "2 · 3 · 2 → 10 + 12.5 + 8.75 = 31.25 → 31 → CANCEL_RECOMMENDED"
+    location: "CheckResultStage.of(scorePercent) · CheckScore.percentOf(usage, satisfaction, plan) — domain/check/domain/result (계산 로직은 엔티티 밖, 기존 결정)"
+    client_only: "유형명(본전 뽑는 중 등) 문구는 클라이언트 표시 — 응답은 stage만"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (CheckController)
+      action: "@CurrentUserId userId, @PathVariable subscriptionId, @RequestBody @Valid SubmitCheckupRequest → CheckUseCase.submitCheckup(...) → CommonResponse.success(CHECKUP_SUBMITTED, response), @ResponseStatus(CREATED)"
+    - step: 2
+      layer: UseCase (CheckUseCase)
+      action: >
+        회원 확인 → 본인 구독 조회 → ENDED면 CheckSubscriptionNotActiveException(40501)
+        → answers의 type이 USAGE · SATISFACTION · PLAN 각 1개가 아니면 InvalidCheckupAnswersException(40502)
+        → 활용도 · 단계 계산 → today = LocalDate.now(), targetBillingOn = subscription.nextBillingOn(today)
+        → SubscriptionCheck.create(subscription, targetBillingOn, subscription.category, usage, satisfaction, plan, scorePercent, stage, memo)
+        → SubscriptionCheckCreateService.createCheck(check) → CheckupSubmissionResponse.from(saved)
+      transaction: "@Transactional (쓰기)"
+    - step: 3
+      layer: Domain Service
+      action: >
+        UserGetService · SubscriptionGetService (CHECK-001과 동일) /
+        SubscriptionCheckCreateService.createCheck(check) — 신규, save()
+
+  memo_rule: "앞뒤 공백 제거(strip) 후 비어 있으면 NULL 저장 (공백만 입력 → 빈 값, 데이터 모델 문서). 길이 검증은 요청 원문 기준 100자"
+
+  error_codes:
+    - code: 40502
+      name: INVALID_CHECKUP_ANSWERS
+      status: 400 BAD_REQUEST
+      message: "이용도 · 만족도 · 계획 응답을 하나씩 보내야 합니다."
+      note: "신규 — answers가 3개여도 type이 중복되거나 빠진 경우"
+    - code: 40501
+      name: CHECK_SUBSCRIPTION_NOT_ACTIVE
+      note: "CHECK-001 재사용 — 구독 종료 구독"
+    - code: 40001
+      name: INVALID_ARGUMENT
+      note: "@Valid 실패 — answers 누락 · 3개 아님, score 범위 밖, memo 100자 초과. 잘못된 type 값은 40002"
+    - code: 40404 / 40201
+      note: "구독 · 회원 없음 (기존)"
+
+  validation_rules:
+    - "본인 구독만 — 다른 회원 · 삭제된 구독은 40404"
+    - "구독 종료 구독은 40501 (CHECK-001과 같은 규칙)"
+    - "'꾸준히 쓰는' 구독도 제출을 받음 — 상세의 '구독 점검' 버튼으로 직접 점검 가능 (D-3 점검 알림 · 홈 점검 유도에서만 제외, M-03) — 노션 명세에 명시됨"
+    - "같은 결제 주기에 다시 제출하면 새 행으로 저장 (UNIQUE 없음, 가장 최근 행 기준 — ERD 10.1 #4)"
+    - "점검 대상 결제일 = 제출 시점의 다음 결제일 (오늘이 결제일이면 오늘)"
+    - "category는 제출 시점의 구독 카테고리 스냅샷"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.check"
+  files:
+    - "presentation/CheckController.java (수정 — submitCheckup 핸들러, @ResponseStatus(CREATED))"
+    - "presentation/response/CheckResponseCode.java (수정 — CHECKUP_SUBMITTED)"
+    - "application/usecase/CheckUseCase.java (수정 — submitCheckup, SubscriptionCheckCreateService 의존 추가)"
+    - "application/dto/request/SubmitCheckupRequest.java (신규, record)"
+    - "application/dto/request/CheckupAnswerRequest.java (신규, record)"
+    - "application/dto/response/CheckupSubmissionResponse.java (신규, record + from — checkupId만)"
+    - "application/exception/CheckErrorCode.java (수정 — 40502)"
+    - "application/exception/InvalidCheckupAnswersException.java (신규)"
+    - "domain/result/CheckScore.java (신규 — percentOf, 계획 1점 상한)"
+    - "domain/result/CheckResultStage.java (수정 — of(scorePercent) 구간 매핑)"
+    - "domain/service/SubscriptionCheckCreateService.java (신규 — createCheck)"
+  other:
+    - "coding-style.yaml — 40502 추가"
+    - "references/data-model/domains/check/subscription_check.yaml — 제출 계산 위치 반영"
+
+testing_strategy:
+  # CheckUseCaseTest — Mock 추가: SubscriptionCheckCreateService
+  happy_path:
+    - "submitCheckup: 응답 · 메모 · 활용도 · 단계 · 점검 대상 결제일(다음 결제일) · 카테고리를 담아 점검을 저장한다"
+    - "submitCheckup: 응답으로 저장한 점검 ID만 반환한다"
+    - "submitCheckup: 활용도 공식대로 계산하고 반올림한다 (2 · 3 · 2 → 31)"
+    - "submitCheckup: 활용도 구간별로 단계를 매핑한다 (80 · 79 · 60 · 59 · 40 · 39 경계)"
+  edge_cases:
+    - "submitCheckup: 계획이 1점이면 활용도를 59로 제한한다 (5 · 5 · 1 → 59, CANCEL_CONSIDER)"
+    - "submitCheckup: 응답 순서가 달라도 type 기준으로 계산한다"
+    - "submitCheckup: 메모가 공백뿐이면 null로 저장하고, 앞뒤 공백은 제거한다"
+    - "submitCheckup: 꾸준히 쓰는 구독도 제출할 수 있다"
+    - "submitCheckup: type이 중복되거나 빠지면 INVALID_CHECKUP_ANSWERS(40502) 예외를 던지고 저장하지 않는다"
+    - "submitCheckup: 구독 종료 구독이면 CHECK_SUBSCRIPTION_NOT_ACTIVE(40501) 예외를 던지고 저장하지 않는다"
+    - "submitCheckup: 구독이 없거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND(40404)"
+    - "submitCheckup: 회원이 없으면 USER_NOT_FOUND"
+  test_files:
+    - "test/.../domain/check/application/usecase/CheckUseCaseTest.java (수정 — @Nested SubmitCheckup 추가)"
+
+notes:
+  - "[가정] type 중복 · 누락은 새 에러 40502(400) — 노션 명세에 정의 없음"
+  - "[변경] 노션 명세 변경 (2026-11-20): 응답이 checkupId · score · stage · yearlyCost → checkupId만 (화면설계서 K-70 '저장 후 K-80 이동', K-80은 결과 조회 API 사용). 꾸준히 쓰는 구독 제출 허용이 명세에 명시됨"
+  - "[가정] 메모는 strip 후 저장, 비면 NULL"
+  - "[범위] 결과 조회 · 결정 · 절약 제안은 후속 스펙"
