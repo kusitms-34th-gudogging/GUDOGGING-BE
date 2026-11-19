@@ -2,18 +2,25 @@ package com.subscribers.gudogging.domain.check.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
+import com.subscribers.gudogging.domain.check.application.dto.request.CheckupAnswerRequest;
+import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupOptionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupQuestionResponse;
 import com.subscribers.gudogging.domain.check.application.exception.CheckErrorCode;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupQuestionType;
 import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCreateService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
 import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleUnit;
@@ -34,6 +41,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -52,8 +63,14 @@ class CheckUseCaseTest {
     @Mock
     private SubscriptionCheckGetService subscriptionCheckGetService;
 
+    @Mock
+    private SubscriptionCheckCreateService subscriptionCheckCreateService;
+
     @InjectMocks
     private CheckUseCase checkUseCase;
+
+    @Captor
+    private ArgumentCaptor<SubscriptionCheck> checkCaptor;
 
     @Nested
     @DisplayName("getCheckupForm")
@@ -354,6 +371,270 @@ class CheckUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("submitCheckup")
+    class SubmitCheckup {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate today = LocalDate.now();
+        private final LocalDate nextBillingDate = today.plusDays(10);
+
+        private Subscription netflix() {
+            ServiceCatalog service = ServiceCatalog.create("넷플릭스", null, null, Category.VIDEO_OTT,
+                "https://logo.example.com/netflix.png", null, 1);
+            ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
+            Subscription subscription = Subscription.createFromCatalog(user, service, Category.VIDEO_OTT, 13500, 1,
+                BillingCycleUnit.MONTH, nextBillingDate, PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
+            // id · createdAt · startedOn은 JPA 저장 시(@PrePersist) 채워지므로 테스트에서만 지정한다.
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(subscription, "createdAt", today.minusMonths(2).atStartOfDay());
+            ReflectionTestUtils.setField(subscription, "startedOn", today.minusMonths(2));
+            return subscription;
+        }
+
+        private SubmitCheckupRequest request(int usage, int satisfaction, int plan, String memo) {
+            return new SubmitCheckupRequest(List.of(
+                new CheckupAnswerRequest(CheckupQuestionType.USAGE, usage),
+                new CheckupAnswerRequest(CheckupQuestionType.SATISFACTION, satisfaction),
+                new CheckupAnswerRequest(CheckupQuestionType.PLAN, plan)
+            ), memo);
+        }
+
+        private void givenSubscription(Subscription subscription) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscription.getId()))
+                .willReturn(Optional.of(subscription));
+        }
+
+        // 저장 시 id가 생기므로 저장한 점검에 id를 붙여 돌려준다.
+        private void givenCheckSaved() {
+            given(subscriptionCheckCreateService.createCheck(any())).willAnswer(invocation -> {
+                SubscriptionCheck check = invocation.getArgument(0);
+                ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
+                return check;
+            });
+        }
+
+        private SubscriptionCheck submit(Subscription subscription, SubmitCheckupRequest request) {
+            givenSubscription(subscription);
+            givenCheckSaved();
+            checkUseCase.submitCheckup(userId, subscription.getId(), request);
+            verify(subscriptionCheckCreateService).createCheck(checkCaptor.capture());
+            return checkCaptor.getValue();
+        }
+
+        @Test
+        @DisplayName("응답 · 메모 · 활용도 · 단계 · 점검 대상 결제일 · 카테고리를 담아 점검을 저장한다")
+        void savesCheck() {
+            // given
+            Subscription subscription = netflix();
+
+            // when
+            SubscriptionCheck saved = submit(subscription, request(4, 5, 5, "볼 작품 있음"));
+
+            // then
+            assertThat(saved.getSubscription()).isSameAs(subscription);
+            assertThat(saved.getUsageScore()).isEqualTo(4);
+            assertThat(saved.getSatisfactionScore()).isEqualTo(5);
+            assertThat(saved.getPlanScore()).isEqualTo(5);
+            assertThat(saved.getScorePercent()).isEqualTo(90);
+            assertThat(saved.getStage()).isEqualTo(CheckResultStage.KEEP_RECOMMENDED);
+            assertThat(saved.getMemo()).isEqualTo("볼 작품 있음");
+            assertThat(saved.getTargetBillingOn()).isEqualTo(nextBillingDate);
+            assertThat(saved.getCategory()).isEqualTo(Category.VIDEO_OTT);
+            assertThat(saved.getDecision()).isNull();
+        }
+
+        @Test
+        @DisplayName("응답으로 저장한 점검 ID만 반환한다")
+        void returnsCheckupId() {
+            // given
+            Subscription subscription = netflix();
+            givenSubscription(subscription);
+            givenCheckSaved();
+
+            // when
+            CheckupSubmissionResponse result = checkUseCase.submitCheckup(userId, subscription.getId(),
+                request(4, 5, 5, null));
+
+            // then
+            verify(subscriptionCheckCreateService).createCheck(checkCaptor.capture());
+            assertThat(result.checkupId()).isNotNull().isEqualTo(checkCaptor.getValue().getId());
+        }
+
+        @ParameterizedTest(name = "이용도 {0} · 만족도 {1} · 계획 {2} → 활용도 {3}, {4}")
+        @CsvSource({
+            "5, 5, 5, 100, KEEP_RECOMMENDED",
+            "2, 3, 2, 31, CANCEL_RECOMMENDED",
+            "3, 3, 3, 50, CANCEL_CONSIDER",
+            "3, 5, 4, 71, KEEP_CONSIDER",
+            "4, 4, 4, 75, KEEP_CONSIDER",
+            "1, 1, 2, 9, CANCEL_RECOMMENDED"
+        })
+        @DisplayName("활용도를 공식대로 계산해 반올림하고 구간별 단계로 매핑한다")
+        void calculatesScoreAndStage(int usage, int satisfaction, int plan, int expectedPercent,
+                                     CheckResultStage expectedStage) {
+            // when
+            SubscriptionCheck saved = submit(netflix(), request(usage, satisfaction, plan, null));
+
+            // then
+            assertThat(saved.getScorePercent()).isEqualTo(expectedPercent);
+            assertThat(saved.getStage()).isEqualTo(expectedStage);
+        }
+
+        @ParameterizedTest(name = "이용도 {0} · 만족도 {1} · 계획 {2} → 활용도 {3}, {4}")
+        @CsvSource({
+            "3, 5, 5, 80, KEEP_RECOMMENDED",
+            "5, 3, 4, 79, KEEP_CONSIDER",
+            "1, 5, 5, 60, KEEP_CONSIDER",
+            "3, 3, 4, 59, CANCEL_CONSIDER",
+            "2, 3, 3, 40, CANCEL_CONSIDER",
+            "1, 3, 4, 39, CANCEL_RECOMMENDED"
+        })
+        @DisplayName("활용도 구간 경계(80 · 79 · 60 · 59 · 40 · 39)에서 단계가 바뀐다")
+        void mapsStageAtBoundaries(int usage, int satisfaction, int plan, int expectedPercent,
+                                   CheckResultStage expectedStage) {
+            // when
+            SubscriptionCheck saved = submit(netflix(), request(usage, satisfaction, plan, null));
+
+            // then
+            assertThat(saved.getScorePercent()).isEqualTo(expectedPercent);
+            assertThat(saved.getStage()).isEqualTo(expectedStage);
+        }
+
+        @Test
+        @DisplayName("계획이 1점이면 활용도를 59로 제한한다")
+        void capsScoreWhenPlanIsLowest() {
+            // when
+            SubscriptionCheck saved = submit(netflix(), request(5, 5, 1, null));
+
+            // then
+            assertThat(saved.getScorePercent()).isEqualTo(59);
+            assertThat(saved.getStage()).isEqualTo(CheckResultStage.CANCEL_CONSIDER);
+        }
+
+        @Test
+        @DisplayName("응답 순서가 달라도 type 기준으로 계산한다")
+        void readsAnswersByType() {
+            // given
+            SubmitCheckupRequest request = new SubmitCheckupRequest(List.of(
+                new CheckupAnswerRequest(CheckupQuestionType.PLAN, 2),
+                new CheckupAnswerRequest(CheckupQuestionType.USAGE, 5),
+                new CheckupAnswerRequest(CheckupQuestionType.SATISFACTION, 1)
+            ), null);
+
+            // when
+            SubscriptionCheck saved = submit(netflix(), request);
+
+            // then
+            assertThat(saved.getUsageScore()).isEqualTo(5);
+            assertThat(saved.getSatisfactionScore()).isEqualTo(1);
+            assertThat(saved.getPlanScore()).isEqualTo(2);
+            assertThat(saved.getScorePercent()).isEqualTo(49);
+        }
+
+        @Test
+        @DisplayName("메모는 앞뒤 공백을 지우고 저장한다")
+        void stripsMemo() {
+            // when
+            SubscriptionCheck trimmed = submit(netflix(), request(3, 3, 3, "  시즌 3까지만  "));
+
+            // then
+            assertThat(trimmed.getMemo()).isEqualTo("시즌 3까지만");
+        }
+
+        @Test
+        @DisplayName("메모가 공백뿐이면 null로 저장한다")
+        void savesBlankMemoAsNull() {
+            // when
+            SubscriptionCheck saved = submit(netflix(), request(3, 3, 3, "   "));
+
+            // then
+            assertThat(saved.getMemo()).isNull();
+        }
+
+        @Test
+        @DisplayName("꾸준히 쓰는 구독도 제출할 수 있다")
+        void submitsForSteadySubscription() {
+            // given
+            Subscription subscription = netflix();
+            subscription.changeSteadyUse(true);
+
+            // when
+            SubscriptionCheck saved = submit(subscription, request(4, 4, 4, null));
+
+            // then
+            assertThat(saved.getScorePercent()).isEqualTo(75);
+        }
+
+        @Test
+        @DisplayName("응답 type이 중복되거나 빠지면 INVALID_CHECKUP_ANSWERS 예외를 던지고 저장하지 않는다")
+        void throwsWhenAnswerTypesInvalid() {
+            // given
+            Subscription subscription = netflix();
+            givenSubscription(subscription);
+            SubmitCheckupRequest request = new SubmitCheckupRequest(List.of(
+                new CheckupAnswerRequest(CheckupQuestionType.USAGE, 4),
+                new CheckupAnswerRequest(CheckupQuestionType.USAGE, 5),
+                new CheckupAnswerRequest(CheckupQuestionType.PLAN, 5)
+            ), null);
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.submitCheckup(userId, subscription.getId(), request))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(CheckErrorCode.INVALID_CHECKUP_ANSWERS);
+            verify(subscriptionCheckCreateService, never()).createCheck(any());
+        }
+
+        @Test
+        @DisplayName("구독 종료된 구독이면 CHECK_SUBSCRIPTION_NOT_ACTIVE 예외를 던지고 저장하지 않는다")
+        void throwsWhenSubscriptionEnded() {
+            // given
+            Subscription subscription = netflix();
+            subscription.cancel(today.minusDays(3));
+            givenSubscription(subscription);
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.submitCheckup(userId, subscription.getId(), request(4, 5, 5, null)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(CheckErrorCode.CHECK_SUBSCRIPTION_NOT_ACTIVE);
+            verifyNoInteractions(subscriptionCheckCreateService);
+        }
+
+        @Test
+        @DisplayName("구독이 없거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND 예외를 던진다")
+        void throwsWhenSubscriptionNotFound() {
+            // given
+            UUID subscriptionId = UUID.randomUUID();
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscriptionId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.submitCheckup(userId, subscriptionId, request(4, 5, 5, null)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND);
+            verifyNoInteractions(subscriptionCheckCreateService);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 구독을 조회하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.submitCheckup(userId, UUID.randomUUID(), request(4, 5, 5, null)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionGetService, subscriptionCheckCreateService);
         }
     }
 }
