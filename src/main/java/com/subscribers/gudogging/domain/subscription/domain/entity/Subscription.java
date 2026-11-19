@@ -13,6 +13,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
@@ -97,6 +98,9 @@ public class Subscription extends BaseEntity {
     @Column(name = "registration_source", nullable = false, length = 20)
     private RegistrationSource registrationSource;
 
+    @Column(name = "started_on", nullable = false)
+    private LocalDate startedOn;
+
     /**
      * 회원별 사전 등록 서비스의 ACTIVE 구독을 1건으로 제한하는 DB 계산 컬럼 (동시 등록 방지). 애플리케이션은 쓰지 않는다.
      * 삭제되지 않은 ACTIVE 구독이면 service_id, 아니면 NULL — 고유 인덱스는 NULL끼리 충돌하지 않으므로 종료 · 삭제된 구독과 직접 입력 구독은
@@ -120,7 +124,7 @@ public class Subscription extends BaseEntity {
     ) {
         return new Subscription(user, serviceCatalog, serviceCatalog.getName(), category, amount,
             billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null, null);
     }
 
     public static Subscription createCustom(
@@ -136,7 +140,17 @@ public class Subscription extends BaseEntity {
     ) {
         return new Subscription(user, null, name, category, amount,
             billingCycleValue, billingCycleUnit, billingAnchorOn, paymentMethod,
-            SubscriptionStatus.ACTIVE, null, false, registrationSource, null);
+            SubscriptionStatus.ACTIVE, null, false, registrationSource, null, null);
+    }
+
+    /**
+     * 구독 시작일은 등록일 — BaseEntity.createdAt과 같이 저장 시점에 채운다. 재등록하면 reactivate에서 재등록일로 바뀐다.
+     */
+    @PrePersist
+    private void initStartedOn() {
+        if (startedOn == null) {
+            startedOn = LocalDate.now();
+        }
     }
 
     /**
@@ -185,6 +199,30 @@ public class Subscription extends BaseEntity {
     public void cancel(LocalDate today) {
         this.status = SubscriptionStatus.ENDED;
         this.canceledOn = today;
+    }
+
+    /**
+     * 구독 종료 구독 재등록 (M-05). 같은 행을 되살리며 요청한 구독 정보로 덮어쓰고, 시작일을 재등록일로 다시 잡아 쉬었던 기간이 결제 횟수 · 캘린더에 들어가지 않게 한다.
+     * 재등록 전 결제 조건은 시작일 전이라 결제 횟수에 들어가지 않으므로 결제 조건 이력으로 남기지 않는다.
+     */
+    public void reactivate(
+        Category category,
+        int amount,
+        int billingCycleValue,
+        BillingCycleUnit billingCycleUnit,
+        LocalDate nextBillingDate,
+        PaymentMethod paymentMethod,
+        LocalDate today
+    ) {
+        this.category = category;
+        this.amount = amount;
+        this.billingCycleValue = billingCycleValue;
+        this.billingCycleUnit = billingCycleUnit;
+        this.billingAnchorOn = nextBillingDate;
+        this.paymentMethod = paymentMethod;
+        this.status = SubscriptionStatus.ACTIVE;
+        this.canceledOn = null;
+        this.startedOn = today;
     }
 
     /**
@@ -240,9 +278,41 @@ public class Subscription extends BaseEntity {
     }
 
     /**
-     * 구독 시작일 = 등록일 (ERD 10.1 #2).
+     * 구독 시작일 = started_on (등록일, 재등록하면 재등록일).
      */
     public LocalDate startedOn() {
-        return getCreatedAt().toLocalDate();
+        return startedOn;
     }
+
+    /**
+     * 결제 경로 + 서비스 해지 링크 유무로 해지 안내 4분기 결정 (X-01 / X-03 / X-04 / X-05). 직접 입력 구독(serviceCatalog = null)은 링크 없음으로 본다.
+     */
+    public CancelGuideType cancelGuideType() {
+        return switch (paymentMethod) {
+            case APP_STORE -> CancelGuideType.APP_STORE;
+            case GOOGLE_PLAY -> CancelGuideType.GOOGLE_PLAY;
+            case WEB_DIRECT -> hasServiceCancelUrl() ? CancelGuideType.WEB_WITH_URL : CancelGuideType.WEB_WITHOUT_URL;
+        };
+    }
+
+    /**
+     * 서비스명 뒤에 붙는 목적격 조사. 한글 음절로 끝나면 받침 유무로 '을'/'를', 그 외(영문·숫자 등)는 services.object_particle, 없으면 '를'.
+     */
+    public String objectParticle() {
+        char last = name.charAt(name.length() - 1);
+        if (last >= '가' && last <= '힣') {
+            return (last - '가') % 28 == 0 ? "를" : "을";
+        }
+        if (serviceCatalog != null && serviceCatalog.getObjectParticle() != null
+            && !serviceCatalog.getObjectParticle().isBlank()) {
+            return serviceCatalog.getObjectParticle();
+        }
+        return "를";
+    }
+
+    private boolean hasServiceCancelUrl() {
+        return serviceCatalog != null && serviceCatalog.getCancelUrl() != null
+            && !serviceCatalog.getCancelUrl().isBlank();
+    }
+
 }

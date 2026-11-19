@@ -1,0 +1,133 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-18
+
+meta:
+  id: SUBSCRIPTION-007
+  title: 해지 완료 처리
+  type: Feature
+  author: parkdo0918
+  issue: "#31"
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, @CurrentUserId
+    - SUBSCRIPTION-001~005   # feat/#28 — SubscriptionUseCase/Controller/GetService/ErrorCode 재사용
+    - SUBSCRIPTION-006   # 해지 안내 조회 — 같은 해지 흐름(X-01·X-03·X-04·X-05 → X-06)
+  base_branch: "feat/#31 ← origin/feat/#28"
+
+overview:
+  summary: >
+    해지 완료 확인 모달(X-06)에서 '해지 완료'를 누르면 구독을 구독 종료(ENDED)로 바꾸고 해지일(canceled_on)을 오늘로 저장한다.
+    완료 후 클라이언트는 구독 종료 상세(M-05)로 돌아간다.
+  user_story: >
+    As a 로그인한 회원, I want to 해지를 마친 구독을 해지 완료로 표시하기를,
+    so that 더 이상 결제 알림을 받지 않고 홈·캘린더 금액에서도 빠지게 된다.
+  goals:
+    - 본인 구독(ACTIVE)을 ENDED로 변경, canceled_on = 오늘
+    - 이미 종료된 구독은 409 에러
+
+technical_spec:
+  api:
+    - method: PATCH
+      path: /api/v1/subscriptions/{subscriptionId}/cancel
+      summary: 해지 완료 처리
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        body: 없음
+      response:
+        http_status: 200 OK
+        dto: SubscriptionCancelResponse
+        wrapper: CommonResponse<SubscriptionCancelResponse>
+        response_code: "SubscriptionResponseCode.SUBSCRIPTION_CANCELED (200, HttpStatus.OK, \"구독을 해지 완료 처리했습니다.\")"
+        fields:
+          - "subscriptionId (UUID): 구독 ID"
+          - "status (Enum): ENDED"
+          - "canceledAt (LocalDate, yyyy-MM-dd): 해지일 = subscriptions.canceled_on"
+        mock: |
+          {
+            "code": 200,
+            "message": "구독을 해지 완료 처리했습니다.",
+            "data": {
+              "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000001",
+              "status": "ENDED",
+              "canceledAt": "2026-11-04"
+            }
+          }
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: "@CurrentUserId userId, @PathVariable subscriptionId → SubscriptionUseCase.cancelSubscription(userId, subscriptionId) → CommonResponse.success(SUBSCRIPTION_CANCELED, response)"
+    - step: 2
+      layer: UseCase (SubscriptionUseCase)
+      action: >
+        회원 확인 → 본인 구독 조회 → status가 ENDED면 SubscriptionAlreadyEndedException(40406)
+        → subscription.cancel(LocalDate.now()) → SubscriptionCancelResponse.from(subscription)
+      transaction: "@Transactional (쓰기) — 변경 감지로 저장"
+    - step: 3
+      layer: Domain Service
+      action: >
+        UserGetService.findUserById(userId) — 없으면 UserNotFoundException /
+        SubscriptionGetService.findSubscription(user, subscriptionId) — 없거나 삭제·다른 회원 것이면 SubscriptionNotFoundException(40404)
+    - step: 4
+      layer: Domain (Subscription)
+      action: "cancel(today): status = ENDED, canceledOn = today (기존 메서드 재사용)"
+
+  error_codes:
+    - code: 40404
+      name: SUBSCRIPTION_NOT_FOUND
+      status: 404
+      message: "구독을 찾을 수 없습니다."
+      note: 기존 재사용
+    - code: 40406
+      name: SUBSCRIPTION_ALREADY_ENDED
+      status: 409 CONFLICT
+      message: "이미 종료된 구독입니다."
+      note: 신규 (2026-11-18 합의)
+
+  validation_rules:
+    - "본인 구독만 — 다른 회원 구독·삭제된 구독은 SUBSCRIPTION_NOT_FOUND (40404)"
+    - "ACTIVE 구독만 해지 완료 가능 — ENDED면 SUBSCRIPTION_ALREADY_ENDED (40406)"
+    - "해지일은 서버 기준 오늘(LocalDate.now()) — 요청으로 받지 않음"
+    - "결제 경로·해지 안내 유형과 무관하게 같은 동작"
+
+  side_effects:
+    - "D-3 · D-1 알림 중단, 홈 · 캘린더 집계 제외: status = ENDED / canceled_on으로 결정되는 계산 규칙이라 이 API에서 별도 처리 없음 (알림 배치·홈 집계 구현 시 ACTIVE만 대상)"
+    - "점검 기록(subscription_checks)·is_steady_use는 변경하지 않음"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.subscription"
+  files:
+    - "presentation/SubscriptionController.java (수정 — cancelSubscription 핸들러)"
+    - "presentation/response/SubscriptionResponseCode.java (수정 — SUBSCRIPTION_CANCELED)"
+    - "application/usecase/SubscriptionUseCase.java (수정 — cancelSubscription)"
+    - "application/dto/response/SubscriptionCancelResponse.java (신규, record + from)"
+    - "application/exception/SubscriptionErrorCode.java (수정 — SUBSCRIPTION_ALREADY_ENDED 40406)"
+    - "application/exception/SubscriptionAlreadyEndedException.java (신규)"
+    - "domain/entity/Subscription.java (변경 없음 — cancel(today) 재사용)"
+    - "domain/service/SubscriptionGetService.java (변경 없음 — findSubscription 재사용)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest — Mock: UserGetService, SubscriptionGetService
+  happy_path:
+    - "cancelSubscription: ACTIVE 구독을 ENDED로 바꾸고 canceledOn을 오늘로 저장한다"
+    - "cancelSubscription: 응답에 subscriptionId · status(ENDED) · canceledAt(오늘)을 담는다"
+  edge_cases:
+    - "cancelSubscription: 이미 ENDED인 구독이면 SUBSCRIPTION_ALREADY_ENDED(40406) 예외를 던지고 해지일을 바꾸지 않는다"
+    - "cancelSubscription: 구독이 없거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND(40404) 예외를 던진다"
+    - "cancelSubscription: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던진다"
+  test_files:
+    - "test/.../domain/subscription/application/usecase/SubscriptionUseCaseTest.java (수정 — @Nested 추가)"
+
+docs_to_update:
+  - "references/data-model/domains/subscription/subscription.yaml — constraints의 해지 검증 위치 설명"
+  - "core/system-design.yaml — 404xx 에러코드 목록에 40406 추가 (목록이 있으면)"
+
+notes:
+  - "[결정] 이미 종료된 구독은 신규 에러 40406 (2026-11-18 합의) — 40405 SUBSCRIPTION_NOT_ACTIVE는 '수정' 문구라 재사용하지 않음"
+  - "[가정] 알림 배치는 아직 없음 — 미래 알림 행을 지우거나 취소하는 처리는 하지 않음. 배치 구현 시 ACTIVE 구독만 대상으로 할 것"
+  - "[가정] 해지 확인 모달(X-06)의 '해지 완료' / '해지했어요' 버튼 모두 이 API 하나를 호출"

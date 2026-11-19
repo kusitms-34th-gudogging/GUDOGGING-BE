@@ -50,17 +50,22 @@ public class ServiceCatalog extends BaseEntity {
     @Column(name = "cancel_url", length = 500)
     private String cancelUrl;
 
-    @Column(name = "cancel_guide", columnDefinition = "TEXT")
-    private String cancelGuide;
-
-    @Column(name = "cancel_notice", length = 255)
-    private String cancelNotice;
-
     @Column(name = "sort_order", nullable = false)
     private int sortOrder;
 
     @Column(name = "is_active", nullable = false)
     private boolean isActive = true;
+
+    /**
+     * 시드 CSV 값으로 갱신한다. CSV에 있는 컬럼(category, logo_url, cancel_url, sort_order)만 바꾸고 나머지(name_en, search_keywords,
+     * object_particle, is_active)는 건드리지 않는다.
+     */
+    public void updateFromSeed(Category category, String logoUrl, String cancelUrl, int sortOrder) {
+        this.category = category;
+        this.logoUrl = logoUrl;
+        this.cancelUrl = cancelUrl;
+        this.sortOrder = sortOrder;
+    }
 
     public static ServiceCatalog create(
         String name,
@@ -71,8 +76,21 @@ public class ServiceCatalog extends BaseEntity {
         Integer defaultAmount,
         int sortOrder
     ) {
+        return create(name, nameEn, searchKeywords, category, logoUrl, defaultAmount, null, sortOrder);
+    }
+
+    public static ServiceCatalog create(
+        String name,
+        String nameEn,
+        String searchKeywords,
+        Category category,
+        String logoUrl,
+        Integer defaultAmount,
+        String cancelUrl,
+        int sortOrder
+    ) {
         return new ServiceCatalog(name, nameEn, searchKeywords, category, logoUrl, defaultAmount,
-            null, null, null, null, sortOrder, true);
+            null, cancelUrl, sortOrder, true);
     }
 
 }

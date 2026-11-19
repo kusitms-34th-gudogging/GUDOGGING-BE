@@ -1,0 +1,272 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-18
+
+meta:
+  id: SUBSCRIPTION-006
+  title: 해지 안내 조회 (결제 경로별) + 서비스 시드 적재
+  type: Feature
+  author: parkdo0918
+  issue: "#31"
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, @CurrentUserId
+    - SUBSCRIPTION-001~005   # feat/#28(팀원) — SubscriptionUseCase/Controller/GetService/ErrorCode, CatalogUseCase 재사용
+  numbering_note: "당초 SUBSCRIPTION-003으로 작성했으나 feat/#28이 001~005를 사용(003 = 구독 선택 삭제)하여 006으로 변경 (2026-11-18)"
+  base_branch: "feat/#31 ← origin/feat/#28 (feat/#28이 dev에 머지되면 dev 기준으로 rebase)"
+
+overview:
+  summary: >
+    구독의 결제 경로(paymentMethod)와 서비스 해지 링크(services.cancel_url) 유무에 따라
+    해지 방법 3단계·주의 문구·해지 링크를 내려준다 (X-01 / X-03 / X-04 / X-05).
+    문구는 코드 상수이고 DB에 저장하지 않는다. 함께 ServiceCatalog의 cancel_guide·cancel_notice 컬럼을 제거하고,
+    services_seed.csv로 서비스 데이터를 앱 시작 시마다 동기화(이름 기준 추가·갱신)한다.
+  user_story: >
+    As a 로그인한 회원, I want to 내가 결제한 경로에 맞는 해지 방법을 보기를,
+    so that 헤매지 않고 바로 해지 화면으로 이동할 수 있다.
+  goals:
+    - 결제 경로별 해지 안내 4분기 (코드 상수)
+    - "steps의 {서비스명} 치환 + 받침에 맞는 목적격 조사(을/를)"
+    - ServiceCatalog cancel_guide·cancel_notice 제거
+    - 서비스 92개 시드 자동 동기화 (이름 기준 — 없으면 추가, 있으면 CSV 컬럼만 갱신)
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/subscriptions/{subscriptionId}/cancel-guide
+      summary: 해지 안내 조회 (결제 경로별)
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        body: 없음
+      response:
+        http_status: 200 OK
+        dto: CancelGuideResponse
+        wrapper: CommonResponse<CancelGuideResponse>
+        response_code: "SubscriptionResponseCode.CANCEL_GUIDE_FOUND (200, HttpStatus.OK, \"해지 안내를 조회했습니다.\")"
+        fields:
+          - "serviceName (String): subscriptions.name"
+          - "paymentMethod (Enum): APP_STORE / GOOGLE_PLAY / WEB_DIRECT"
+          - "steps (List<String>): 해지 방법 3단계"
+          - "cancelUrl (String): 해지 페이지 링크. 없으면 null"
+          - "caution (String): 주의 문구"
+        not_included: "guideMessage, lastVerifiedAt, cancel_guide_verified_on — 쓰지 않음"
+        mock: |
+          {
+            "code": 200,
+            "message": "해지 안내를 조회했습니다.",
+            "data": {
+              "serviceName": "티빙",
+              "paymentMethod": "APP_STORE",
+              "steps": [
+                "아래 버튼을 눌러 App Store 구독 관리 화면을 열어요",
+                "목록에서 티빙을 선택해요",
+                "'구독 취소'를 누르면 끝!"
+              ],
+              "cancelUrl": "https://apps.apple.com/account/subscriptions",
+              "caution": "다른 Apple ID로 결제했거나 가족 공유 중인 구독은 목록에 보이지 않을 수 있어요"
+            }
+          }
+
+  cancel_guide_rules:
+    source: "cancel-guide-impl-info.md (2026-11-18 전달)"
+    storage: "CancelGuideType enum 상수 (DB 저장 안 함)"
+    branch:
+      - type: APP_STORE (X-01)
+        condition: "paymentMethod = APP_STORE"
+        steps:
+          - "아래 버튼을 눌러 App Store 구독 관리 화면을 열어요"
+          - "목록에서 {서비스명}{을/를} 선택해요"
+          - "'구독 취소'를 누르면 끝!"
+        caution: "다른 Apple ID로 결제했거나 가족 공유 중인 구독은 목록에 보이지 않을 수 있어요"
+        cancel_url: "https://apps.apple.com/account/subscriptions (상수)"
+      - type: GOOGLE_PLAY (X-03)
+        condition: "paymentMethod = GOOGLE_PLAY"
+        steps:
+          - "아래 버튼을 눌러 Google Play 정기 결제 화면을 열어요"
+          - "목록에서 {서비스명}{을/를} 선택해요"
+          - "'정기 결제 취소'를 누르면 끝!"
+        caution: "다른 Google 계정으로 결제한 구독은 목록에 보이지 않을 수 있어요"
+        cancel_url: "https://play.google.com/store/account/subscriptions (상수)"
+      - type: WEB_WITH_URL (X-04)
+        condition: "paymentMethod = WEB_DIRECT AND serviceCatalog != null AND serviceCatalog.cancelUrl 비어 있지 않음"
+        steps:
+          - "아래 버튼을 눌러 해지 페이지로 이동해요"
+          - "해지를 완료해요"
+          - "돌아와서 '해지 완료'를 눌러요"
+        caution: "해지해도 남은 기간까지는 혜택을 쓸 수 있어요"
+        cancel_url: "services.cancel_url"
+      - type: WEB_WITHOUT_URL (X-05)
+        condition: "paymentMethod = WEB_DIRECT AND (직접 입력 구독(serviceCatalog = null) OR cancelUrl 없음)"
+        steps:
+          - "{서비스명} 앱이나 웹에서 해지 메뉴로 이동해요"
+          - "해지를 완료해요"
+          - "돌아와서 '해지했어요'를 눌러요"
+        caution: "해지해도 남은 기간까지는 혜택을 쓸 수 있어요"
+        cancel_url: null
+    object_particle: >
+      서비스명 마지막 글자가 한글 음절이면 받침 유무로 결정 (받침 있음 '을' / 없음 '를').
+      그 외(영문·숫자 등)는 services.object_particle 값, 없으면(직접 입력 구독 포함) '를'
+    client_only: "버튼 문구, 화면 제목/부제는 클라이언트 처리 — 응답에 포함하지 않음"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: "@CurrentUserId userId, @PathVariable subscriptionId → SubscriptionUseCase.getCancelGuide(userId, subscriptionId) → CommonResponse.success(CANCEL_GUIDE_FOUND, response)"
+    - step: 2
+      layer: UseCase (SubscriptionUseCase)
+      action: "회원 확인 → 본인 구독 조회 → CancelGuideResponse.from(subscription)"
+      transaction: "readOnly (클래스 레벨)"
+    - step: 3
+      layer: Domain Service
+      action: >
+        UserGetService.findUserById(userId) — 없으면 UserNotFoundException(40201) /
+        SubscriptionGetService.findSubscription(user, subscriptionId) (feat/#28 기존 메서드 재사용, Optional) — 없으면 SubscriptionNotFoundException(40404, 기존)
+    - step: 4
+      layer: Domain
+      action: >
+        Subscription.cancelGuideType() — paymentMethod + serviceCatalog.cancelUrl로 분기 /
+        Subscription.objectParticle() — 을/를 결정 /
+        CancelGuideType.steps(serviceName, particle), cancelUrl(serviceCancelUrl), caution
+    - step: 5
+      layer: Infrastructure (SubscriptionRepository)
+      action: "기존 findWithServiceByIdAndUser(id, user) 재사용 (feat/#28 — LEFT JOIN FETCH s.serviceCatalog, user 일치, deleted = false). 신규 쿼리 없음"
+
+  seed:
+    file: "src/main/resources/seed/services_seed.csv (원본: name,category,logo_url,cancel_url,sort_order / 92행 / UTF-8 BOM)"
+    flow:
+      - "ServiceCatalogSeedRunner (ApplicationRunner, domain/catalog/presentation) — 앱 시작 시 CSV 읽기·파싱 → CatalogUseCase.seedServices(rows)"
+      - >
+        CatalogUseCase.seedServices (기존 클래스에 메서드 추가, 클래스 readOnly이므로 메서드에 @Transactional) —
+        ServiceCatalogGetService.findAllServices()(신규 메서드, soft delete·비활성 포함 전체 1회 조회)로 name → ServiceCatalog 맵 구성 /
+        CSV 행마다 name이 맵에 없으면 ServiceCatalog.create(...)로 신규 목록에 추가(맵에도 등록), 있으면 기존 행에 updateFromSeed(category, logoUrl, cancelUrl, sortOrder) (변경 감지로 저장) /
+        신규 목록이 비어 있지 않으면 ServiceCatalogCreateService.saveAllServices (신규 Service, saveAll) / 추가·갱신 건수 로그
+    sync_rules:
+      key: "name (UNIQUE 제약 없음 — DB에 같은 이름이 여러 행이면 첫 행만 사용하고 경고 로그)"
+      add: "CSV에 있고 DB에 이름이 없는 서비스는 추가 (is_active = true)"
+      update: "이름이 같은 기존 행은 CSV 컬럼 4개(category, logo_url, cancel_url, sort_order)만 갱신"
+      untouched: "CSV에 없는 컬럼(name_en, search_keywords, object_particle, is_active, deleted)은 절대 변경하지 않음. CSV에 없는 DB 행은 삭제·비활성화하지 않음"
+      csv_is_source_of_truth: "위 4개 컬럼은 CSV가 원본 — SQL로 직접 고쳐도 다음 기동 때 CSV 값으로 덮어씀"
+      rename: "CSV에서 서비스명을 바꾸면 새 서비스로 추가되고 기존 행은 남음 — 이름 변경은 SQL로 처리"
+    parsing:
+      - "BOM 제거, 헤더 검증 (name,category,logo_url,cancel_url,sort_order)"
+      - "split(\",\", -1) — 원본에 따옴표·쉼표 포함 값 없음 (전 행 5컬럼 확인)"
+      - "빈 문자열 → null (logo_url, cancel_url)"
+      - "category는 Category.valueOf — 잘못된 값이면 앱 시작 실패 (IllegalStateException, 행 번호 포함)"
+    entity_defaults: "nameEn·searchKeywords·objectParticle = null, isActive = true"
+    note: "Apple/Google 스토어 구독 관리 링크는 cancel_url에 넣지 않음 (X-01/X-03 상수 사용)"
+
+  database:
+    entities:
+      - name: Subscription
+        action: Read
+        fields: "name, payment_method, service_id"
+      - name: ServiceCatalog
+        action: "Read (fetch join) / Create · Update (seed 동기화) / 스키마 변경"
+        fields: "cancel_url, object_particle"
+        schema_change: "cancel_guide (TEXT), cancel_notice (VARCHAR 255) 필드 제거. cancel_guide_verified_on은 만들지 않음"
+        migration_note: >
+          ddl-auto=update는 컬럼을 지우지 않음. 두 컬럼은 NULL 허용이라 남아 있어도 새 버전 동작에 영향이 없으므로 정리용으로만 삭제한다.
+          실행 시점: 두 컬럼을 매핑하는 구버전 인스턴스가 모두 종료된 뒤(= 새 버전 배포 완료 후). 배포 전에 실행하지 않는다.
+          삭제 후에는 구버전으로 롤백해도 컬럼 · 데이터가 복구되지 않으므로 롤백 가능 기간이 끝난 뒤 실행한다.
+          ALTER TABLE services DROP COLUMN cancel_guide, DROP COLUMN cancel_notice;
+          (운영은 아직 services 테이블이 없어 해당 없음 — 최초 생성 시 두 컬럼 없이 만들어짐. validate는 남은 컬럼이 있어도 통과)
+
+  error_codes:
+    domain_range: "404xx (subscription, feat/#28에서 확정). 403xx는 catalog(40301 SERVICE_NOT_FOUND)"
+    codes: []   # 신규 에러코드 없음
+    reused:
+      - "40404 SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND (404) — 없는 ID / 삭제된 구독 / 다른 회원의 구독 (존재 여부 노출 방지로 404)"
+      - "40201 UserErrorCode.USER_NOT_FOUND (404)"
+      - "40005 / 40103 / 40104 — 인증 실패 (AUTH-001)"
+
+  changes_to_existing_code:
+    - target: "ServiceCatalog (entity)"
+      change: >
+        cancelGuide·cancelNotice 필드 제거 (feat/#28 코드에서 사용처 없음 확인).
+        기존 create(name, nameEn, searchKeywords, category, logoUrl, sortOrder) 시그니처는 유지(기존 호출·테스트 보호)하고,
+        cancelUrl을 받는 오버로드 create(name, nameEn, searchKeywords, category, logoUrl, cancelUrl, sortOrder) 추가 —
+        기존 메서드는 오버로드에 cancelUrl = null로 위임. 시드는 nameEn·searchKeywords = null로 호출
+    - target: "Subscription (entity)"
+      change: "cancelGuideType(), objectParticle() 추가 (기존 메서드는 수정하지 않음)"
+    - target: "ServiceCatalog (entity) — 시드 동기화"
+      change: "updateFromSeed(category, logoUrl, cancelUrl, sortOrder) 도메인 메서드 추가 (CSV 컬럼 4개만 갱신)"
+    - target: ServiceCatalogGetService
+      change: "findAllServices() 추가 (ServiceCatalogRepository.findAll() — soft delete·비활성 포함)"
+    - target: SubscriptionRepository
+      change: "변경 없음 — 기존 findWithServiceByIdAndUser 재사용"
+    - target: "SubscriptionGetService"
+      change: "변경 없음 — 기존 findSubscription(user, subscriptionId) 재사용"
+    - target: "service_catalog.yaml / subscription.yaml"
+      change: "컬럼 제거·도메인 메서드 반영"
+    - target: "coding-style.yaml / system-design.yaml"
+      change: "변경 없음 — 에러코드 신규 추가 없음 (404xx 대역·40404는 feat/#28에서 이미 반영됨)"
+
+  validation_rules:
+    - "본인 구독만 — 다른 회원 구독은 SUBSCRIPTION_NOT_FOUND (40404)"
+    - "삭제된 구독은 SUBSCRIPTION_NOT_FOUND (40404)"
+    - "구독 상태(ACTIVE/ENDED)는 검사하지 않음 — 안내 조회는 읽기 전용"
+    - "시드 동기화는 이름 기준 — 같은 이름이 이미 있으면(soft delete·비활성 포함) 새로 만들지 않고 CSV 컬럼 4개만 갱신 (중복 적재 방지)"
+    - "시드는 서비스를 삭제하거나 비활성화하지 않음 (Soft Delete 포함 Hard Delete 금지, 구독 FK 보호)"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain"
+  subscription:
+    - "subscription/presentation/SubscriptionController.java (수정 — getCancelGuide 핸들러 추가)"
+    - "subscription/presentation/response/SubscriptionResponseCode.java (수정 — CANCEL_GUIDE_FOUND 추가)"
+    - "subscription/application/usecase/SubscriptionUseCase.java (수정 — getCancelGuide 추가)"
+    - "subscription/application/dto/response/CancelGuideResponse.java (신규)"
+    - "subscription/application/exception/SubscriptionErrorCode.java (변경 없음 — 40404 재사용)"
+    - "subscription/application/exception/SubscriptionNotFoundException.java (변경 없음 — 재사용)"
+    - "subscription/domain/entity/CancelGuideType.java (신규)"
+    - "subscription/domain/entity/Subscription.java (수정 — cancelGuideType, objectParticle 추가)"
+    - "subscription/domain/service/SubscriptionGetService.java (변경 없음 — findSubscription 재사용)"
+    - "subscription/domain/repository/SubscriptionRepository.java (변경 없음 — findWithServiceByIdAndUser 재사용)"
+  catalog:
+    - "catalog/presentation/ServiceCatalogSeedRunner.java (신규)"
+    - "catalog/application/usecase/CatalogUseCase.java (수정 — seedServices 추가, ServiceCatalogCreateService 의존 추가)"
+    - "catalog/application/dto/request/ServiceSeedRow.java (신규, record)"
+    - "catalog/domain/service/ServiceCatalogGetService.java (수정 — findAllServices 추가)"
+    - "catalog/domain/service/ServiceCatalogCreateService.java (신규)"
+    - "catalog/domain/entity/ServiceCatalog.java (수정 — 필드 제거, create 오버로드 추가)"
+    - "catalog/domain/repository/ServiceCatalogRepository.java (변경 없음 — findAllServices는 JpaRepository.findAll() 사용)"
+  resources:
+    - "src/main/resources/seed/services_seed.csv (신규, ~/Downloads 원본 복사)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest — Mock: UserGetService, SubscriptionGetService
+  # CatalogUseCaseTest — Mock: ServiceCatalogGetService, ServiceCatalogCreateService
+  happy_path:
+    - "getCancelGuide: APP_STORE면 X-01 steps·caution과 App Store 구독 관리 링크를 반환한다"
+    - "getCancelGuide: GOOGLE_PLAY면 X-03 steps·caution과 Google Play 정기 결제 링크를 반환한다"
+    - "getCancelGuide: WEB_DIRECT이고 서비스 cancelUrl이 있으면 X-04와 그 cancelUrl을 반환한다"
+    - "getCancelGuide: WEB_DIRECT이고 cancelUrl이 없으면 X-05, cancelUrl = null, steps에 서비스명이 들어간다"
+    - "seedServices: services가 비어 있으면 CSV 행을 ServiceCatalog로 변환해 saveAll한다"
+    - "seedServices: DB에 없는 이름의 CSV 행만 추가하고 이미 있는 서비스는 추가하지 않는다"
+    - "seedServices: 이미 있는 서비스는 CSV의 category · logoUrl · cancelUrl · sortOrder로 갱신한다"
+  edge_cases:
+    - "getCancelGuide: 직접 입력 구독(serviceCatalog = null) + WEB_DIRECT면 X-05"
+    - "getCancelGuide: 받침 있는 서비스명은 '을'(티빙을), 없는 서비스명은 '를'(넷플릭스를)"
+    - "getCancelGuide: 영문으로 끝나는 서비스명은 objectParticle 값을, 없으면 '를'을 쓴다"
+    - "getCancelGuide: 구독이 없거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND(40404) 예외를 던진다"
+    - "getCancelGuide: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던진다"
+    - "seedServices: 갱신 시 nameEn · searchKeywords · objectParticle · isActive 등 CSV에 없는 컬럼은 유지한다"
+    - "seedServices: CSV의 모든 서비스가 DB에 이미 있으면 추가 저장하지 않는다"
+    - "seedServices: DB에 있고 CSV에 없는 서비스는 변경하지 않는다"
+    - "seedServices: CSV에 cancelUrl이 비어 있으면 기존 cancelUrl을 null로 갱신한다"
+  test_files:
+    - "test/.../domain/subscription/application/usecase/SubscriptionUseCaseTest.java (수정 — feat/#28 기존 파일에 @Nested 추가)"
+    - "test/.../domain/catalog/application/usecase/CatalogUseCaseTest.java (수정 — feat/#28 기존 파일에 @Nested 추가. @Mock ServiceCatalogCreateService 추가)"
+
+notes:
+  - "[반영] feat/#28(팀원)이 SubscriptionController·UseCase·GetService·ResponseCode·ErrorCode, CatalogUseCase를 이미 구현 → 신규가 아닌 수정/재사용으로 전환. 40301은 catalog SERVICE_NOT_FOUND로 사용 중이므로 구독 없음은 40404 재사용"
+  - "[주의] feat/#28이 dev에 머지되기 전까지 feat/#31은 feat/#28 기반. 머지 후 dev로 rebase. 승현님이 Subscription·ServiceCatalog·SubscriptionUseCase·CatalogUseCase를 추가로 수정하면 충돌 가능 → 메서드 추가 수준이라 머지 시 합칠 것"
+  - "[가정] CSV에는 object_particle 컬럼이 없어 영문으로 끝나는 서비스(예: YouTube Premium)는 모두 '를' — 필요하면 시드/SQL로 object_particle 채우기"
+  - "[결정] 시드는 CSV 자동 적재 (2026-11-18 합의). → 같은 날 변경: 테이블이 비어 있을 때만 적재하던 방식을 이름 기준 동기화로 변경 (CSV 수정 → 재배포하면 DB에 자동 반영, 서비스 추가·링크 수정이 잦아 SQL 수동 관리가 번거로워서)"
+  - "[주의] CSV 컬럼 4개(category, logo_url, cancel_url, sort_order)는 CSV가 원본 — SQL로 직접 고친 값은 다음 기동 때 덮어써짐. 이 컬럼의 수정은 CSV로만 하고, object_particle 등 CSV에 없는 컬럼은 SQL로 관리"
+  - "[결정] 조사는 받침 자동 판별 (2026-11-18 합의)"
+  - "[가정] 시드 러너는 모든 프로필에서 실행 (이름 기준 동기화라 반복 실행해도 안전 — 멱등)"
+  - "GudoggingApplicationTests(@SpringBootTest)는 원래 DB가 필요 — 시드 러너가 추가돼도 조건 동일"
