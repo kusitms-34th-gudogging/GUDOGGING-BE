@@ -80,7 +80,7 @@ columns:
       type: BOOLEAN
       nullable: false
       default: false
-      description: "'꾸준히 쓰는 구독' (M-03 토글). true이면 D-3 점검 알림과 홈 점검 유도에서 제외. D-1 결제 알림은 그대로 발송"
+      description: "'꾸준히 쓰는 구독' (M-03 토글). true이면 D-3 점검 알림 · 홈 점검 유도(H-03) · 결제 예정 점검 버튼(H-02 '구독 점검하기')에서 제외. D-1 결제 알림 · 목록 · 캘린더 · 결제 정보 표시와 상세 '구독 점검'(직접 점검)은 그대로"
   - registration_source:
       type: VARCHAR(20)
       nullable: false
@@ -130,7 +130,7 @@ business_logic:
   - "createCustom(user, name, category, amount, cycleValue, cycleUnit, billingAnchorOn, paymentMethod, registrationSource): 직접 입력 서비스 정적 팩토리. serviceCatalog = null, status = ACTIVE"
   - "updatePaymentInfo(category, amount, cycleValue, cycleUnit, nextBillingDate, paymentMethod, today) → Optional<SubscriptionBillingHistory>: 구독 정보 편집 (M-06). 금액 · 주기 · 다음 결제일(= nextBillingOn(today))이 그대로면 category · paymentMethod만 바꾸고 기준일 유지(월말 유지) · 이력 없음. 바뀌면 지금 조건으로 결제한 적이 있을 때(billingAnchorOn ≤ today, 새 다음 결제일이 today면 ≤ today − 1) 지금 조건을 ended_on = today 이력으로 반환하고 billingAnchorOn = nextBillingDate. UseCase가 SubscriptionBillingHistoryCreateService로 저장"
   - "updateCustomName(name): 직접 입력 서비스명 수정 (M-06)"
-  - "changeSteadyUse(enabled): 꾸준히 쓰는 구독 토글 (M-03)"
+  - "changeSteadyUse(enabled): 꾸준히 쓰는 구독 토글 (M-03, SUBSCRIPTION-012). ACTIVE 검사는 SubscriptionUseCase.changeSubscriptionSteady에서 (ENDED면 40405 SUBSCRIPTION_NOT_ACTIVE)"
   - "cancel(today): 해지 완료 (X-06, SUBSCRIPTION-007). status = ENDED, canceledOn = today"
   - "reactivate(category, amount, cycleValue, cycleUnit, nextBillingDate, paymentMethod, today): 구독 종료 구독 재등록 (M-05, SUBSCRIPTION-008). 구독 정보 덮어쓰기, billingAnchorOn = nextBillingDate, status = ACTIVE, canceledOn = null, startedOn = today. 결제 조건 이력은 만들지 않음 (재등록 전 조건은 시작일 전이라 결제 횟수에 안 들어감)"
   - "softDelete(): 구독 삭제 (M-02.3, C-04) → BaseEntity 위임"
