@@ -11,7 +11,9 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.check.application.dto.request.CheckupAnswerRequest;
+import com.subscribers.gudogging.domain.check.application.dto.request.DecideCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupDecisionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupOptionResponse;
@@ -20,10 +22,15 @@ import com.subscribers.gudogging.domain.check.application.dto.response.CategoryS
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupQuestionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupResultResponse;
 import com.subscribers.gudogging.domain.check.application.exception.CheckErrorCode;
+import com.subscribers.gudogging.domain.check.domain.entity.CancelReason;
+import com.subscribers.gudogging.domain.check.domain.entity.CheckDecision;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheckCancelReason;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupQuestionType;
 import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
 import com.subscribers.gudogging.domain.check.domain.result.CheckScore;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonCreateService;
+import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonGetService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCreateService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
@@ -70,11 +77,20 @@ class CheckUseCaseTest {
     @Mock
     private SubscriptionCheckCreateService subscriptionCheckCreateService;
 
+    @Mock
+    private SubscriptionCheckCancelReasonGetService subscriptionCheckCancelReasonGetService;
+
+    @Mock
+    private SubscriptionCheckCancelReasonCreateService subscriptionCheckCancelReasonCreateService;
+
     @InjectMocks
     private CheckUseCase checkUseCase;
 
     @Captor
     private ArgumentCaptor<SubscriptionCheck> checkCaptor;
+
+    @Captor
+    private ArgumentCaptor<List<SubscriptionCheckCancelReason>> cancelReasonsCaptor;
 
     @Nested
     @DisplayName("getCheckupForm")
@@ -869,6 +885,259 @@ class CheckUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionCheckGetService, subscriptionGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("decideCheckup")
+    class DecideCheckup {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate today = LocalDate.now();
+
+        private SubscriptionCheck check() {
+            ServiceCatalog service = ServiceCatalog.create("넷플릭스", null, null, Category.VIDEO_OTT,
+                "https://logo.example.com/netflix.png", null, 1);
+            ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
+            Subscription subscription = Subscription.createFromCatalog(user, service, Category.VIDEO_OTT, 13500, 1,
+                BillingCycleUnit.MONTH, today.plusDays(10), PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            SubscriptionCheck check = SubscriptionCheck.create(subscription, today.plusDays(10), Category.VIDEO_OTT,
+                1, 3, 3, 30, CheckResultStage.CANCEL_RECOMMENDED, null);
+            // id는 JPA 저장 시 생성되므로 테스트에서만 지정한다.
+            ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
+            return check;
+        }
+
+        private SubscriptionCheckCancelReason savedReason(SubscriptionCheck check, CancelReason reason,
+                                                          boolean deleted) {
+            SubscriptionCheckCancelReason cancelReason = SubscriptionCheckCancelReason.create(check, reason);
+            ReflectionTestUtils.setField(cancelReason, "id", UUID.randomUUID());
+            if (deleted) {
+                cancelReason.softDelete();
+            }
+            return cancelReason;
+        }
+
+        private CheckupDecisionResponse decide(SubscriptionCheck check, DecideCheckupRequest request,
+                                               SubscriptionCheckCancelReason... existing) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionCheckGetService.findCheck(user, check.getId())).willReturn(Optional.of(check));
+            given(subscriptionCheckCancelReasonGetService.findAllCancelReasonsIncludingDeleted(check))
+                .willReturn(List.of(existing));
+            return checkUseCase.decideCheckup(userId, check.getId(), request);
+        }
+
+        private List<CancelReason> createdReasons() {
+            verify(subscriptionCheckCancelReasonCreateService).createCancelReasons(cancelReasonsCaptor.capture());
+            return cancelReasonsCaptor.getValue().stream().map(SubscriptionCheckCancelReason::getReason).toList();
+        }
+
+        @Test
+        @DisplayName("유지하기면 KEEP과 결정 시각을 저장하고 점검 ID · 결정을 반환한다")
+        void keeps() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            CheckupDecisionResponse result = decide(check, new DecideCheckupRequest(CheckDecision.KEEP, null, null));
+
+            // then
+            assertThat(check.getDecision()).isEqualTo(CheckDecision.KEEP);
+            assertThat(check.getDecidedAt()).isNotNull();
+            assertThat(result.checkupId()).isEqualTo(check.getId());
+            assertThat(result.decision()).isEqualTo(CheckDecision.KEEP);
+            verify(subscriptionCheckCancelReasonCreateService, never()).createCancelReasons(any());
+        }
+
+        @Test
+        @DisplayName("해지하기면 CANCEL과 결정 시각, 고른 해지 이유를 저장한다")
+        void cancelsWithReasons() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            CheckupDecisionResponse result = decide(check, new DecideCheckupRequest(CheckDecision.CANCEL,
+                List.of(CancelReason.RARELY_USED, CancelReason.PRICE_BURDEN), null));
+
+            // then
+            assertThat(check.getDecision()).isEqualTo(CheckDecision.CANCEL);
+            assertThat(check.getDecidedAt()).isNotNull();
+            assertThat(createdReasons()).containsExactlyInAnyOrder(CancelReason.RARELY_USED, CancelReason.PRICE_BURDEN);
+            assertThat(result.decision()).isEqualTo(CheckDecision.CANCEL);
+        }
+
+        @Test
+        @DisplayName("직접 입력을 고르면 텍스트를 앞뒤 공백을 지워 저장한다")
+        void savesCustomText() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL,
+                List.of(CancelReason.RARELY_USED, CancelReason.CUSTOM), "  요즘 잘 안 봐요  "));
+
+            // then
+            assertThat(check.getCancelReasonText()).isEqualTo("요즘 잘 안 봐요");
+            assertThat(createdReasons()).containsExactlyInAnyOrder(CancelReason.RARELY_USED, CancelReason.CUSTOM);
+        }
+
+        @Test
+        @DisplayName("건너뛰기(이유 없이 해지)면 해지 결정만 저장하고 해지 이유는 저장하지 않는다")
+        void cancelsWithoutReasons() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL, null, null));
+
+            // then
+            assertThat(check.getDecision()).isEqualTo(CheckDecision.CANCEL);
+            assertThat(check.getCancelReasonText()).isNull();
+            verify(subscriptionCheckCancelReasonCreateService, never()).createCancelReasons(any());
+        }
+
+        @Test
+        @DisplayName("유지하기인데 해지 이유를 보내면 무시한다")
+        void ignoresReasonsWhenKeep() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.KEEP, List.of(CancelReason.CUSTOM), "이유"));
+
+            // then
+            assertThat(check.getCancelReasonText()).isNull();
+            verify(subscriptionCheckCancelReasonCreateService, never()).createCancelReasons(any());
+        }
+
+        @Test
+        @DisplayName("직접 입력을 고르지 않고 텍스트만 보내면 텍스트를 저장하지 않는다")
+        void ignoresTextWithoutCustom() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL, List.of(CancelReason.RARELY_USED), "이유"));
+
+            // then
+            assertThat(check.getCancelReasonText()).isNull();
+            assertThat(createdReasons()).containsExactly(CancelReason.RARELY_USED);
+        }
+
+        @Test
+        @DisplayName("직접 입력을 골랐는데 텍스트가 비어 있으면 직접 입력 이유만 저장하고 텍스트는 null이다")
+        void savesCustomWithoutBlankText() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL, List.of(CancelReason.CUSTOM), "   "));
+
+            // then
+            assertThat(check.getCancelReasonText()).isNull();
+            assertThat(createdReasons()).containsExactly(CancelReason.CUSTOM);
+        }
+
+        @Test
+        @DisplayName("같은 해지 이유가 중복으로 오면 한 번만 저장한다")
+        void deduplicatesReasons() {
+            // given
+            SubscriptionCheck check = check();
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL,
+                List.of(CancelReason.RARELY_USED, CancelReason.RARELY_USED), null));
+
+            // then
+            assertThat(createdReasons()).containsExactly(CancelReason.RARELY_USED);
+        }
+
+        @Test
+        @DisplayName("해지 후 유지로 바꾸면 기존 해지 이유를 삭제하고 직접 입력 텍스트를 지운다")
+        void switchesCancelToKeep() {
+            // given
+            SubscriptionCheck check = check();
+            check.cancel("요즘 잘 안 봐요", today.atStartOfDay());
+            SubscriptionCheckCancelReason rarelyUsed = savedReason(check, CancelReason.RARELY_USED, false);
+            SubscriptionCheckCancelReason custom = savedReason(check, CancelReason.CUSTOM, false);
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.KEEP, null, null), rarelyUsed, custom);
+
+            // then
+            assertThat(check.getDecision()).isEqualTo(CheckDecision.KEEP);
+            assertThat(check.getCancelReasonText()).isNull();
+            assertThat(rarelyUsed.isDeleted()).isTrue();
+            assertThat(custom.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("해지 이유를 바꾸면 빠진 이유는 삭제하고 남은 이유는 유지하며 새 이유만 새로 저장한다")
+        void changesReasons() {
+            // given
+            SubscriptionCheck check = check();
+            SubscriptionCheckCancelReason rarelyUsed = savedReason(check, CancelReason.RARELY_USED, false);
+            SubscriptionCheckCancelReason priceBurden = savedReason(check, CancelReason.PRICE_BURDEN, false);
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL,
+                List.of(CancelReason.PRICE_BURDEN, CancelReason.SWITCHING), null), rarelyUsed, priceBurden);
+
+            // then
+            assertThat(rarelyUsed.isDeleted()).isTrue();
+            assertThat(priceBurden.isDeleted()).isFalse();
+            assertThat(createdReasons()).containsExactly(CancelReason.SWITCHING);
+        }
+
+        @Test
+        @DisplayName("예전에 지운 해지 이유를 다시 고르면 새로 저장하지 않고 되살린다")
+        void restoresDeletedReason() {
+            // given — 해지(잘 안 써요) → 유지로 바꿔 삭제됨 → 다시 해지(잘 안 써요)
+            SubscriptionCheck check = check();
+            SubscriptionCheckCancelReason rarelyUsed = savedReason(check, CancelReason.RARELY_USED, true);
+
+            // when
+            decide(check, new DecideCheckupRequest(CheckDecision.CANCEL, List.of(CancelReason.RARELY_USED), null),
+                rarelyUsed);
+
+            // then
+            assertThat(rarelyUsed.isDeleted()).isFalse();
+            assertThat(rarelyUsed.getDeletedAt()).isNull();
+            verify(subscriptionCheckCancelReasonCreateService, never()).createCancelReasons(any());
+        }
+
+        @Test
+        @DisplayName("점검이 없거나 다른 회원 것이면 CHECKUP_NOT_FOUND 예외를 던지고 저장하지 않는다")
+        void throwsWhenCheckupNotFound() {
+            // given
+            UUID checkupId = UUID.randomUUID();
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionCheckGetService.findCheck(user, checkupId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.decideCheckup(userId, checkupId,
+                new DecideCheckupRequest(CheckDecision.KEEP, null, null)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(CheckErrorCode.CHECKUP_NOT_FOUND);
+            verifyNoInteractions(subscriptionCheckCancelReasonGetService, subscriptionCheckCancelReasonCreateService);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 점검을 조회하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.decideCheckup(userId, UUID.randomUUID(),
+                new DecideCheckupRequest(CheckDecision.KEEP, null, null)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionCheckGetService, subscriptionCheckCancelReasonGetService);
         }
     }
 }
