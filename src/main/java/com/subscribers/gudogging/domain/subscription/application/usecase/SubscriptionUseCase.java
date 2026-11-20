@@ -7,6 +7,7 @@ import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGe
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
 import com.subscribers.gudogging.domain.notification.domain.service.NotificationGetService;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.ChangeSubscriptionSteadyRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
@@ -25,6 +26,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSteadyResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
@@ -183,6 +185,24 @@ public class SubscriptionUseCase {
     }
 
     /**
+     * 구독 상세(M-03)의 '꾸준히 쓰는 구독' 토글 값을 저장한다. 구독 중인 구독만 바꿀 수 있다. 점검 알림 · 홈 점검 유도 제외는 발송 · 조회 시점에 이 값으로 판단한다.
+     */
+    @Transactional
+    public SubscriptionSteadyResponse changeSubscriptionSteady(UUID userId, UUID subscriptionId,
+                                                               ChangeSubscriptionSteadyRequest request) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        Subscription subscription = subscriptionGetService.findSubscription(user, subscriptionId)
+            .orElseThrow(SubscriptionNotFoundException::new);
+        if (subscription.getStatus() != SubscriptionStatus.ACTIVE) {
+            throw new SubscriptionNotActiveException();
+        }
+
+        subscription.changeSteadyUse(request.isSteady());
+        return SubscriptionSteadyResponse.from(subscription);
+    }
+
+    /**
      * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(registration_source = 요청 source). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다. 임시저장은 등록이 커밋된 뒤
      * 지우고, 삭제에 실패해도 등록 결과는 그대로 둔다.
      */
@@ -256,9 +276,9 @@ public class SubscriptionUseCase {
     }
 
     /**
-     * 임시저장한 사전 등록 서비스의 로고를 조회한다. 비활성 · 삭제 서비스와 로고가 없는 서비스는 넣지 않는다 (응답 logoUrl = null).
-     * 구독 등록이 DB에 커밋된 뒤 임시저장(Redis)을 지운다. 커밋 전에 지우면 커밋이 실패했을 때 임시저장만 사라지고, Redis 예외가 트랜잭션 안에서 터지면 등록까지 롤백되기 때문이다. 삭제 실패는
-     * 로그만 남긴다 (남은 임시저장은 다음 임시저장 · 삭제 요청 때 정리됨).
+     * 임시저장한 사전 등록 서비스의 로고를 조회한다. 비활성 · 삭제 서비스와 로고가 없는 서비스는 넣지 않는다 (응답 logoUrl = null). 구독 등록이 DB에 커밋된 뒤 임시저장(Redis)을
+     * 지운다. 커밋 전에 지우면 커밋이 실패했을 때 임시저장만 사라지고, Redis 예외가 트랜잭션 안에서 터지면 등록까지 롤백되기 때문이다. 삭제 실패는 로그만 남긴다 (남은 임시저장은 다음 임시저장 ·
+     * 삭제 요청 때 정리됨).
      */
     private void deleteDraftAfterCommit(UUID userId) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
