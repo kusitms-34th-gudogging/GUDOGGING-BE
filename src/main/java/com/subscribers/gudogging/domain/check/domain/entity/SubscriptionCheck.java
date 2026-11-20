@@ -95,6 +95,7 @@ public class SubscriptionCheck extends BaseEntity {
 
     public void keep(LocalDateTime decidedAt) {
         this.decision = CheckDecision.KEEP;
+        this.cancelReasonText = null;
         this.decidedAt = decidedAt;
     }
 
