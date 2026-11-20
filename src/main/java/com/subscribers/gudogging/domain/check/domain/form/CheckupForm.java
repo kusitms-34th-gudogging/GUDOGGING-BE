@@ -109,6 +109,18 @@ public enum CheckupForm {
         );
     }
 
+    /**
+     * 저장한 점수(1~5)에 해당하는 선택지 문구. 이용도는 이 카테고리의 선택지, 만족도 · 계획은 공통 선택지다.
+     */
+    public String answerOf(CheckupQuestionType type, int score) {
+        List<String> options = switch (type) {
+            case USAGE -> usageOptions;
+            case SATISFACTION -> SATISFACTION_OPTIONS;
+            case PLAN -> PLAN_OPTIONS;
+        };
+        return options.get(score - 1);
+    }
+
     public String memoPlaceholder() {
         return memoPlaceholder;
     }
