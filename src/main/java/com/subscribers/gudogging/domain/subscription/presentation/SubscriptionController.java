@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Cre
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.SaveSubscriptionDraftRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
@@ -11,6 +12,8 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
@@ -31,6 +34,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -150,10 +154,10 @@ public class SubscriptionController {
             - steps의 서비스명은 받침에 맞는 목적격 조사(을/를)와 함께 채워집니다. 버튼 문구 · 화면 제목은 클라이언트가 처리합니다.
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - subscriptionId (UUID, 필수): 구독 ID (path variable)
-
+            
             **응답값**
             - serviceName (String): 서비스명
             - paymentMethod (String): 결제한 곳 (APP_STORE, GOOGLE_PLAY, WEB_DIRECT)
@@ -181,10 +185,10 @@ public class SubscriptionController {
             - 이미 구독 종료된 구독이면 40406(409)
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - subscriptionId (UUID, 필수): 구독 ID (path variable)
-
+            
             **응답값**
             - subscriptionId (UUID): 구독 ID
             - status (String): ENDED
@@ -213,7 +217,7 @@ public class SubscriptionController {
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
             - 입력값 검증 실패 시 40001(400), 잘못된 enum · 날짜 형식은 40002(400)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - subscriptionId (UUID, 필수): 구독 ID (path variable)
             - serviceName (String, 선택): 서비스 이름 (최대 30자, 공백만 불가). 직접 입력 서비스만 반영, null이면 기존 이름 유지
@@ -223,7 +227,7 @@ public class SubscriptionController {
             - billingCycleUnit (String, 필수): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
             - nextBillingDate (String, 필수): 다음 결제일 (yyyy-MM-dd, 오늘 이후)
             - paymentMethod (String, 필수): 결제한 곳 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
-
+            
             **응답값**
             - subscriptionId (UUID): 구독 ID
             - status (String): ACTIVE
@@ -329,6 +333,118 @@ public class SubscriptionController {
     ) {
         SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, response);
+    }
+
+    @Operation(
+        summary = "구독 등록 임시저장",
+        description = """
+            **기능**
+            직접 등록 중인 선택한 구독 목록과 등록을 중단한 화면(lastStep · editingItemIndex)을 서버에 임시저장합니다.
+            회원당 1건이며, 이미 임시저장이 있으면 새 내용으로 통째로 덮어씁니다. 따로 만료되지 않습니다.
+            목록이 바뀔 때(A-02 선택 완료, A-03 / A-03s 저장하기, 선택 추가 · 해제)와 화면 이동 시 호출합니다.
+            - A-02 ⇄ A-04 이동
+            - A-04에서 항목을 눌러 A-03 / A-03s로 들어갈 때 (INPUT_SUBSCRIPTION + 그 항목 순번)
+            - A-02s '직접 입력하기'로 A-03s에 들어갈 때 (INPUT_SUBSCRIPTION + editingItemIndex null)
+            - A-03 / A-03s에서 A-04로 돌아올 때 (저장하기 · 뒤로가기 · 이탈 팝업 '나가기'), 새 직접 입력 A-03s에서 A-02로 돌아올 때
+            A-03 / A-03s에서 저장하지 않은 입력값은 보내지 않습니다 (일부만 입력한 상태로 임시저장 불가).
+            구독 등록(POST /api/v1/subscriptions)에 성공하면 서버가 임시저장을 삭제합니다.
+            결제 정보(category · amount · billingCycleValue · billingCycleUnit · nextBillingDate · paymentMethod) 규칙:
+            - 사전 등록 서비스(serviceId 있음): 6개 모두 null(결제 정보 미입력) 또는 모두 입력
+            - 직접 입력 서비스(serviceId null): 6개 모두 입력
+            - 다음 결제일은 과거 날짜도 저장할 수 있습니다 (구독 등록 때 오늘 이후인지 검사)
+            - 서비스 존재 · 이미 구독 중 여부는 검사하지 않습니다 (구독 등록 때 검사)
+            - 한 요청에 같은 serviceId가 2번 이상이면 40402(400)
+            - editingItemIndex가 INPUT_SUBSCRIPTION이 아닌데 있거나 items 범위를 벗어나면 40001(400)
+            - 입력값 검증 실패 시 40001(400), 잘못된 enum · 날짜 형식은 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - lastStep (String, 필수): 불러오기 때 복원할 화면 (SELECT_SERVICES = A-02 서비스 선택, CONFIRM_SUBSCRIPTIONS = A-04 선택한 구독 확인, INPUT_SUBSCRIPTION = A-03 / A-03s 구독 정보 입력)
+            - editingItemIndex (Integer, 선택): lastStep이 INPUT_SUBSCRIPTION일 때 입력 · 수정 중이던 항목의 items 순번(0부터). 새 직접 입력(A-03s)이면 null, 다른 lastStep이면 보내지 않음
+            - items (List, 필수): 임시저장할 구독 목록 (1~50개, 순서 유지)
+              - serviceId (UUID, 선택): 사전 등록 서비스 ID. 직접 입력 서비스는 null
+              - serviceName (String, 필수): 서비스명 (최대 50자, 직접 입력 서비스는 앞뒤 공백 제거 후 30자 이하)
+              - category (String, 선택): 카테고리 코드 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC). 미입력이면 null
+              - amount (Integer, 선택): 결제 금액 (원, 1 이상). 미입력이면 null
+              - billingCycleValue (Integer, 선택): 결제 주기 값 (1~31). 미입력이면 null
+              - billingCycleUnit (String, 선택): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR). 미입력이면 null
+              - nextBillingDate (String, 선택): 다음 결제일 (yyyy-MM-dd). 미입력이면 null
+              - paymentMethod (String, 선택): 결제 수단 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY). 미입력이면 null
+            
+            **응답값**
+            - savedAt (String): 저장 시각 (ISO 8601, yyyy-MM-dd'T'HH:mm:ss)
+            """
+    )
+    @PutMapping("/drafts")
+    public CommonResponse<SubscriptionDraftSaveResponse> saveSubscriptionDraft(
+        @CurrentUserId UUID userId,
+        @RequestBody @Valid SaveSubscriptionDraftRequest request
+    ) {
+        SubscriptionDraftSaveResponse response = subscriptionUseCase.saveSubscriptionDraft(userId, request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_DRAFT_SAVED, response);
+    }
+
+    @Operation(
+        summary = "구독 등록 임시저장 불러오기",
+        description = """
+            **기능**
+            로그인한 회원의 구독 등록 임시저장을 조회합니다. 구독 추가 화면(A-01)에 들어올 때 호출합니다.
+            임시저장이 있으면 불러오기 팝업(A-01s)을 띄우고, 없으면 data = null이므로 등록 방법 선택 화면(A-01)을 바로 표시합니다.
+            '불러오기'를 선택하면 lastStep · editingItemIndex로 등록을 중단한 화면을 복원합니다.
+            - SELECT_SERVICES: A-02에 items를 선택 상태로 복원 (결제 정보 · 직접 입력 항목은 A-04로 넘어갈 때 표시)
+            - CONFIRM_SUBSCRIPTIONS: A-04에 items를 복원
+            - INPUT_SUBSCRIPTION + editingItemIndex: A-04 복원 후 items[editingItemIndex]의 입력 화면으로 이동 (serviceId 있으면 A-03, null이면 A-03s)
+            - INPUT_SUBSCRIPTION + editingItemIndex null: A-02 복원 후 새 직접 입력(A-03s)으로 이동
+            '새로 등록하기'를 선택하면 임시저장 삭제 API(DELETE /api/v1/subscriptions/drafts)를 호출합니다.
+            불러오기는 임시저장을 지우지 않으며, 구독 등록(POST /api/v1/subscriptions)에 성공하면 서버가 삭제합니다.
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - 없음 (Authorization: Bearer Access Token 필요)
+            
+            **응답값** (임시저장이 없으면 data = null)
+            - savedAt (String): 마지막 저장 시각 (ISO 8601, yyyy-MM-dd'T'HH:mm:ss)
+            - lastStep (String): 등록을 중단한 화면 (SELECT_SERVICES, CONFIRM_SUBSCRIPTIONS, INPUT_SUBSCRIPTION)
+            - editingItemIndex (Integer, nullable): lastStep이 INPUT_SUBSCRIPTION일 때 입력 · 수정 중이던 항목의 items 순번(0부터). null이면 새 직접 입력
+            - items (List): 임시저장한 구독 목록 (저장한 순서 그대로)
+              - serviceId (UUID, nullable): 사전 등록 서비스 ID. 직접 입력 서비스는 null
+              - serviceName (String): 서비스명
+              - logoUrl (String, nullable): 서비스 로고 URL. null이면 기본 이미지 사용
+              - category (String, nullable): 카테고리 코드. 결제 정보 미입력이면 null
+              - amount (Integer, nullable): 결제 금액 (원). 결제 정보 미입력이면 null
+              - billingCycleValue (Integer, nullable): 결제 주기 값. 결제 정보 미입력이면 null
+              - billingCycleUnit (String, nullable): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR). 결제 정보 미입력이면 null
+              - nextBillingDate (String, nullable): 다음 결제일 (yyyy-MM-dd). 결제 정보 미입력이면 null. 저장 후 날짜가 지나 과거일 수 있음
+              - paymentMethod (String, nullable): 결제 수단 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY). 결제 정보 미입력이면 null
+            """
+    )
+    @GetMapping("/drafts")
+    public CommonResponse<SubscriptionDraftResponse> getSubscriptionDraft(@CurrentUserId UUID userId) {
+        SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_DRAFT_FOUND, response);
+    }
+
+    @Operation(
+        summary = "구독 등록 임시저장 삭제",
+        description = """
+            **기능**
+            로그인한 회원의 구독 등록 임시저장을 삭제합니다.
+            불러오기 팝업(A-01s)에서 '새로 등록하기'를 선택하면 호출합니다. 삭제 후에는 구독 추가 화면(A-01) 진입 시 불러오기 팝업이 뜨지 않습니다.
+            구독 등록(POST /api/v1/subscriptions)에 성공하면 서버가 임시저장을 삭제하므로 따로 호출하지 않아도 됩니다.
+            저장된 임시저장이 없어도 성공으로 응답합니다.
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - 없음 (Authorization: Bearer Access Token 필요)
+            
+            **응답값**
+            - 없음 (data = null)
+            """
+    )
+    @DeleteMapping("/drafts")
+    public CommonResponse<Void> deleteSubscriptionDraft(@CurrentUserId UUID userId) {
+        subscriptionUseCase.deleteSubscriptionDraft(userId);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_DRAFT_DELETED);
     }
 
     @Operation(

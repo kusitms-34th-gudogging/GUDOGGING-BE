@@ -10,6 +10,8 @@ import com.subscribers.gudogging.domain.notification.domain.service.Notification
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.SaveSubscriptionDraftRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionDraftItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionItemRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
@@ -19,6 +21,8 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
@@ -28,6 +32,8 @@ import com.subscribers.gudogging.domain.subscription.application.exception.Subsc
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotActiveException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotEndedException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
+import com.subscribers.gudogging.domain.subscription.domain.draft.SubscriptionDraft;
+import com.subscribers.gudogging.domain.subscription.domain.draft.SubscriptionDraftItem;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
@@ -35,12 +41,15 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionS
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryCreateService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryGetService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionCreateService;
+import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionDraftService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.entity.BaseEntity;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -51,9 +60,13 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -68,6 +81,7 @@ public class SubscriptionUseCase {
     private final SubscriptionCheckGetService subscriptionCheckGetService;
     private final SubscriptionCheckCancelReasonGetService subscriptionCheckCancelReasonGetService;
     private final NotificationGetService notificationGetService;
+    private final SubscriptionDraftService subscriptionDraftService;
 
     /**
      * 선택한 탭(status)의 구독을 정렬 기준(sort)대로 조회하고, 두 탭 개수와 탭의 월 환산 합계를 함께 반환한다.
@@ -141,8 +155,8 @@ public class SubscriptionUseCase {
     }
 
     /**
-     * 구독 종료 구독을 같은 행 그대로 구독 중으로 되살린다 (M-05). 요청한 구독 정보로 덮어쓰고(서비스명은 직접 입력 서비스만), 다음 결제일을 결제 기준일로,
-     * 시작일을 오늘로 다시 잡는다. 점검 기록은 유지한다. 사전 등록 서비스는 같은 서비스를 이미 구독 중이면 재등록할 수 없다.
+     * 구독 종료 구독을 같은 행 그대로 구독 중으로 되살린다 (M-05). 요청한 구독 정보로 덮어쓰고(서비스명은 직접 입력 서비스만), 다음 결제일을 결제 기준일로, 시작일을 오늘로 다시 잡는다. 점검
+     * 기록은 유지한다. 사전 등록 서비스는 같은 서비스를 이미 구독 중이면 재등록할 수 없다.
      */
     @Transactional
     public SubscriptionReactivationResponse reactivateSubscription(UUID userId, UUID subscriptionId,
@@ -169,7 +183,8 @@ public class SubscriptionUseCase {
     }
 
     /**
-     * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(registration_source = 요청 source). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다.
+     * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(registration_source = 요청 source). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다. 임시저장은 등록이 커밋된 뒤
+     * 지우고, 삭제에 실패해도 등록 결과는 그대로 둔다.
      */
     @Transactional
     public SubscriptionCreationResponse createSubscriptions(UUID userId, CreateSubscriptionsRequest request) {
@@ -196,7 +211,95 @@ public class SubscriptionUseCase {
             .map(item -> toSubscription(user, item, request.source(), servicesById))
             .toList();
 
-        return SubscriptionCreationResponse.from(subscriptionCreateService.createSubscriptions(subscriptions));
+        List<Subscription> createdSubscriptions = subscriptionCreateService.createSubscriptions(subscriptions);
+        deleteDraftAfterCommit(userId);
+        return SubscriptionCreationResponse.from(createdSubscriptions);
+    }
+
+    /**
+     * 직접 등록 흐름의 A-04 목록과 마지막 화면을 회원당 1건으로 덮어써 임시저장한다 (Redis, DB 쓰기 없음).
+     */
+    @Transactional
+    public SubscriptionDraftSaveResponse saveSubscriptionDraft(UUID userId, SaveSubscriptionDraftRequest request) {
+        userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+
+        List<UUID> serviceIds = request.items().stream()
+            .map(SubscriptionDraftItemRequest::serviceId)
+            .filter(Objects::nonNull)
+            .toList();
+        if (new HashSet<>(serviceIds).size() != serviceIds.size()) {
+            throw new DuplicateServiceInRequestException();
+        }
+
+        List<SubscriptionDraftItem> items = request.items().stream()
+            .map(this::toDraftItem)
+            .toList();
+        SubscriptionDraft subscriptionDraft = SubscriptionDraft.of(userId, request.lastStep(),
+            request.editingItemIndex(), items, LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
+        subscriptionDraftService.saveDraft(subscriptionDraft);
+
+        return SubscriptionDraftSaveResponse.from(subscriptionDraft);
+    }
+
+    /**
+     * 회원의 구독 등록 임시저장을 조회한다 (Redis). 없으면 null. 사전 등록 서비스 항목에는 조회 시점의 서비스 로고를 함께 담는다.
+     */
+    public SubscriptionDraftResponse getSubscriptionDraft(UUID userId) {
+        userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+
+        return subscriptionDraftService.findDraft(userId)
+            .map(subscriptionDraft -> SubscriptionDraftResponse.of(subscriptionDraft,
+                findLogoUrlsByServiceId(subscriptionDraft)))
+            .orElse(null);
+    }
+
+    /**
+     * 임시저장한 사전 등록 서비스의 로고를 조회한다. 비활성 · 삭제 서비스와 로고가 없는 서비스는 넣지 않는다 (응답 logoUrl = null).
+     * 구독 등록이 DB에 커밋된 뒤 임시저장(Redis)을 지운다. 커밋 전에 지우면 커밋이 실패했을 때 임시저장만 사라지고, Redis 예외가 트랜잭션 안에서 터지면 등록까지 롤백되기 때문이다. 삭제 실패는
+     * 로그만 남긴다 (남은 임시저장은 다음 임시저장 · 삭제 요청 때 정리됨).
+     */
+    private void deleteDraftAfterCommit(UUID userId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    subscriptionDraftService.deleteDraft(userId);
+                } catch (RuntimeException e) {
+                    log.warn("구독 등록 후 임시저장 삭제 실패: userId={}, error={}", userId, e.getClass().getSimpleName());
+                }
+            }
+        });
+    }
+
+    private Map<UUID, String> findLogoUrlsByServiceId(SubscriptionDraft subscriptionDraft) {
+        Set<UUID> serviceIds = subscriptionDraft.items().stream()
+            .map(SubscriptionDraftItem::serviceId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (serviceIds.isEmpty()) {
+            return Map.of();
+        }
+        return serviceCatalogGetService.findActiveServicesByIds(serviceIds).stream()
+            .filter(service -> service.getLogoUrl() != null)
+            .collect(Collectors.toMap(ServiceCatalog::getId, ServiceCatalog::getLogoUrl));
+    }
+
+    /**
+     * 회원의 구독 등록 임시저장을 삭제한다 (Redis). 임시저장이 없어도 성공한다.
+     */
+    @Transactional
+    public void deleteSubscriptionDraft(UUID userId) {
+        userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+
+        subscriptionDraftService.deleteDraft(userId);
+    }
+
+    private SubscriptionDraftItem toDraftItem(SubscriptionDraftItemRequest item) {
+        return SubscriptionDraftItem.of(item.serviceId(), item.serviceName().strip(), item.category(), item.amount(),
+            item.billingCycleValue(), item.billingCycleUnit(), item.nextBillingDate(), item.paymentMethod());
     }
 
     /**
