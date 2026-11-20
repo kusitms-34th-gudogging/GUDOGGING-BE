@@ -377,6 +377,29 @@ public class SubscriptionController {
     }
 
     @Operation(
+        summary = "구독 등록 임시저장 삭제",
+        description = """
+            **기능**
+            로그인한 회원의 구독 등록 임시저장을 삭제합니다.
+            불러오기 팝업(A-01s)에서 '새로 등록하기'를 선택하면 호출합니다. 삭제 후에는 구독 추가 화면(A-01) 진입 시 불러오기 팝업이 뜨지 않습니다.
+            구독 등록(POST /api/v1/subscriptions)에 성공하면 서버가 임시저장을 삭제하므로 따로 호출하지 않아도 됩니다.
+            저장된 임시저장이 없어도 성공으로 응답합니다.
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - 없음 (Authorization: Bearer Access Token 필요)
+
+            **응답값**
+            - 없음 (data = null)
+            """
+    )
+    @DeleteMapping("/drafts")
+    public CommonResponse<Void> deleteSubscriptionDraft(@CurrentUserId UUID userId) {
+        subscriptionUseCase.deleteSubscriptionDraft(userId);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_DRAFT_DELETED);
+    }
+
+    @Operation(
         summary = "구독 선택 삭제 (일괄)",
         description = """
             **기능**
