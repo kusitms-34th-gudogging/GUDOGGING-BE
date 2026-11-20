@@ -183,7 +183,9 @@ technical_spec:
       change: >
         subscriptionCreateService.createSubscriptions(...) 성공 후 subscriptionDraftService.deleteDraft(userId) 호출
         (Figma A-05 '임시 등록 정보는 저장하지 않음', A-01s '등록 완료 후 재노출하지 않음'). source와 무관하게 삭제.
-        등록 실패(예외)면 호출되지 않아 임시저장 유지 ('등록 실패 시 기존 입력 정보 유지')
+        등록 실패(예외)면 호출되지 않아 임시저장 유지 ('등록 실패 시 기존 입력 정보 유지').
+        [변경 2026-11-21 PR 리뷰] 삭제는 DB 커밋 성공 후(TransactionSynchronization.afterCommit)에 실행하고,
+        삭제 실패(Redis 장애 등)는 log.warn만 남겨 등록 응답 · 커밋에 영향을 주지 않는다. 재시도는 하지 않음 (남은 임시저장은 다음 임시저장 · 삭제 API로 정리)
     - target: "SubscriptionResponseCode"
       change: "SUBSCRIPTION_DRAFT_SAVED(200, HttpStatus.OK, \"임시저장했습니다.\") 추가"
     - target: "SubscriptionController"

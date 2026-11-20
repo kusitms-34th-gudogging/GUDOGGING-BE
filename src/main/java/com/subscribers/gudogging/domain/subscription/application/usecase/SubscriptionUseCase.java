@@ -60,9 +60,13 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -179,7 +183,8 @@ public class SubscriptionUseCase {
     }
 
     /**
-     * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(registration_source = 요청 source). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다.
+     * 사전 등록 서비스와 직접 입력 서비스를 한 번에 등록한다(registration_source = 요청 source). 하나라도 등록할 수 없으면 아무것도 저장하지 않는다. 임시저장은 등록이 커밋된 뒤
+     * 지우고, 삭제에 실패해도 등록 결과는 그대로 둔다.
      */
     @Transactional
     public SubscriptionCreationResponse createSubscriptions(UUID userId, CreateSubscriptionsRequest request) {
@@ -207,7 +212,7 @@ public class SubscriptionUseCase {
             .toList();
 
         List<Subscription> createdSubscriptions = subscriptionCreateService.createSubscriptions(subscriptions);
-        subscriptionDraftService.deleteDraft(userId);
+        deleteDraftAfterCommit(userId);
         return SubscriptionCreationResponse.from(createdSubscriptions);
     }
 
@@ -252,7 +257,22 @@ public class SubscriptionUseCase {
 
     /**
      * 임시저장한 사전 등록 서비스의 로고를 조회한다. 비활성 · 삭제 서비스와 로고가 없는 서비스는 넣지 않는다 (응답 logoUrl = null).
+     * 구독 등록이 DB에 커밋된 뒤 임시저장(Redis)을 지운다. 커밋 전에 지우면 커밋이 실패했을 때 임시저장만 사라지고, Redis 예외가 트랜잭션 안에서 터지면 등록까지 롤백되기 때문이다. 삭제 실패는
+     * 로그만 남긴다 (남은 임시저장은 다음 임시저장 · 삭제 요청 때 정리됨).
      */
+    private void deleteDraftAfterCommit(UUID userId) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    subscriptionDraftService.deleteDraft(userId);
+                } catch (RuntimeException e) {
+                    log.warn("구독 등록 후 임시저장 삭제 실패: userId={}, error={}", userId, e.getClass().getSimpleName());
+                }
+            }
+        });
+    }
+
     private Map<UUID, String> findLogoUrlsByServiceId(SubscriptionDraft subscriptionDraft) {
         Set<UUID> serviceIds = subscriptionDraft.items().stream()
             .map(SubscriptionDraftItem::serviceId)

@@ -1,9 +1,11 @@
 package com.subscribers.gudogging.domain.subscription.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -79,6 +81,8 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -88,7 +92,10 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SubscriptionUseCase")
@@ -148,6 +155,26 @@ class SubscriptionUseCaseTest {
         private final ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT,
             "https://logo.example.com/netflix.png");
         private final ServiceCatalog melon = service("멜론", Category.MUSIC, "https://logo.example.com/melon.png");
+
+        /**
+         * createSubscriptions는 @Transactional — 단위 테스트에서도 커밋 후 작업을 등록할 수 있게 동기화를 켠다.
+         */
+        @BeforeEach
+        void initTransactionSynchronization() {
+            TransactionSynchronizationManager.initSynchronization();
+        }
+
+        @AfterEach
+        void clearTransactionSynchronization() {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        /**
+         * 트랜잭션 커밋 성공 시점을 흉내 내 등록된 커밋 후 작업을 실행한다.
+         */
+        private void commit() {
+            TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
+        }
 
         private SubscriptionItemRequest catalogItem(ServiceCatalog service, String serviceName) {
             return new SubscriptionItemRequest(service.getId(), serviceName, service.getCategory(), 13500, 1,
@@ -317,8 +344,8 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
-        @DisplayName("등록에 성공하면 회원의 임시저장을 삭제한다")
-        void deletesDraftWhenCreated() {
+        @DisplayName("등록이 커밋된 뒤에 회원의 임시저장을 삭제한다")
+        void deletesDraftAfterCommit() {
             // given
             givenUser();
             givenSaveReturnsArgument();
@@ -326,7 +353,28 @@ class SubscriptionUseCaseTest {
             // when
             subscriptionUseCase.createSubscriptions(userId, request(customItem("동네 헬스장")));
 
+            // then — 트랜잭션 안(커밋 전)에서는 지우지 않는다
+            verify(subscriptionDraftService, never()).deleteDraft(userId);
+            commit();
+            verify(subscriptionDraftService).deleteDraft(userId);
+        }
+
+        @Test
+        @DisplayName("임시저장 삭제가 실패해도 등록 결과는 그대로 반환한다")
+        void returnsCreationWhenDraftDeletionFails() {
+            // given
+            givenUser();
+            givenSaveReturnsArgument();
+            willThrow(new RedisConnectionFailureException("Redis 연결 실패"))
+                .given(subscriptionDraftService).deleteDraft(userId);
+
+            // when
+            SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId,
+                request(customItem("동네 헬스장")));
+
             // then
+            assertThat(response.createdCount()).isEqualTo(1);
+            assertThatCode(this::commit).doesNotThrowAnyException();
             verify(subscriptionDraftService).deleteDraft(userId);
         }
 
