@@ -41,7 +41,7 @@ constants:
 
 constraints:
   - "UNIQUE (subscription_check_id, reason) — uk_subscription_check_cancel_reasons_check_reason. Soft Delete된 행도 포함해 검사하므로 같은 이유를 다시 저장할 때는 새 행 대신 기존 행을 restore() (CHECK-004)"
-  - "조회는 항상 deleted = false 조건"
+  - "조회는 deleted = false 조건 (findCancelReasonsByChecks). 예외: 재결정 때 되살릴 행을 찾는 findAllCancelReasonsIncludingDeleted(check)만 삭제된 행을 포함 — UNIQUE가 삭제된 행까지 검사하므로 (CHECK-004)"
 
 business_logic:
   - "create(subscriptionCheck, reason): 정적 팩토리"
