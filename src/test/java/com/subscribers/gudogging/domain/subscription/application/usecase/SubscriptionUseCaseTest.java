@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
@@ -17,7 +18,12 @@ import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
 import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
 import com.subscribers.gudogging.domain.check.domain.entity.CancelReason;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.entity.CheckDecision;
 import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
+import com.subscribers.gudogging.domain.check.domain.result.CheckScore;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.LatestCheckupResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.PastCheckupAverageResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.PastCheckupResponse;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheckCancelReason;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonGetService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
@@ -1190,6 +1196,9 @@ class SubscriptionUseCaseTest {
         private final LocalDate endedStartedOn = LocalDate.of(2026, 1, 1);
         private final LocalDate endedCanceledOn = LocalDate.of(2026, 10, 16);
 
+        // 점검 평균 기간 시작 — 이번 달 포함 최근 3개월의 첫날 (두 달 전 1일 00:00)
+        private final LocalDateTime periodFrom = today.withDayOfMonth(1).minusMonths(2).atStartOfDay();
+
         private Subscription activeFromCatalog(ServiceCatalog service, LocalDate billingAnchorOn,
                                                LocalDate startedOn) {
             Subscription subscription = Subscription.createFromCatalog(user, service, service.getCategory(), 13500,
@@ -1393,7 +1402,7 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
-        @DisplayName("점검 필드는 latestCheckup · pastCheckupAverage를 null로, pastCheckups를 빈 목록으로 반환한다")
+        @DisplayName("점검 기록이 없으면 latestCheckup · pastCheckupAverage는 null, pastCheckups는 빈 목록이고 해지 이유를 조회하지 않는다")
         void returnsEmptyCheckupFields() {
             // given
             Subscription subscription = endedCustom();
@@ -1405,6 +1414,259 @@ class SubscriptionUseCaseTest {
 
             // then
             assertThat(response.latestCheckup()).isNull();
+            assertThat(response.pastCheckups()).isEmpty();
+            assertThat(response.pastCheckupAverage()).isNull();
+            verifyNoInteractions(subscriptionCheckCancelReasonGetService);
+        }
+
+        private SubscriptionCheck check(Subscription subscription, Category category, int usageScore,
+                                        int satisfactionScore, int planScore, LocalDateTime createdAt) {
+            int scorePercent = CheckScore.percentOf(usageScore, satisfactionScore, planScore);
+            SubscriptionCheck check = SubscriptionCheck.create(subscription, today, category, usageScore,
+                satisfactionScore, planScore, scorePercent, CheckResultStage.of(scorePercent), null);
+            ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(check, "createdAt", createdAt);
+            return check;
+        }
+
+        private void givenChecks(Subscription subscription, SubscriptionCheck latestCheck,
+                                 List<SubscriptionCheck> recentChecks) {
+            given(subscriptionCheckGetService.findLatestCheck(subscription)).willReturn(Optional.ofNullable(latestCheck));
+            given(subscriptionCheckGetService.findChecksCreatedSince(subscription, periodFrom)).willReturn(recentChecks);
+        }
+
+        @Test
+        @DisplayName("가장 최근 점검의 점검 ID · 점검일 · 결정 · 점검 당시 카테고리 선택지 문구 · 단계 · 활용도 · 메모 · 해지 이유 선택지(K-90 순서) · 직접 입력 해지 이유를 latestCheckup으로 반환한다")
+        void returnsLatestCheckup() {
+            // given — 해지한 왓챠의 마지막 점검: 1 · 1 · 1점 → 0%, 해지 결정 + 선택지 2개(저장 순서와 K-90 순서가 다름) + 직접 입력 이유
+            Subscription subscription = endedCustom();
+            givenSubscription(subscription);
+            LocalDateTime checkedAt = endedCanceledOn.minusDays(13).atTime(20, 30);
+            SubscriptionCheck latest = SubscriptionCheck.create(subscription, endedCanceledOn, Category.VIDEO_OTT,
+                1, 1, 1, 0, CheckResultStage.CANCEL_RECOMMENDED, "시즌 끝남");
+            ReflectionTestUtils.setField(latest, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(latest, "createdAt", checkedAt);
+            latest.cancel("보고 싶던 작품을 다 봐서 해지했어요.", checkedAt.plusMinutes(1));
+            givenChecks(subscription, latest, List.of());
+            given(subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(List.of(latest))).willReturn(List.of(
+                SubscriptionCheckCancelReason.create(latest, CancelReason.CUSTOM),
+                SubscriptionCheckCancelReason.create(latest, CancelReason.RARELY_USED)));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            LatestCheckupResponse latestCheckup = response.latestCheckup();
+            assertThat(latestCheckup.checkupId()).isEqualTo(latest.getId());
+            assertThat(latestCheckup.checkedAt()).isEqualTo(checkedAt.toLocalDate());
+            assertThat(latestCheckup.decision()).isEqualTo(CheckDecision.CANCEL);
+            assertThat(latestCheckup.usageAnswer()).isEqualTo("안 봤어요");
+            assertThat(latestCheckup.satisfactionAnswer()).isEqualTo("많이 아까워요");
+            assertThat(latestCheckup.planAnswer()).isEqualTo("안 쓸 거예요");
+            assertThat(latestCheckup.stage()).isEqualTo(CheckResultStage.CANCEL_RECOMMENDED);
+            assertThat(latestCheckup.score()).isZero();
+            assertThat(latestCheckup.memo()).isEqualTo("시즌 끝남");
+            assertThat(latestCheckup.cancelReasons()).containsExactly(CancelReason.RARELY_USED, CancelReason.CUSTOM);
+            assertThat(latestCheckup.cancelReasonText()).isEqualTo("보고 싶던 작품을 다 봐서 해지했어요.");
+        }
+
+        @Test
+        @DisplayName("해지 이유를 선택지로만 고르고 직접 입력하지 않았으면 cancelReasons만 담고 cancelReasonText는 null이다")
+        void returnsCancelReasonsWithoutText() {
+            // given — K-90에서 '구독료가 부담돼요'만 고르고 해지
+            Subscription subscription = endedCustom();
+            givenSubscription(subscription);
+            SubscriptionCheck latest = check(subscription, Category.VIDEO_OTT, 2, 2, 2,
+                endedCanceledOn.minusDays(3).atStartOfDay());
+            latest.cancel(null, endedCanceledOn.minusDays(3).atTime(9, 0));
+            givenChecks(subscription, latest, List.of());
+            given(subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(List.of(latest)))
+                .willReturn(List.of(SubscriptionCheckCancelReason.create(latest, CancelReason.PRICE_BURDEN)));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.latestCheckup().cancelReasons()).containsExactly(CancelReason.PRICE_BURDEN);
+            assertThat(response.latestCheckup().cancelReasonText()).isNull();
+        }
+
+        @Test
+        @DisplayName("평균 기간 점검이 1건이면 pastCheckupAverage는 그 기록의 응답 문구 · 활용도 · 단계 그대로이고, 기간은 두 달 전 1일 ~ 오늘이다")
+        void returnsSingleCheckAsAverage() {
+            // given — 4 · 4 · 5점 → 84% 유지 추천
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            SubscriptionCheck only = check(subscription, Category.VIDEO_OTT, 4, 4, 5, today.atStartOfDay());
+            givenChecks(subscription, only, List.of(only));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            PastCheckupAverageResponse average = response.pastCheckupAverage();
+            assertThat(average.periodFrom()).isEqualTo(periodFrom.toLocalDate());
+            assertThat(average.periodTo()).isEqualTo(today);
+            assertThat(average.usageAnswer()).isEqualTo("6~10편");
+            assertThat(average.satisfactionAnswer()).isEqualTo("구독료만큼 가치 있어요");
+            assertThat(average.planAnswer()).isEqualTo("꼭 계속 쓸 거예요");
+            assertThat(average.score()).isEqualTo(84);
+            assertThat(average.stage()).isEqualTo(CheckResultStage.KEEP_RECOMMENDED);
+        }
+
+        @Test
+        @DisplayName("평균 기간 점검이 여러 건이면 문항별 평균을 반올림한 점수의 문구와, 소수 평균으로 계산한 활용도 · 단계를 반환한다")
+        void returnsAverageOfChecks() {
+            // given — (4, 4, 5) · (3, 3, 4) → 평균 3.5 · 3.5 · 4.5 → 문구 4 · 4 · 5점, 활용도 (2.5×40 + 2.5×25 + 3.5×35) / 4 = 71.25 → 71%
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            SubscriptionCheck newer = check(subscription, Category.VIDEO_OTT, 4, 4, 5, periodFrom.plusDays(40));
+            SubscriptionCheck older = check(subscription, Category.VIDEO_OTT, 3, 3, 4, periodFrom);
+            givenChecks(subscription, newer, List.of(newer, older));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            PastCheckupAverageResponse average = response.pastCheckupAverage();
+            assertThat(average.usageAnswer()).isEqualTo("6~10편");
+            assertThat(average.satisfactionAnswer()).isEqualTo("구독료만큼 가치 있어요");
+            assertThat(average.planAnswer()).isEqualTo("꼭 계속 쓸 거예요");
+            assertThat(average.score()).isEqualTo(71);
+            assertThat(average.stage()).isEqualTo(CheckResultStage.KEEP_CONSIDER);
+        }
+
+        @Test
+        @DisplayName("평균 기간 점검을 최신순 그대로 pastCheckups로 반환한다")
+        void returnsPastCheckupsInOrder() {
+            // given
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            SubscriptionCheck newer = check(subscription, Category.VIDEO_OTT, 4, 4, 5, periodFrom.plusDays(40));
+            newer.keep(periodFrom.plusDays(40));
+            SubscriptionCheck older = check(subscription, Category.VIDEO_OTT, 3, 3, 4, periodFrom);
+            givenChecks(subscription, newer, List.of(newer, older));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.pastCheckups())
+                .extracting(PastCheckupResponse::checkedAt, PastCheckupResponse::usageAnswer,
+                    PastCheckupResponse::satisfactionAnswer, PastCheckupResponse::planAnswer,
+                    PastCheckupResponse::decision)
+                .containsExactly(
+                    tuple(periodFrom.plusDays(40).toLocalDate(), "6~10편", "구독료만큼 가치 있어요", "꼭 계속 쓸 거예요",
+                        CheckDecision.KEEP),
+                    tuple(periodFrom.toLocalDate(), "3~5편", "보통이에요", "아마 계속 쓸 것 같아요", null));
+        }
+
+        @Test
+        @DisplayName("반올림한 계획 평균이 1이면 활용도를 59%로 제한한다")
+        void capsAveragePercentWhenPlanRoundsToLowest() {
+            // given — (5, 5, 1) × 2 · (5, 5, 2) → 계획 평균 1.33 → 1점, 활용도 (12×40 + 12×25 + 1×35) / 12 = 67.9 → 68% → 59%
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            List<SubscriptionCheck> checks = List.of(
+                check(subscription, Category.VIDEO_OTT, 5, 5, 1, periodFrom.plusDays(2)),
+                check(subscription, Category.VIDEO_OTT, 5, 5, 1, periodFrom.plusDays(1)),
+                check(subscription, Category.VIDEO_OTT, 5, 5, 2, periodFrom));
+            givenChecks(subscription, checks.getFirst(), checks);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            PastCheckupAverageResponse average = response.pastCheckupAverage();
+            assertThat(average.planAnswer()).isEqualTo("안 쓸 거예요");
+            assertThat(average.score()).isEqualTo(59);
+            assertThat(average.stage()).isEqualTo(CheckResultStage.CANCEL_CONSIDER);
+        }
+
+        @Test
+        @DisplayName("평균 기간에 카테고리가 다른 점검이 섞여 있으면 이용도 평균 문구는 가장 최근 점검의 카테고리 선택지로 반환한다")
+        void usesLatestCategoryForAverageUsageAnswer() {
+            // given — 최근 점검은 음악(3점 = '주 1~2일'), 이전 점검은 영상 · OTT(3점 = '3~5편')
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            SubscriptionCheck newer = check(subscription, Category.MUSIC, 3, 3, 3, periodFrom.plusDays(1));
+            SubscriptionCheck older = check(subscription, Category.VIDEO_OTT, 3, 3, 3, periodFrom);
+            givenChecks(subscription, newer, List.of(newer, older));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.pastCheckupAverage().usageAnswer()).isEqualTo("주 1~2일");
+            assertThat(response.pastCheckups())
+                .extracting(PastCheckupResponse::usageAnswer)
+                .containsExactly("주 1~2일", "3~5편");
+        }
+
+        @Test
+        @DisplayName("유지/해지를 고르지 않은 점검은 decision을 null로 반환한다")
+        void returnsNullDecisionWhenNotDecided() {
+            // given
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            SubscriptionCheck undecided = check(subscription, Category.VIDEO_OTT, 3, 3, 3, today.atStartOfDay());
+            givenChecks(subscription, undecided, List.of(undecided));
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.latestCheckup().decision()).isNull();
+            assertThat(response.pastCheckups().getFirst().decision()).isNull();
+        }
+
+        @Test
+        @DisplayName("평균 기간 조회는 baseDate와 무관하게 오늘이 속한 달의 두 달 전 1일 00:00부터 한다")
+        void queriesAveragePeriodFromTodayRegardlessOfBaseDate() {
+            // given
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), today.minusMonths(5));
+
+            // then
+            verify(subscriptionCheckGetService).findChecksCreatedSince(subscription, periodFrom);
+            assertThat(response.pastCheckupAverage()).isNull();
+        }
+
+        @Test
+        @DisplayName("평균 기간 밖 점검만 있으면 latestCheckup은 그 점검, pastCheckups는 빈 목록, pastCheckupAverage는 null이다")
+        void returnsLatestOnlyWhenNoCheckInPeriod() {
+            // given
+            ServiceCatalog netflix = service("넷플릭스", Category.VIDEO_OTT, null);
+            Subscription subscription = activeFromCatalog(netflix, today.plusDays(5), today.minusMonths(6));
+            givenSubscription(subscription);
+            SubscriptionCheck old = check(subscription, Category.VIDEO_OTT, 4, 4, 5, periodFrom.minusSeconds(1));
+            givenChecks(subscription, old, List.of());
+
+            // when
+            SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
+                subscription.getId(), null);
+
+            // then
+            assertThat(response.latestCheckup().checkupId()).isEqualTo(old.getId());
             assertThat(response.pastCheckups()).isEmpty();
             assertThat(response.pastCheckupAverage()).isNull();
         }
