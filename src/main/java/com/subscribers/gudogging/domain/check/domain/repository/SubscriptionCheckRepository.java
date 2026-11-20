@@ -3,6 +3,7 @@ package com.subscribers.gudogging.domain.check.domain.repository;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -16,6 +17,9 @@ public interface SubscriptionCheckRepository extends JpaRepository<SubscriptionC
     List<SubscriptionCheck> findAllBySubscriptionInAndDeletedFalse(Collection<Subscription> subscriptions);
 
     Optional<SubscriptionCheck> findFirstBySubscriptionAndDeletedFalseOrderByCreatedAtDesc(Subscription subscription);
+
+    List<SubscriptionCheck> findAllBySubscriptionAndCreatedAtGreaterThanEqualAndDeletedFalseOrderByCreatedAtDesc(
+        Subscription subscription, LocalDateTime from);
 
     @Query("""
         select c
