@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.check.presentation;
 
 import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupResultResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
 import com.subscribers.gudogging.domain.check.application.usecase.CheckUseCase;
 import com.subscribers.gudogging.domain.check.presentation.response.CheckResponseCode;
@@ -106,5 +107,52 @@ public class CheckController {
     ) {
         CheckupSubmissionResponse response = checkUseCase.submitCheckup(userId, subscriptionId, request);
         return CommonResponse.success(CheckResponseCode.CHECKUP_SUBMITTED, response);
+    }
+
+    @Operation(
+        summary = "구독 점검 결과 조회",
+        description = """
+            **기능**
+            점검 결과 화면(K-80)에 필요한 활용도 · 단계 · 응답 문구 · 메모 · 가장 큰 영향 문항(mainFactor)과 같은 카테고리 지출을 조회합니다.
+            checkupId는 구독 점검 제출 API 응답에서 받습니다. 구독 종료된 구독의 점검도 조회할 수 있습니다(이때 nextBillingDate = null).
+            - 응답 문구는 점검 당시 카테고리의 선택지 문구입니다.
+            - mainFactor: 활용도 60% 이상은 가중 점수, 60% 미만은 가중 감점이 가장 큰 문항. 동점이면 계획 > 이용도 > 만족도, 계획 1점이면 PLAN.
+            - categorySpending: 점검 당시 카테고리의 구독 중 구독을 월 환산 금액으로 합산합니다. 점검한 구독이 맨 위(구독 종료여도 포함)이고 나머지는 월 금액이 큰 순, 5개를 넘으면 상위 4개 + '그 외 n'.
+            - 절약 제안(bundles · maxMonthlySaving)은 현재 빈 배열 · 0입니다 (번들 데이터 준비 후 제공).
+            - 추천 문구 · 유형명 · 보조 문구는 클라이언트가 stage · mainFactor로 고릅니다.
+            - 없거나 삭제됐거나 다른 회원의 점검이면 40503(404)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - checkupId (UUID, 필수): 점검 ID (path variable)
+
+            **응답값**
+            - checkupId (UUID): 점검 ID
+            - subscriptionId (UUID): 구독 ID
+            - serviceName (String): 서비스명
+            - nextBillingDate (String, nullable): 다음 결제일 (yyyy-MM-dd). 구독 종료면 null
+            - yearlyCost (Long): 연 환산 비용 (원)
+            - score (Integer): 활용도 (0~100, %)
+            - stage (String): KEEP_RECOMMENDED / KEEP_CONSIDER / CANCEL_CONSIDER / CANCEL_RECOMMENDED
+            - usageAnswer / satisfactionAnswer / planAnswer (String): 이용도 · 만족도 · 계획 응답 문구
+            - memo (String, nullable): 메모
+            - bundles (List): 절약 제안 번들 — 현재 빈 배열
+            - maxMonthlySaving (Long): 번들 중 최대 월 절약 금액 — 현재 0
+            - mainFactor (String): USAGE / SATISFACTION / PLAN
+            - categorySpending (Object): 같은 카테고리 지출
+              - category (String): 카테고리
+              - monthlyTotal (Long): 월 환산 합계 (원)
+              - subscriptionCount (Integer): 구독 개수
+              - items (List): serviceName (String), logoUrl (String, nullable), monthlyAmount (Long)
+              - otherCount (Integer): '그 외 n' 개수 (5개 이하면 0)
+            """
+    )
+    @GetMapping("/checkups/{checkupId}")
+    public CommonResponse<CheckupResultResponse> getCheckupResult(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID checkupId
+    ) {
+        CheckupResultResponse response = checkUseCase.getCheckupResult(userId, checkupId);
+        return CommonResponse.success(CheckResponseCode.CHECKUP_RESULT_FOUND, response);
     }
 }
