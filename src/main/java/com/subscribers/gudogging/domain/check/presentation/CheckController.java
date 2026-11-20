@@ -1,6 +1,8 @@
 package com.subscribers.gudogging.domain.check.presentation;
 
+import com.subscribers.gudogging.domain.check.application.dto.request.DecideCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupDecisionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupResultResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
@@ -15,6 +17,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -154,5 +157,40 @@ public class CheckController {
     ) {
         CheckupResultResponse response = checkUseCase.getCheckupResult(userId, checkupId);
         return CommonResponse.success(CheckResponseCode.CHECKUP_RESULT_FOUND, response);
+    }
+
+    @Operation(
+        summary = "구독 점검 유지/해지 결정",
+        description = """
+            **기능**
+            점검 결과(K-80) '유지하기' 또는 해지 이유(K-90) '해지 방법 보기' · '건너뛰기'에서 결정을 저장합니다. 결정 시각도 함께 저장합니다.
+            - KEEP: 유지하기를 고른 구독으로 기록합니다 (홈 사용 현황 제외는 홈 API가 판단). 해지 이유는 보내도 무시합니다.
+            - CANCEL: 해지 이유를 함께 저장합니다. 여러 개 고를 수 있고, 건너뛰기면 보내지 않습니다.
+              직접 입력(CUSTOM)을 고른 경우에만 cancelReasonText를 앞뒤 공백을 지워 저장합니다 (CUSTOM이 없거나 텍스트가 비면 저장하지 않음).
+            - 같은 점검에 다시 결정하면 마지막 결정으로 덮어씁니다 (빠진 해지 이유는 삭제). 지난 점검 · 구독 종료된 구독의 점검도 결정할 수 있습니다.
+            - 카테고리별 해지 이유 문구는 클라이언트가 표시하고, 서버는 코드만 주고받습니다.
+            - 없거나 삭제됐거나 다른 회원의 점검이면 40503(404)
+            - 입력값 검증 실패 시 40001(400), 잘못된 enum 값은 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - checkupId (UUID, 필수): 점검 ID (path variable)
+            - decision (String, 필수): KEEP / CANCEL
+            - cancelReasons (List<String>, 선택): 해지 이유 코드 — RARELY_USED / PRICE_BURDEN / LACKING / SWITCHING / GOAL_ACHIEVED / CUSTOM
+            - cancelReasonText (String, 선택): 직접 입력한 해지 이유 (최대 100자)
+
+            **응답값**
+            - checkupId (UUID): 점검 ID
+            - decision (String): KEEP / CANCEL
+            """
+    )
+    @PatchMapping("/checkups/{checkupId}/decision")
+    public CommonResponse<CheckupDecisionResponse> decideCheckup(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID checkupId,
+        @RequestBody @Valid DecideCheckupRequest request
+    ) {
+        CheckupDecisionResponse response = checkUseCase.decideCheckup(userId, checkupId, request);
+        return CommonResponse.success(CheckResponseCode.CHECKUP_DECIDED, response);
     }
 }
