@@ -11,4 +11,6 @@ public interface SubscriptionCheckCancelReasonRepository extends JpaRepository<S
 
     List<SubscriptionCheckCancelReason> findAllBySubscriptionCheckInAndDeletedFalse(
         Collection<SubscriptionCheck> subscriptionChecks);
+
+    List<SubscriptionCheckCancelReason> findAllBySubscriptionCheck(SubscriptionCheck subscriptionCheck);
 }
