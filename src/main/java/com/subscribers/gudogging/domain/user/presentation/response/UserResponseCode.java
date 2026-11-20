@@ -9,7 +9,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum UserResponseCode implements ResponseCodeInterface {
 
-    USER_WITHDRAWN(200, HttpStatus.OK, "회원 탈퇴되었습니다.");
+    USER_WITHDRAWN(200, HttpStatus.OK, "회원 탈퇴되었습니다."),
+    USER_ACCOUNT_FOUND(200, HttpStatus.OK, "내 정보를 조회했습니다.");
 
     private final int code;
     private final HttpStatus status;
