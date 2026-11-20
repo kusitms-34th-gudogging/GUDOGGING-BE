@@ -2,6 +2,8 @@ package com.subscribers.gudogging.domain.subscription.application.usecase;
 
 import com.subscribers.gudogging.domain.catalog.application.exception.ServiceNotFoundException;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheckCancelReason;
+import com.subscribers.gudogging.domain.check.domain.result.CheckAverage;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCancelReasonGetService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
@@ -57,6 +59,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -125,7 +128,15 @@ public class SubscriptionUseCase {
             .orElseThrow(SubscriptionNotFoundException::new);
         List<SubscriptionBillingHistory> billingHistories = subscriptionBillingHistoryGetService
             .findBillingHistoriesBySubscriptions(List.of(subscription));
-        return SubscriptionDetailResponse.of(subscription, billingHistories, LocalDate.now(), baseDate);
+        LocalDate today = LocalDate.now();
+        Optional<SubscriptionCheck> latestCheck = subscriptionCheckGetService.findLatestCheck(subscription);
+        List<SubscriptionCheckCancelReason> latestCancelReasons = latestCheck
+            .map(check -> subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(List.of(check)))
+            .orElse(List.of());
+        List<SubscriptionCheck> recentChecks = subscriptionCheckGetService.findChecksCreatedSince(subscription,
+            CheckAverage.periodFromOf(today).atStartOfDay());
+        return SubscriptionDetailResponse.of(subscription, billingHistories, latestCheck, latestCancelReasons,
+            recentChecks, today, baseDate);
     }
 
     /**
