@@ -15,11 +15,15 @@ import com.subscribers.gudogging.domain.check.application.dto.request.SubmitChec
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupOptionResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CategorySpendingItemResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CategorySpendingResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupQuestionResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupResultResponse;
 import com.subscribers.gudogging.domain.check.application.exception.CheckErrorCode;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupQuestionType;
 import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
+import com.subscribers.gudogging.domain.check.domain.result.CheckScore;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckCreateService;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
@@ -635,6 +639,236 @@ class CheckUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService, subscriptionCheckCreateService);
+        }
+    }
+
+    @Nested
+    @DisplayName("getCheckupResult")
+    class GetCheckupResult {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate today = LocalDate.now();
+        private final LocalDate nextBillingDate = today.plusDays(10);
+
+        private Subscription subscription(String name, Category category, int amount, BillingCycleUnit cycleUnit) {
+            ServiceCatalog service = ServiceCatalog.create(name, null, null, category,
+                "https://logo.example.com/" + name + ".png", null, 1);
+            ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
+            Subscription subscription = Subscription.createFromCatalog(user, service, category, amount, 1, cycleUnit,
+                nextBillingDate, PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
+            // id · createdAt · startedOn은 JPA 저장 시(@PrePersist) 채워지므로 테스트에서만 지정한다.
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(subscription, "createdAt", today.minusMonths(2).atStartOfDay());
+            ReflectionTestUtils.setField(subscription, "startedOn", today.minusMonths(2));
+            return subscription;
+        }
+
+        private Subscription video(String name, int amount) {
+            return subscription(name, Category.VIDEO_OTT, amount, BillingCycleUnit.MONTH);
+        }
+
+        private SubscriptionCheck check(Subscription subscription, int usage, int satisfaction, int plan,
+                                        String memo) {
+            int percent = CheckScore.percentOf(usage, satisfaction, plan);
+            SubscriptionCheck check = SubscriptionCheck.create(subscription, nextBillingDate,
+                subscription.getCategory(), usage, satisfaction, plan, percent, CheckResultStage.of(percent), memo);
+            ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
+            return check;
+        }
+
+        private CheckupResultResponse resultOf(SubscriptionCheck check, Subscription... subscriptions) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionCheckGetService.findCheck(user, check.getId())).willReturn(Optional.of(check));
+            given(subscriptionGetService.findSubscriptions(user)).willReturn(List.of(subscriptions));
+            return checkUseCase.getCheckupResult(userId, check.getId());
+        }
+
+        private List<String> itemNames(CategorySpendingResponse spending) {
+            return spending.items().stream().map(CategorySpendingItemResponse::serviceName).toList();
+        }
+
+        @Test
+        @DisplayName("점검 · 구독 정보, 활용도 · 단계, 메모, 1년 비용, 다음 결제일을 반환한다")
+        void returnsCheckupResult() {
+            // given
+            Subscription netflix = video("넷플릭스", 17000);
+            SubscriptionCheck check = check(netflix, 1, 3, 3, "다음 달엔 안 볼 듯");
+
+            // when
+            CheckupResultResponse result = resultOf(check, netflix);
+
+            // then
+            assertThat(result.checkupId()).isEqualTo(check.getId());
+            assertThat(result.subscriptionId()).isEqualTo(netflix.getId());
+            assertThat(result.serviceName()).isEqualTo("넷플릭스");
+            assertThat(result.nextBillingDate()).isEqualTo(nextBillingDate);
+            assertThat(result.yearlyCost()).isEqualTo(204000);
+            assertThat(result.score()).isEqualTo(30);
+            assertThat(result.stage()).isEqualTo(CheckResultStage.CANCEL_RECOMMENDED);
+            assertThat(result.memo()).isEqualTo("다음 달엔 안 볼 듯");
+        }
+
+        @Test
+        @DisplayName("저장한 점수를 점검 당시 카테고리의 선택지 문구로 바꿔 반환한다")
+        void returnsAnswerTexts() {
+            // given
+            Subscription netflix = video("넷플릭스", 13500);
+            SubscriptionCheck check = check(netflix, 1, 3, 3, null);
+
+            // when
+            CheckupResultResponse result = resultOf(check, netflix);
+
+            // then
+            assertThat(result.usageAnswer()).isEqualTo("안 봤어요");
+            assertThat(result.satisfactionAnswer()).isEqualTo("보통이에요");
+            assertThat(result.planAnswer()).isEqualTo("아직 잘 모르겠어요");
+        }
+
+        @Test
+        @DisplayName("절약 제안은 빈 배열, 최대 월 절약 금액은 0이다")
+        void returnsEmptyBundles() {
+            // given
+            Subscription netflix = video("넷플릭스", 13500);
+
+            // when
+            CheckupResultResponse result = resultOf(check(netflix, 4, 5, 5, null), netflix);
+
+            // then
+            assertThat(result.bundles()).isEmpty();
+            assertThat(result.maxMonthlySaving()).isZero();
+        }
+
+        @ParameterizedTest(name = "이용도 {0} · 만족도 {1} · 계획 {2} → {3}")
+        @CsvSource({
+            "1, 3, 3, USAGE",
+            "3, 1, 2, PLAN",
+            "4, 1, 3, SATISFACTION",
+            "4, 5, 5, PLAN",
+            "5, 4, 3, USAGE",
+            "5, 5, 1, PLAN"
+        })
+        @DisplayName("활용도 60 미만은 가중 감점, 60 이상은 가중 점수가 가장 큰 문항을 mainFactor로 반환하고 계획 1점이면 계획이다")
+        void returnsMainFactor(int usage, int satisfaction, int plan, CheckupQuestionType expected) {
+            // given
+            Subscription netflix = video("넷플릭스", 13500);
+
+            // when
+            CheckupResultResponse result = resultOf(check(netflix, usage, satisfaction, plan, null), netflix);
+
+            // then
+            assertThat(result.mainFactor()).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("같은 카테고리 구독 중 구독의 월 환산 합계 · 개수 · 목록(점검한 구독 맨 위, 이후 금액 큰 순)을 반환한다")
+        void returnsCategorySpending() {
+            // given
+            Subscription netflix = video("넷플릭스", 13500);
+            Subscription youtube = video("유튜브 프리미엄", 14900);
+            Subscription tving = video("티빙", 13900);
+            Subscription melon = subscription("멜론", Category.MUSIC, 10900, BillingCycleUnit.MONTH);
+
+            // when
+            CheckupResultResponse result = resultOf(check(netflix, 1, 3, 3, null), netflix, youtube, tving, melon);
+
+            // then
+            CategorySpendingResponse spending = result.categorySpending();
+            assertThat(spending.category()).isEqualTo(Category.VIDEO_OTT);
+            assertThat(spending.monthlyTotal()).isEqualTo(42300);
+            assertThat(spending.subscriptionCount()).isEqualTo(3);
+            assertThat(itemNames(spending)).containsExactly("넷플릭스", "유튜브 프리미엄", "티빙");
+            assertThat(spending.items().get(0).logoUrl()).isEqualTo("https://logo.example.com/넷플릭스.png");
+            assertThat(spending.otherCount()).isZero();
+        }
+
+        @Test
+        @DisplayName("연 결제 구독은 월 환산해 합산하고, 구독 종료 구독은 카테고리 지출에서 뺀다")
+        void convertsYearlyAndExcludesEnded() {
+            // given
+            Subscription netflix = video("넷플릭스", 13500);
+            Subscription yearly = subscription("왓챠", Category.VIDEO_OTT, 120000, BillingCycleUnit.YEAR);
+            Subscription ended = video("웨이브", 10900);
+            ended.cancel(today.minusDays(5));
+
+            // when
+            CheckupResultResponse result = resultOf(check(netflix, 1, 3, 3, null), netflix, yearly, ended);
+
+            // then
+            CategorySpendingResponse spending = result.categorySpending();
+            assertThat(spending.monthlyTotal()).isEqualTo(23500);
+            assertThat(spending.subscriptionCount()).isEqualTo(2);
+            assertThat(itemNames(spending)).containsExactly("넷플릭스", "왓챠");
+        }
+
+        @Test
+        @DisplayName("같은 카테고리 구독이 6개면 상위 4개와 그 외 개수 2를 반환하고 합계는 6개 전부다")
+        void truncatesOverFiveSubscriptions() {
+            // given
+            Subscription netflix = video("넷플릭스", 9000);
+            Subscription a = video("디즈니+", 13900);
+            Subscription b = video("유튜브 프리미엄", 14900);
+            Subscription c = video("티빙", 13500);
+            Subscription d = video("웨이브", 10900);
+            Subscription e = video("왓챠", 7900);
+
+            // when
+            CheckupResultResponse result = resultOf(check(netflix, 1, 3, 3, null), netflix, a, b, c, d, e);
+
+            // then
+            CategorySpendingResponse spending = result.categorySpending();
+            assertThat(spending.subscriptionCount()).isEqualTo(6);
+            assertThat(itemNames(spending)).containsExactly("넷플릭스", "유튜브 프리미엄", "디즈니+", "티빙");
+            assertThat(spending.otherCount()).isEqualTo(2);
+            assertThat(spending.monthlyTotal()).isEqualTo(70100);
+        }
+
+        @Test
+        @DisplayName("구독 종료된 구독의 점검이면 다음 결제일은 null이고 점검한 구독은 카테고리 목록 맨 위에 포함된다")
+        void returnsResultOfEndedSubscription() {
+            // given
+            Subscription netflix = video("넷플릭스", 13500);
+            Subscription youtube = video("유튜브 프리미엄", 14900);
+            SubscriptionCheck check = check(netflix, 1, 3, 3, null);
+            netflix.cancel(today.minusDays(1));
+
+            // when
+            CheckupResultResponse result = resultOf(check, netflix, youtube);
+
+            // then
+            assertThat(result.nextBillingDate()).isNull();
+            assertThat(itemNames(result.categorySpending())).containsExactly("넷플릭스", "유튜브 프리미엄");
+            assertThat(result.categorySpending().monthlyTotal()).isEqualTo(28400);
+        }
+
+        @Test
+        @DisplayName("점검이 없거나 다른 회원 것이면 CHECKUP_NOT_FOUND 예외를 던진다")
+        void throwsWhenCheckupNotFound() {
+            // given
+            UUID checkupId = UUID.randomUUID();
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionCheckGetService.findCheck(user, checkupId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.getCheckupResult(userId, checkupId))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(CheckErrorCode.CHECKUP_NOT_FOUND);
+            verifyNoInteractions(subscriptionGetService);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 점검을 조회하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> checkUseCase.getCheckupResult(userId, UUID.randomUUID()))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionCheckGetService, subscriptionGetService);
         }
     }
 }
