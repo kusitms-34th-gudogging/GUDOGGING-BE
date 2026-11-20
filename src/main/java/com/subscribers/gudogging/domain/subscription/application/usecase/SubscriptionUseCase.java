@@ -49,6 +49,7 @@ import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.entity.BaseEntity;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
@@ -230,7 +231,7 @@ public class SubscriptionUseCase {
             .map(this::toDraftItem)
             .toList();
         SubscriptionDraft subscriptionDraft = SubscriptionDraft.of(userId, request.lastStep(),
-            request.editingItemIndex(), items, LocalDateTime.now());
+            request.editingItemIndex(), items, LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS));
         subscriptionDraftService.saveDraft(subscriptionDraft);
 
         return SubscriptionDraftSaveResponse.from(subscriptionDraft);

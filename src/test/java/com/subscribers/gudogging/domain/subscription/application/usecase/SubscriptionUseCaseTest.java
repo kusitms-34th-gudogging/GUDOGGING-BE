@@ -509,6 +509,23 @@ class SubscriptionUseCaseTest {
         }
 
         @Test
+        @DisplayName("저장 시각은 초 단위까지만 저장하고 응답한다")
+        void truncatesSavedAtToSeconds() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+
+            // when
+            SubscriptionDraftSaveResponse response = subscriptionUseCase.saveSubscriptionDraft(userId,
+                request(customItem("동네 헬스장")));
+
+            // then
+            verify(subscriptionDraftService).saveDraft(draftCaptor.capture());
+            LocalDateTime savedAt = draftCaptor.getValue().savedAt();
+            assertThat(savedAt).isEqualTo(savedAt.truncatedTo(ChronoUnit.SECONDS));
+            assertThat(response.savedAt()).isEqualTo(savedAt);
+        }
+
+        @Test
         @DisplayName("서비스명은 앞뒤 공백을 제거해 저장한다")
         void stripsServiceName() {
             // given

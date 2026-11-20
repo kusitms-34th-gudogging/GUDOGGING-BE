@@ -118,7 +118,7 @@ technical_spec:
         fields:
           - name: savedAt
             type: LocalDateTime
-            description: "서버 저장 시각 (ISO 8601, 예: 2026-11-07T16:30:00) — 임시저장에 함께 저장"
+            description: "서버 저장 시각 (ISO 8601 초 단위, 예: 2026-11-07T16:30:00 — 2026-11-20 /fix로 초 미만 절삭) — 임시저장에 함께 저장"
         factory: "SubscriptionDraftSaveResponse.from(SubscriptionDraft)"
         example: |
           {
@@ -133,7 +133,7 @@ technical_spec:
       action: "@PutMapping(\"/drafts\") — @CurrentUserId UUID userId, @Valid @RequestBody SaveSubscriptionDraftRequest → SubscriptionUseCase.saveSubscriptionDraft(userId, request) → CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_DRAFT_SAVED, response)"
     - step: 2
       layer: UseCase (SubscriptionUseCase.saveSubscriptionDraft)
-      action: "회원 확인 → 요청 내 serviceId 중복 검사 → SubscriptionDraft 생성(savedAt = LocalDateTime.now()) → 저장 → SubscriptionDraftSaveResponse.from(draft)"
+      action: "회원 확인 → 요청 내 serviceId 중복 검사 → SubscriptionDraft 생성(savedAt = LocalDateTime.now().truncatedTo(ChronoUnit.SECONDS)) → 저장 → SubscriptionDraftSaveResponse.from(draft)"
       transaction: "true (@Transactional — 쓰기 메서드 규칙, AuthUseCase.reissueToken과 동일. Redis 저장은 DB 트랜잭션과 묶이지 않음)"
     - step: 3
       layer: Domain Service (UserGetService)
@@ -157,7 +157,7 @@ technical_spec:
         StringRedisTemplate.opsForValue().set — TTL 없음, 기존 값이 있으면 덮어씀 (회원당 1건)
 
   database:
-    entities: []
+    entities: [ ]
     note: "MySQL 변경 없음 (엔티티 · 테이블 추가 없음)"
     redis:
       key: "subscription-draft:{userId}"
