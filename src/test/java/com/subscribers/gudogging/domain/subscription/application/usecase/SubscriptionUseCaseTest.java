@@ -35,6 +35,8 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftItemResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
@@ -457,7 +459,7 @@ class SubscriptionUseCaseTest {
         }
 
         private SaveSubscriptionDraftRequest request(SubscriptionDraftItemRequest... items) {
-            return new SaveSubscriptionDraftRequest(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS, List.of(items));
+            return new SaveSubscriptionDraftRequest(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS, null, List.of(items));
         }
 
         @Test
@@ -476,6 +478,7 @@ class SubscriptionUseCaseTest {
             SubscriptionDraft saved = draftCaptor.getValue();
             assertThat(saved.userId()).isEqualTo(userId);
             assertThat(saved.lastStep()).isEqualTo(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS);
+            assertThat(saved.editingItemIndex()).isNull();
             assertThat(saved.items()).containsExactly(
                 SubscriptionDraftItem.of(netflixId, "Netflix", Category.VIDEO_OTT, 17000, 1, BillingCycleUnit.MONTH,
                     nextBillingDate, PaymentMethod.WEB_DIRECT),
@@ -484,6 +487,25 @@ class SubscriptionUseCaseTest {
                     nextBillingDate, PaymentMethod.WEB_DIRECT));
             assertThat(saved.savedAt()).isNotNull();
             assertThat(response.savedAt()).isEqualTo(saved.savedAt());
+        }
+
+        @Test
+        @DisplayName("구독 정보 입력 화면(INPUT_SUBSCRIPTION)과 입력 중이던 항목 순번을 함께 저장한다")
+        void savesInputStepWithEditingItemIndex() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            SaveSubscriptionDraftRequest request = new SaveSubscriptionDraftRequest(
+                SubscriptionDraftStep.INPUT_SUBSCRIPTION, 1,
+                List.of(completedCatalogItem(netflixId, "Netflix"), emptyCatalogItem(youtubeId, "유튜브 프리미엄")));
+
+            // when
+            subscriptionUseCase.saveSubscriptionDraft(userId, request);
+
+            // then
+            verify(subscriptionDraftService).saveDraft(draftCaptor.capture());
+            SubscriptionDraft saved = draftCaptor.getValue();
+            assertThat(saved.lastStep()).isEqualTo(SubscriptionDraftStep.INPUT_SUBSCRIPTION);
+            assertThat(saved.editingItemIndex()).isEqualTo(1);
         }
 
         @Test
@@ -527,6 +549,170 @@ class SubscriptionUseCaseTest {
             // when & then
             assertThatThrownBy(() -> subscriptionUseCase.saveSubscriptionDraft(userId,
                 request(customItem("동네 헬스장"))))
+                .isInstanceOf(UserNotFoundException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionDraftService);
+        }
+    }
+
+    @Nested
+    @DisplayName("getSubscriptionDraft")
+    class GetSubscriptionDraft {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDateTime savedAt = LocalDateTime.of(2026, 11, 20, 16, 30);
+        private final LocalDate nextBillingDate = LocalDate.of(2026, 12, 1);
+        private final ServiceCatalog netflix = service("Netflix", Category.VIDEO_OTT,
+            "https://logo.example.com/netflix.png");
+        private final ServiceCatalog youtube = service("유튜브 프리미엄", Category.VIDEO_OTT,
+            "https://logo.example.com/youtube.png");
+
+        private SubscriptionDraftItem completedItem(ServiceCatalog service) {
+            return SubscriptionDraftItem.of(service.getId(), service.getName(), Category.VIDEO_OTT, 17000, 1,
+                BillingCycleUnit.MONTH, nextBillingDate, PaymentMethod.WEB_DIRECT);
+        }
+
+        private SubscriptionDraftItem emptyItem(ServiceCatalog service) {
+            return SubscriptionDraftItem.of(service.getId(), service.getName(), null, null, null, null, null, null);
+        }
+
+        private SubscriptionDraftItem customItem(String serviceName) {
+            return SubscriptionDraftItem.of(null, serviceName, Category.ETC, 50000, 1, BillingCycleUnit.MONTH,
+                nextBillingDate, PaymentMethod.WEB_DIRECT);
+        }
+
+        private SubscriptionDraft draft(SubscriptionDraftStep lastStep, Integer editingItemIndex,
+                                        SubscriptionDraftItem... items) {
+            return SubscriptionDraft.of(userId, lastStep, editingItemIndex, List.of(items), savedAt);
+        }
+
+        @Test
+        @DisplayName("임시저장이 있으면 savedAt · lastStep과 사전 등록 입력 완료 · 사전 등록 미입력 · 직접 입력 항목을 저장한 순서대로 반환한다")
+        void returnsDraftItemsInSavedOrder() {
+            // given
+            SubscriptionDraftItem netflixItem = completedItem(netflix);
+            SubscriptionDraftItem youtubeItem = emptyItem(youtube);
+            SubscriptionDraftItem gymItem = customItem("동네 헬스장");
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionDraftService.findDraft(userId)).willReturn(Optional.of(
+                draft(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS, null, netflixItem, youtubeItem, gymItem)));
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId(), youtube.getId())))
+                .willReturn(List.of(netflix, youtube));
+
+            // when
+            SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+
+            // then
+            assertThat(response.savedAt()).isEqualTo(savedAt);
+            assertThat(response.lastStep()).isEqualTo(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS);
+            assertThat(response.editingItemIndex()).isNull();
+            assertThat(response.items()).containsExactly(
+                SubscriptionDraftItemResponse.of(netflixItem, netflix.getLogoUrl()),
+                SubscriptionDraftItemResponse.of(youtubeItem, youtube.getLogoUrl()),
+                SubscriptionDraftItemResponse.of(gymItem, null));
+        }
+
+        @Test
+        @DisplayName("사전 등록 서비스 항목은 서비스 로고 URL을, 직접 입력 서비스 항목과 로고가 없는 서비스 항목은 logoUrl null을 반환한다")
+        void returnsLogoUrlOnlyForCatalogServicesWithLogo() {
+            // given
+            ServiceCatalog noLogoService = service("동네 OTT", Category.VIDEO_OTT, null);
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionDraftService.findDraft(userId)).willReturn(Optional.of(
+                draft(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS, null,
+                    emptyItem(netflix), emptyItem(noLogoService), customItem("동네 헬스장"))));
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId(), noLogoService.getId())))
+                .willReturn(List.of(netflix, noLogoService));
+
+            // when
+            SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+
+            // then
+            assertThat(response.items()).extracting(SubscriptionDraftItemResponse::logoUrl)
+                .containsExactly(netflix.getLogoUrl(), null, null);
+        }
+
+        @Test
+        @DisplayName("구독 정보 입력 화면에서 중단했으면 INPUT_SUBSCRIPTION과 입력 중이던 항목 순번을 반환한다")
+        void returnsInputStepWithEditingItemIndex() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionDraftService.findDraft(userId)).willReturn(Optional.of(
+                draft(SubscriptionDraftStep.INPUT_SUBSCRIPTION, 1, completedItem(netflix), emptyItem(youtube))));
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId(), youtube.getId())))
+                .willReturn(List.of(netflix, youtube));
+
+            // when
+            SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+
+            // then
+            assertThat(response.lastStep()).isEqualTo(SubscriptionDraftStep.INPUT_SUBSCRIPTION);
+            assertThat(response.editingItemIndex()).isEqualTo(1);
+        }
+
+        @Test
+        @DisplayName("임시저장이 없으면 null을 반환하고 서비스를 조회하지 않는다")
+        void returnsNullWhenDraftNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionDraftService.findDraft(userId)).willReturn(Optional.empty());
+
+            // when
+            SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+
+            // then
+            assertThat(response).isNull();
+            verifyNoInteractions(serviceCatalogGetService);
+        }
+
+        @Test
+        @DisplayName("저장 후 비활성 · 삭제되어 조회되지 않는 서비스 항목은 예외 없이 logoUrl null로 반환한다")
+        void returnsNullLogoUrlForInactiveService() {
+            // given
+            SubscriptionDraftItem netflixItem = completedItem(netflix);
+            SubscriptionDraftItem youtubeItem = completedItem(youtube);
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionDraftService.findDraft(userId)).willReturn(Optional.of(
+                draft(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS, null, netflixItem, youtubeItem)));
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId(), youtube.getId())))
+                .willReturn(List.of(netflix));
+
+            // when
+            SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+
+            // then
+            assertThat(response.items()).containsExactly(
+                SubscriptionDraftItemResponse.of(netflixItem, netflix.getLogoUrl()),
+                SubscriptionDraftItemResponse.of(youtubeItem, null));
+        }
+
+        @Test
+        @DisplayName("직접 입력 항목만 있으면 서비스를 조회하지 않는다")
+        void skipsServiceLookupWhenOnlyCustomItems() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionDraftService.findDraft(userId)).willReturn(Optional.of(
+                draft(SubscriptionDraftStep.CONFIRM_SUBSCRIPTIONS, null, customItem("동네 헬스장"))));
+
+            // when
+            SubscriptionDraftResponse response = subscriptionUseCase.getSubscriptionDraft(userId);
+
+            // then
+            assertThat(response.items()).extracting(SubscriptionDraftItemResponse::logoUrl).containsExactly(
+                (String) null);
+            verifyNoInteractions(serviceCatalogGetService);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 임시저장을 조회하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.getSubscriptionDraft(userId))
                 .isInstanceOf(UserNotFoundException.class)
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
