@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.subscription.infrastructure;
 
 import com.subscribers.gudogging.domain.subscription.domain.draft.SubscriptionDraft;
 import com.subscribers.gudogging.domain.subscription.domain.repository.SubscriptionDraftRepository;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -26,6 +27,15 @@ public class RedisSubscriptionDraftRepository implements SubscriptionDraftReposi
             KEY_PREFIX + subscriptionDraft.userId(),
             jsonMapper.writeValueAsString(subscriptionDraft)
         );
+    }
+
+    @Override
+    public Optional<SubscriptionDraft> findByUserId(UUID userId) {
+        String json = redisTemplate.opsForValue().get(KEY_PREFIX + userId);
+        if (json == null) {
+            return Optional.empty();
+        }
+        return Optional.of(jsonMapper.readValue(json, SubscriptionDraft.class));
     }
 
     @Override

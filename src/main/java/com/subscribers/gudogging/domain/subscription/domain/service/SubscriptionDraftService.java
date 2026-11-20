@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.subscription.domain.service;
 
 import com.subscribers.gudogging.domain.subscription.domain.draft.SubscriptionDraft;
 import com.subscribers.gudogging.domain.subscription.domain.repository.SubscriptionDraftRepository;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,13 @@ public class SubscriptionDraftService {
      */
     public void saveDraft(SubscriptionDraft subscriptionDraft) {
         subscriptionDraftRepository.save(subscriptionDraft);
+    }
+
+    /**
+     * 회원의 임시저장을 조회한다. 없으면 빈 Optional.
+     */
+    public Optional<SubscriptionDraft> findDraft(UUID userId) {
+        return subscriptionDraftRepository.findByUserId(userId);
     }
 
     /**
