@@ -24,6 +24,7 @@ import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGe
 import com.subscribers.gudogging.domain.notification.domain.entity.Notification;
 import com.subscribers.gudogging.domain.notification.domain.entity.NotificationType;
 import com.subscribers.gudogging.domain.notification.domain.service.NotificationGetService;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.ChangeSubscriptionSteadyRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
@@ -44,6 +45,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSteadyResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSummaryResponse;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
@@ -2532,6 +2534,127 @@ class SubscriptionUseCaseTest {
             // when & then
             assertThatThrownBy(() -> subscriptionUseCase.reactivateSubscription(userId, UUID.randomUUID(),
                 request(null)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("changeSubscriptionSteady")
+    class ChangeSubscriptionSteady {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+
+        private Subscription active() {
+            Subscription subscription = Subscription.createCustom(user, "왓챠", Category.VIDEO_OTT, 7900, 1,
+                BillingCycleUnit.MONTH, LocalDate.now().plusDays(5), PaymentMethod.WEB_DIRECT,
+                RegistrationSource.MANUAL);
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            return subscription;
+        }
+
+        private void givenSubscription(Subscription subscription) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscription.getId()))
+                .willReturn(Optional.of(subscription));
+        }
+
+        @Test
+        @DisplayName("구독 중인 구독을 꾸준히 쓰는 구독으로 켜고, 응답에 구독 ID · 변경된 값(true)을 담는다")
+        void turnsOnSteadyUse() {
+            // given
+            Subscription subscription = active();
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionSteadyResponse result = subscriptionUseCase.changeSubscriptionSteady(userId,
+                subscription.getId(), new ChangeSubscriptionSteadyRequest(true));
+
+            // then
+            assertThat(subscription.isSteadyUse()).isTrue();
+            assertThat(result.subscriptionId()).isEqualTo(subscription.getId());
+            assertThat(result.isSteady()).isTrue();
+        }
+
+        @Test
+        @DisplayName("꾸준히 쓰는 구독을 끄면 false로 바꾼다")
+        void turnsOffSteadyUse() {
+            // given
+            Subscription subscription = active();
+            subscription.changeSteadyUse(true);
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionSteadyResponse result = subscriptionUseCase.changeSubscriptionSteady(userId,
+                subscription.getId(), new ChangeSubscriptionSteadyRequest(false));
+
+            // then
+            assertThat(subscription.isSteadyUse()).isFalse();
+            assertThat(result.isSteady()).isFalse();
+        }
+
+        @Test
+        @DisplayName("현재 값과 같은 값으로 요청해도 예외 없이 같은 값을 반환한다")
+        void keepsSameValue() {
+            // given
+            Subscription subscription = active();
+            subscription.changeSteadyUse(true);
+            givenSubscription(subscription);
+
+            // when
+            SubscriptionSteadyResponse result = subscriptionUseCase.changeSubscriptionSteady(userId,
+                subscription.getId(), new ChangeSubscriptionSteadyRequest(true));
+
+            // then
+            assertThat(subscription.isSteadyUse()).isTrue();
+            assertThat(result.isSteady()).isTrue();
+        }
+
+        @Test
+        @DisplayName("구독 종료된 구독이면 SUBSCRIPTION_NOT_ACTIVE 예외를 던지고 값을 바꾸지 않는다")
+        void throwsWhenEnded() {
+            // given
+            Subscription subscription = active();
+            subscription.cancel(LocalDate.now().minusDays(10));
+            givenSubscription(subscription);
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.changeSubscriptionSteady(userId, subscription.getId(),
+                new ChangeSubscriptionSteadyRequest(true)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_ACTIVE);
+            assertThat(subscription.isSteadyUse()).isFalse();
+        }
+
+        @Test
+        @DisplayName("구독이 없거나 삭제됐거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND 예외를 던진다")
+        void throwsWhenSubscriptionNotFound() {
+            // given
+            UUID subscriptionId = UUID.randomUUID();
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findSubscription(user, subscriptionId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.changeSubscriptionSteady(userId, subscriptionId,
+                new ChangeSubscriptionSteadyRequest(true)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(SubscriptionErrorCode.SUBSCRIPTION_NOT_FOUND);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 구독을 조회하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.changeSubscriptionSteady(userId, UUID.randomUUID(),
+                new ChangeSubscriptionSteadyRequest(true)))
                 .isInstanceOf(ApplicationException.class)
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
