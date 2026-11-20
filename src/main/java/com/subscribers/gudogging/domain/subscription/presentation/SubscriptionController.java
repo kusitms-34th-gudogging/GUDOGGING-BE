@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Cre
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.ReactivateSubscriptionRequest;
+import com.subscribers.gudogging.domain.subscription.application.dto.request.SaveSubscriptionDraftRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
@@ -11,6 +12,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
@@ -31,6 +33,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -329,6 +332,48 @@ public class SubscriptionController {
     ) {
         SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, response);
+    }
+
+    @Operation(
+        summary = "구독 등록 임시저장",
+        description = """
+            **기능**
+            직접 등록 중인 선택한 구독 목록(A-04)과 마지막 화면을 서버에 임시저장합니다.
+            회원당 1건이며, 이미 임시저장이 있으면 새 내용으로 통째로 덮어씁니다. 따로 만료되지 않습니다.
+            A-04 목록이 바뀔 때(A-02 선택 완료, A-03 / A-03s 저장하기, 선택 추가 · 해제)와 A-02 ⇄ A-04 이동 시 호출합니다.
+            구독 등록(POST /api/v1/subscriptions)에 성공하면 서버가 임시저장을 삭제합니다.
+            결제 정보(category · amount · billingCycleValue · billingCycleUnit · nextBillingDate · paymentMethod) 규칙:
+            - 사전 등록 서비스(serviceId 있음): 6개 모두 null(결제 정보 미입력) 또는 모두 입력
+            - 직접 입력 서비스(serviceId null): 6개 모두 입력
+            - 다음 결제일은 과거 날짜도 저장할 수 있습니다 (구독 등록 때 오늘 이후인지 검사)
+            - 서비스 존재 · 이미 구독 중 여부는 검사하지 않습니다 (구독 등록 때 검사)
+            - 한 요청에 같은 serviceId가 2번 이상이면 40402(400)
+            - 입력값 검증 실패 시 40001(400), 잘못된 enum · 날짜 형식은 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - lastStep (String, 필수): 불러오기 때 복원할 화면 (SELECT_SERVICES = A-02 서비스 선택, CONFIRM_SUBSCRIPTIONS = A-04 선택한 구독 확인)
+            - items (List, 필수): 임시저장할 구독 목록 (1~50개, 순서 유지)
+              - serviceId (UUID, 선택): 사전 등록 서비스 ID. 직접 입력 서비스는 null
+              - serviceName (String, 필수): 서비스명 (최대 50자, 직접 입력 서비스는 앞뒤 공백 제거 후 30자 이하)
+              - category (String, 선택): 카테고리 코드 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC). 미입력이면 null
+              - amount (Integer, 선택): 결제 금액 (원, 1 이상). 미입력이면 null
+              - billingCycleValue (Integer, 선택): 결제 주기 값 (1~31). 미입력이면 null
+              - billingCycleUnit (String, 선택): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR). 미입력이면 null
+              - nextBillingDate (String, 선택): 다음 결제일 (yyyy-MM-dd). 미입력이면 null
+              - paymentMethod (String, 선택): 결제 수단 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY). 미입력이면 null
+
+            **응답값**
+            - savedAt (String): 저장 시각 (ISO 8601, yyyy-MM-dd'T'HH:mm:ss)
+            """
+    )
+    @PutMapping("/drafts")
+    public CommonResponse<SubscriptionDraftSaveResponse> saveSubscriptionDraft(
+        @CurrentUserId UUID userId,
+        @RequestBody @Valid SaveSubscriptionDraftRequest request
+    ) {
+        SubscriptionDraftSaveResponse response = subscriptionUseCase.saveSubscriptionDraft(userId, request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_DRAFT_SAVED, response);
     }
 
     @Operation(
