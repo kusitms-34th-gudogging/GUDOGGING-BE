@@ -1,5 +1,5 @@
 # GmailConnection Entity
-# Last Updated: 2026-11-16
+# Last Updated: 2026-11-21
 # Source: docs/ERD.md v1.1 §4.2 gmail_connections
 
 entity: GMAIL_CONNECTION
@@ -45,12 +45,13 @@ indexes:
 
 constraints:
   - "회원당 활성(deleted = false) 연결 최대 1개 — 애플리케이션에서 보장 (MySQL은 부분 UNIQUE 미지원)"
-  - "조회는 항상 deleted = false 조건 (예: findByUserAndDeletedFalse)"
+  - "조회는 항상 deleted = false 조건 — GmailConnectionRepository.findByUserAndDeletedFalse(User) → Optional (USER-002)"
 
 business_logic:
   - "create(user, googleSub, gmailAddress, refreshToken): 정적 팩토리"
   - "updateRefreshToken(refreshToken): 새 refresh token으로 교체"
   - "markSynced(): lastSyncedAt = now() — 결제 메일 조회 완료 시"
+  - "조회: GmailConnectionGetService.findGmailConnection(User) → Optional<GmailConnection> — 활성 연결. 내 정보 조회(USER-002, E-01 gmailLinked · E-03 gmailEmail)에서 사용"
   - "softDelete(): Gmail 연결 해제 (E-03b) → BaseEntity 위임. Google token revoke는 UseCase에서 먼저 실행"
 
 notes:
