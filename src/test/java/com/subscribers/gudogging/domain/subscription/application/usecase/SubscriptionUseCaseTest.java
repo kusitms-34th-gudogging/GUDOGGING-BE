@@ -535,6 +535,41 @@ class SubscriptionUseCaseTest {
     }
 
     @Nested
+    @DisplayName("deleteSubscriptionDraft")
+    class DeleteSubscriptionDraft {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+
+        @Test
+        @DisplayName("회원의 임시저장을 삭제한다")
+        void deletesDraftOfUser() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+
+            // when
+            subscriptionUseCase.deleteSubscriptionDraft(userId);
+
+            // then
+            verify(subscriptionDraftService).deleteDraft(userId);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 임시저장을 삭제하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.deleteSubscriptionDraft(userId))
+                .isInstanceOf(UserNotFoundException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionDraftService);
+        }
+    }
+
+    @Nested
     @DisplayName("getSubscriptions")
     class GetSubscriptions {
 
