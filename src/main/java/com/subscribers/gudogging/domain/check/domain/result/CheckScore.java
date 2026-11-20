@@ -1,9 +1,11 @@
 package com.subscribers.gudogging.domain.check.domain.result;
 
+import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupQuestionType;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.function.ToIntFunction;
 
 /**
  * 활용도(%) 계산 (ERD 6.4). 반올림((이용도−1)÷4×40 + (만족도−1)÷4×25 + (계획−1)÷4×35), 계획이 1점이면 최대 59%.
@@ -35,6 +37,33 @@ public final class CheckScore {
             .divide(BigDecimal.valueOf(SCORE_STEPS), 0, RoundingMode.HALF_UP)
             .intValueExact();
         return planScore == LOWEST_PLAN_SCORE ? Math.min(percent, LOWEST_PLAN_MAX_PERCENT) : percent;
+    }
+
+    /**
+     * 여러 점검의 평균 활용도 (M-03 '지난 점검', ERD 6.4). 문항별 소수 평균을 공식에 그대로 넣고(정수 합계로 정확히 계산), 계획 평균을 반올림한 점수가 1이면 최대 59%.
+     */
+    public static int percentOfAverage(List<SubscriptionCheck> checks) {
+        int weightedSum = 0;
+        for (SubscriptionCheck check : checks) {
+            weightedSum += (check.getUsageScore() - 1) * USAGE_WEIGHT
+                + (check.getSatisfactionScore() - 1) * SATISFACTION_WEIGHT
+                + (check.getPlanScore() - 1) * PLAN_WEIGHT;
+        }
+        int percent = BigDecimal.valueOf(weightedSum)
+            .divide(BigDecimal.valueOf((long) SCORE_STEPS * checks.size()), 0, RoundingMode.HALF_UP)
+            .intValueExact();
+        int roundedPlanScore = roundedAverageOf(checks, SubscriptionCheck::getPlanScore);
+        return roundedPlanScore == LOWEST_PLAN_SCORE ? Math.min(percent, LOWEST_PLAN_MAX_PERCENT) : percent;
+    }
+
+    /**
+     * 문항 점수의 평균을 반올림(HALF_UP)한 점수 (1~5).
+     */
+    static int roundedAverageOf(List<SubscriptionCheck> checks, ToIntFunction<SubscriptionCheck> score) {
+        int sum = checks.stream().mapToInt(score).sum();
+        return BigDecimal.valueOf(sum)
+            .divide(BigDecimal.valueOf(checks.size()), 0, RoundingMode.HALF_UP)
+            .intValueExact();
     }
 
     /**
