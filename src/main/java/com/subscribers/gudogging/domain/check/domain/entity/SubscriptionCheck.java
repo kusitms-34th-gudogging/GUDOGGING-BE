@@ -1,6 +1,7 @@
 package com.subscribers.gudogging.domain.check.domain.entity;
 
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
+import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.global.common.entity.BaseEntity;
 import jakarta.persistence.Column;
@@ -13,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -56,12 +58,22 @@ public class SubscriptionCheck extends BaseEntity {
     @Column(name = "plan_score", nullable = false)
     private int planScore;
 
+    @Column(name = "score_percent", nullable = false)
+    private int scorePercent;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stage", nullable = false, length = 20)
+    private CheckResultStage stage;
+
     @Column(name = "memo", length = 100)
     private String memo;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "decision", length = 10)
     private CheckDecision decision;
+
+    @Column(name = "decided_at")
+    private LocalDateTime decidedAt;
 
     @Column(name = "cancel_reason_text", length = 100)
     private String cancelReasonText;
@@ -73,19 +85,24 @@ public class SubscriptionCheck extends BaseEntity {
         int usageScore,
         int satisfactionScore,
         int planScore,
+        int scorePercent,
+        CheckResultStage stage,
         String memo
     ) {
         return new SubscriptionCheck(subscription, targetBillingOn, category,
-            usageScore, satisfactionScore, planScore, memo, null, null);
+            usageScore, satisfactionScore, planScore, scorePercent, stage, memo, null, null, null);
     }
 
-    public void keep() {
+    public void keep(LocalDateTime decidedAt) {
         this.decision = CheckDecision.KEEP;
+        this.cancelReasonText = null;
+        this.decidedAt = decidedAt;
     }
 
-    public void cancel(String cancelReasonText) {
+    public void cancel(String cancelReasonText, LocalDateTime decidedAt) {
         this.decision = CheckDecision.CANCEL;
         this.cancelReasonText = cancelReasonText;
+        this.decidedAt = decidedAt;
     }
 
 }

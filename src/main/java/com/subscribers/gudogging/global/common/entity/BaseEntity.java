@@ -46,4 +46,12 @@ public abstract class BaseEntity {
         this.deletedAt = LocalDateTime.now();
     }
 
+    /**
+     * Soft Delete를 되돌린다. 고유 제약이 삭제된 행까지 검사하는 테이블에서 같은 값을 다시 쓸 때 새 행 대신 사용한다.
+     */
+    public void restore() {
+        this.deleted = false;
+        this.deletedAt = null;
+    }
+
 }
