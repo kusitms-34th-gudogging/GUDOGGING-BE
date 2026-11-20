@@ -146,7 +146,7 @@ error_handling:
     user:     "402xx — 40201: USER_NOT_FOUND (404)"
     catalog:  "403xx — 40301: SERVICE_NOT_FOUND (404)"
     subscription: "404xx — 40401: DUPLICATE_SUBSCRIPTION (409) | 40402: DUPLICATE_SERVICE_IN_REQUEST (400) | 40403: INVALID_SUBSCRIPTION_SORT (400) | 40404: SUBSCRIPTION_NOT_FOUND (404) | 40405: SUBSCRIPTION_NOT_ACTIVE (409) | 40406: SUBSCRIPTION_ALREADY_ENDED (409) | 40407: SUBSCRIPTION_NOT_ENDED (409)"
-    check: "405xx — 40501: CHECK_SUBSCRIPTION_NOT_ACTIVE (409) | 40502: INVALID_CHECKUP_ANSWERS (400)"
+    check: "405xx — 40501: CHECK_SUBSCRIPTION_NOT_ACTIVE (409) | 40502: INVALID_CHECKUP_ANSWERS (400) | 40503: CHECKUP_NOT_FOUND (404)"
     others:   "406xx~ — 도메인 구현 시점에 순서대로 할당"
     example:  "domain/example(Post)은 예시용 API — 대역 정책에서 제외 (현재 40201/40202 사용, 실제 도메인 구현 시 무시)"
   rule: "새 에러코드 추가 시 이 목록과 system-design.yaml domains 섹션을 반드시 업데이트할 것"

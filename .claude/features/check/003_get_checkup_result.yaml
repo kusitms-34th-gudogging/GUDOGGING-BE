@@ -1,0 +1,196 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-20
+
+meta:
+  id: CHECK-003
+  title: 구독 점검 결과 조회 (절약 제안은 빈 배열)
+  type: Feature
+  author: parkdo0918
+  issue: "#34"
+  depends_on:
+    - CHECK-001   # CheckupForm 선택지 문구, CheckUseCase · CheckController
+    - CHECK-002   # 제출 시 저장한 score_percent · stage · 응답 점수 · memo
+  sources:
+    - "노션 API 명세서 Checkup — 구독 점검 결과 조회 (절약 제안 포함) (2026-11-20 확인)"
+    - "화면설계서 CHK-008 K-80 점검 결과"
+
+overview:
+  summary: >
+    점검 결과 화면(K-80)에 필요한 점검 정보(활용도 · 단계 · 응답 문구 · 메모 · 가장 큰 영향 문항)와
+    같은 카테고리 구독 지출을 조회한다. 절약 제안(번들)은 데이터 기준이 정해지지 않아 이번에는 빈 배열 · 0으로 내려주고 후속 작업에서 채운다.
+  user_story: >
+    As a 로그인한 회원, I want to 방금 제출한 점검 결과를 보기를,
+    so that 활용도와 같은 카테고리 지출을 보고 유지 · 해지를 결정할 수 있다.
+  goals:
+    - 점검 결과 필드 (노션 응답 그대로)
+    - mainFactor 산정 규칙
+    - categorySpending (같은 카테고리 구독 중 월 환산 합계 · 목록)
+    - bundles = [], maxMonthlySaving = 0 (응답 형태는 유지)
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/checkups/{checkupId}
+      summary: 구독 점검 결과 조회
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: checkupId
+            type: UUID
+            required: true
+        body: 없음
+      response:
+        http_status: 200 OK
+        dto: CheckupResultResponse
+        wrapper: CommonResponse<CheckupResultResponse>
+        response_code: "CheckResponseCode.CHECKUP_RESULT_FOUND (200, HttpStatus.OK, \"점검 결과를 조회했습니다.\")"
+        fields:
+          - "checkupId (UUID)"
+          - "subscriptionId (UUID)"
+          - "serviceName (String): subscriptions.name"
+          - "nextBillingDate (LocalDate, nullable): 구독 중이면 오늘 이후(포함) 첫 결제일, 구독 종료면 null"
+          - "yearlyCost (long): 연 환산 금액 (subscription.yearlyAmount())"
+          - "score (int): score_percent"
+          - "stage (CheckResultStage): stage"
+          - "usageAnswer / satisfactionAnswer / planAnswer (String): 저장한 점수에 해당하는 선택지 문구 — 점검 당시 카테고리(subscription_checks.category)의 CheckupForm 선택지"
+          - "memo (String, nullable)"
+          - "bundles (List): 이번에는 항상 빈 배열 (후속 작업)"
+          - "maxMonthlySaving (long): 이번에는 항상 0 (후속 작업)"
+          - "mainFactor (CheckupQuestionType): 결과에 가장 큰 영향을 준 응답 1개"
+          - "categorySpending.category (Category): 점검 당시 카테고리"
+          - "categorySpending.monthlyTotal (long): 같은 카테고리 구독 중 구독들의 월 환산 합계"
+          - "categorySpending.subscriptionCount (int): 그 구독 개수"
+          - "categorySpending.items (List): serviceName · logoUrl(nullable) · monthlyAmount(long)"
+          - "categorySpending.otherCount (int): '그 외 n' (5개 이하면 0)"
+        mock: |
+          {
+            "code": 200,
+            "message": "점검 결과를 조회했습니다.",
+            "data": {
+              "checkupId": "b1d7a2c4-5a4d-4e7b-9c21-000000000012",
+              "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000001",
+              "serviceName": "넷플릭스",
+              "nextBillingDate": "2026-12-15",
+              "yearlyCost": 204000,
+              "score": 28,
+              "stage": "CANCEL_RECOMMENDED",
+              "usageAnswer": "안 봤어요",
+              "satisfactionAnswer": "보통이에요",
+              "planAnswer": "아직 잘 모르겠어요",
+              "memo": null,
+              "bundles": [],
+              "maxMonthlySaving": 0,
+              "mainFactor": "USAGE",
+              "categorySpending": {
+                "category": "VIDEO_OTT",
+                "monthlyTotal": 41900,
+                "subscriptionCount": 3,
+                "items": [
+                  { "serviceName": "넷플릭스", "logoUrl": "https://...", "monthlyAmount": 13500 },
+                  { "serviceName": "유튜브 프리미엄", "logoUrl": "https://...", "monthlyAmount": 14900 }
+                ],
+                "otherCount": 0
+              }
+            }
+          }
+
+  main_factor_rules:
+    source: "노션 mainFactor 설명 + 화면설계서 K-80 '2줄 보조 문구'"
+    weights: "이용도 40 · 만족도 25 · 계획 35"
+    keep_side: "활용도 60 이상 → 가중 점수 (응답−1)÷4×가중치가 가장 큰 문항"
+    cancel_side: "활용도 60 미만 → 가중 감점 (5−응답)÷4×가중치가 가장 큰 문항"
+    tie_break: "같으면 계획 > 이용도 > 만족도"
+    plan_lowest: "계획 1점이면 PLAN 고정"
+    examples:
+      - "1 · 3 · 3 (활용도 30) → 감점 이용도 40 · 만족도 12.5 · 계획 17.5 → USAGE"
+      - "4 · 5 · 5 (90) → 가중 점수 이용도 30 · 만족도 25 · 계획 35 → PLAN"
+      - "5 · 5 · 1 (59) → 계획 1점 → PLAN"
+    client_only: "보조 문구('최근 한 달 동안 거의 이용하지 않았어요.' 등) · 추천 문구 · 유형명은 클라이언트가 mainFactor · stage로 선택"
+    location: "CheckScore에 mainFactorOf(usage, satisfaction, plan, scorePercent) 추가 (domain/check/domain/result)"
+
+  category_spending_rules:
+    source: "노션 categorySpending 설명 + 화면설계서 K-80 '3. {카테고리} 구독'"
+    scope: "회원의 구독 중(ACTIVE) · 삭제되지 않은 구독 중 category = 점검 당시 카테고리"
+    amount: "월 환산 금액 (subscription.monthlyAmount()) — 연 · 주 · 일 단위도 월 환산"
+    checked_subscription: "점검한 구독은 목록 맨 위. 점검한 구독이 구독 종료 상태여도 맨 위에 포함하고 합계 · 개수에도 넣음 (결과 화면이 그 구독 기준이므로)"
+    order: "점검한 구독 다음은 월 환산 금액이 큰 순 (같으면 서비스명 순)"
+    limit: "5개 이하면 전부, 5개 초과면 상위 4개(점검한 구독 포함) + otherCount = 전체 − 4"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (CheckController)
+      action: "@CurrentUserId userId, @PathVariable checkupId → CheckUseCase.getCheckupResult(userId, checkupId) → CommonResponse.success(CHECKUP_RESULT_FOUND, response)"
+    - step: 2
+      layer: UseCase (CheckUseCase)
+      action: >
+        회원 확인 → 본인 점검 조회(없으면 CheckupNotFoundException 40503)
+        → 회원의 구독 목록 조회 → CheckupResultResponse.of(check, subscriptions, LocalDate.now())
+      transaction: "readOnly (클래스 레벨)"
+    - step: 3
+      layer: Domain Service
+      action: >
+        SubscriptionCheckGetService.findCheck(user, checkupId) — 신규. 점검 + 구독 + 서비스 fetch join,
+        점검 · 구독 모두 deleted = false, 구독의 user = 회원 /
+        SubscriptionGetService.findSubscriptions(user) — 기존 재사용 (서비스 fetch join)
+
+  error_codes:
+    - code: 40503
+      name: CHECKUP_NOT_FOUND
+      status: 404 NOT_FOUND
+      message: "점검 기록을 찾을 수 없습니다."
+      note: "신규 — 없거나 삭제됐거나 다른 회원의 점검(구독 삭제 포함)"
+    - code: 40201
+      name: USER_NOT_FOUND
+      note: 기존
+
+  validation_rules:
+    - "본인 구독의 점검만 조회 — 다른 회원 · 삭제된 점검 · 삭제된 구독의 점검은 40503"
+    - "구독 종료된 구독의 점검도 조회 가능 (읽기 전용). 이때 nextBillingDate = null"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.check"
+  files:
+    - "presentation/CheckController.java (수정 — getCheckupResult)"
+    - "presentation/response/CheckResponseCode.java (수정 — CHECKUP_RESULT_FOUND)"
+    - "application/usecase/CheckUseCase.java (수정 — getCheckupResult)"
+    - "application/dto/response/CheckupResultResponse.java (신규, record + of)"
+    - "application/dto/response/CategorySpendingResponse.java (신규, record + of)"
+    - "application/dto/response/CategorySpendingItemResponse.java (신규, record + from)"
+    - "application/dto/response/CheckupBundleResponse.java (신규, record — 필드만 정의, 이번에는 사용 안 함)"
+    - "application/exception/CheckErrorCode.java (수정 — 40503)"
+    - "application/exception/CheckupNotFoundException.java (신규)"
+    - "domain/form/CheckupForm.java (수정 — 점수 → 선택지 문구 조회 usageOption · satisfactionOption · planOption)"
+    - "domain/result/CheckScore.java (수정 — mainFactorOf)"
+    - "domain/service/SubscriptionCheckGetService.java (수정 — findCheck)"
+    - "domain/repository/SubscriptionCheckRepository.java (수정 — findWithSubscriptionByIdAndUser)"
+
+testing_strategy:
+  # CheckUseCaseTest — 기존 Mock 그대로
+  happy_path:
+    - "getCheckupResult: 점검 · 구독 정보, 활용도 · 단계, 메모, 1년 비용, 다음 결제일을 반환한다"
+    - "getCheckupResult: 저장한 점수를 점검 당시 카테고리의 선택지 문구로 바꿔 반환한다 (영상 이용도 1점 → '안 봤어요')"
+    - "getCheckupResult: bundles는 빈 배열, maxMonthlySaving은 0이다"
+    - "getCheckupResult: 활용도 60 미만이면 가중 감점이 가장 큰 문항을 mainFactor로 반환한다"
+    - "getCheckupResult: 활용도 60 이상이면 가중 점수가 가장 큰 문항을 mainFactor로 반환한다"
+    - "getCheckupResult: 같은 카테고리 구독 중 구독의 월 환산 합계 · 개수 · 목록(점검한 구독 맨 위, 이후 금액 큰 순)을 반환한다"
+  edge_cases:
+    - "getCheckupResult: 계획이 1점이면 mainFactor는 PLAN이다"
+    - "getCheckupResult: 연 결제 구독은 월 환산해 합산한다"
+    - "getCheckupResult: 다른 카테고리 · 구독 종료 구독은 카테고리 지출에서 뺀다"
+    - "getCheckupResult: 같은 카테고리 구독이 6개면 상위 4개와 otherCount 2를 반환한다"
+    - "getCheckupResult: 구독 종료된 구독의 점검이면 nextBillingDate는 null이고 점검한 구독은 카테고리 목록 맨 위에 포함된다"
+    - "getCheckupResult: 점검이 없거나 다른 회원 것이면 CHECKUP_NOT_FOUND(40503) 예외를 던진다"
+    - "getCheckupResult: 회원이 없으면 USER_NOT_FOUND 예외를 던진다"
+  test_files:
+    - "test/.../domain/check/application/usecase/CheckUseCaseTest.java (수정 — @Nested GetCheckupResult)"
+
+notes:
+  - "[범위] 절약 제안(bundles · maxMonthlySaving)은 후속 작업 — 번들 CSV에 절약 금액 기준 · 태그 · 조건 · 가격 유형이 없어 기획 확인 필요 (2026-11-20 합의). 응답 필드는 지금부터 유지"
+  - "[가정] 구독 종료된 구독의 점검도 조회 가능, nextBillingDate = null"
+  - "[가정] 카테고리 지출 기준 카테고리는 점검 당시 카테고리(subscription_checks.category)"
+  - "[가정] 점검한 구독이 구독 종료 상태여도 카테고리 지출 맨 위 · 합계에 포함"
+  - "[가정] 점검한 구독 외 정렬은 월 환산 금액 큰 순, 같으면 서비스명 순 ('상위 4개' 기준)"
+  - "[참고] 동점 우선순위(계획 > 이용도 > 만족도)는 구현했지만 가중치 40 · 25 · 35로는 0이 아닌 동점이 생기지 않아 테스트로 재현할 수 없음 (0점 동점은 계획 1점 규칙 · 활용도 구간으로 생기지 않음)"
+  - "[참고] 노션 응답 yearlyCost · maxMonthlySaving · monthlyAmount 타입은 Integer로 적혀 있으나 기존 금액 필드처럼 long 사용"
