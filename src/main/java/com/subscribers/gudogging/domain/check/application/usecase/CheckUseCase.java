@@ -3,8 +3,10 @@ package com.subscribers.gudogging.domain.check.application.usecase;
 import com.subscribers.gudogging.domain.check.application.dto.request.CheckupAnswerRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupResultResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
 import com.subscribers.gudogging.domain.check.application.exception.CheckSubscriptionNotActiveException;
+import com.subscribers.gudogging.domain.check.application.exception.CheckupNotFoundException;
 import com.subscribers.gudogging.domain.check.application.exception.InvalidCheckupAnswersException;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupQuestionType;
@@ -21,6 +23,7 @@ import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import java.time.LocalDate;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -66,6 +69,20 @@ public class CheckUseCase {
 
         SubscriptionCheck saved = subscriptionCheckCreateService.createCheck(subscriptionCheck);
         return CheckupSubmissionResponse.from(saved);
+    }
+
+    /**
+     * 점검 결과 화면(K-80) — 활용도 · 단계 · 응답 문구 · 메모 · 가장 큰 영향 문항과 같은 카테고리 지출. 구독 종료된 구독의 점검도 조회할 수 있다.
+     * 절약 제안(번들)은 데이터 기준이 정해지기 전까지 빈 배열로 내려준다.
+     */
+    public CheckupResultResponse getCheckupResult(UUID userId, UUID checkupId) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        SubscriptionCheck check = subscriptionCheckGetService.findCheck(user, checkupId)
+            .orElseThrow(CheckupNotFoundException::new);
+
+        List<Subscription> subscriptions = subscriptionGetService.findSubscriptions(user);
+        return CheckupResultResponse.of(check, subscriptions, LocalDate.now());
     }
 
     /**
