@@ -50,4 +50,4 @@ business_logic:
 notes:
   - "SubscriptionCheck → 이유 목록은 단방향 @ManyToOne만 매핑 (@OneToMany 없음). 여러 이유는 saveAll()로 한 번에 저장"
   - "K-90 '건너뛰기'를 누르면 행 없음 (SubscriptionCheck.decision = CANCEL만 저장)"
-  - "저장한 이유는 구독 종료 상세(M-05) '마지막 점검'과 재등록 때 표시"
+  - "저장한 이유는 구독 종료 상세(M-05) '마지막 점검'에 표시 — 구독 상세(SUBSCRIPTION-004)가 최근 점검 1건의 이유를 SubscriptionCheckCancelReasonGetService.findCancelReasonsByChecks로 조회해 latestCheckup.cancelReasons(K-90 순서 = enum 순서)로 내려주고, 직접 입력 문장은 SubscriptionCheck.cancelReasonText. 문구는 클라이언트"

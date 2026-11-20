@@ -96,7 +96,8 @@ business_logic:
 
 
 notes:
-  - "M-03 '지난 점검'은 오늘 기준 최근 90일 기록의 문항별 소수 평균으로 활용도를 계산하고, 표시 문구는 평균을 반올림한 점수 사용. 계획 평균을 반올림한 값이 1이면 보정 적용 (ERD 6.4) — 여러 기록을 다루므로 도메인 서비스 또는 값 객체에서 계산"
+  - "M-03 '지난 점검'(SUBSCRIPTION-004): 이번 달 포함 최근 3개월(두 달 전 1일 00:00 ~ 오늘) 점검을 SubscriptionCheckGetService.findChecksCreatedSince(subscription, from)로 최신순 조회 → check/domain/result/CheckAverage.of(checks). 1건이면 그 기록 그대로, 여러 건이면 표시 문구는 문항별 평균 HALF_UP 반올림 점수(이용도는 기간 내 최근 점검 카테고리 선택지), 활용도는 CheckScore.percentOfAverage — 소수 평균 대입, 반올림한 계획 점수가 1이면 59% 상한 (ERD 6.4)"
+  - "M-05 '마지막 점검' · C-03 '최근 점검'(SUBSCRIPTION-004): findLatestCheck 1건 — 점검일 = created_at 날짜, 해지 이유는 그 점검의 subscription_check_cancel_reasons 코드(K-90 순서) + cancel_reason_text"
   - "점검 도중 임시 응답(K-11 이어서 진행)은 서버에 저장하지 않음 — 클라이언트 로컬"
   - "D-1 해지 확인 알림(CANCEL_CONFIRM) 대상: 이번 주기 최근 점검이 decision = CANCEL인데 구독이 아직 ACTIVE"
   - "홈 '내 구독 사용 현황': 가장 최근 점검의 활용도 < 60%이고 decision != KEEP인 구독"
