@@ -21,6 +21,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDeletionResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDetailResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
@@ -228,11 +229,40 @@ public class SubscriptionUseCase {
         List<SubscriptionDraftItem> items = request.items().stream()
             .map(this::toDraftItem)
             .toList();
-        SubscriptionDraft subscriptionDraft = SubscriptionDraft.of(userId, request.lastStep(), items,
-            LocalDateTime.now());
+        SubscriptionDraft subscriptionDraft = SubscriptionDraft.of(userId, request.lastStep(),
+            request.editingItemIndex(), items, LocalDateTime.now());
         subscriptionDraftService.saveDraft(subscriptionDraft);
 
         return SubscriptionDraftSaveResponse.from(subscriptionDraft);
+    }
+
+    /**
+     * 회원의 구독 등록 임시저장을 조회한다 (Redis). 없으면 null. 사전 등록 서비스 항목에는 조회 시점의 서비스 로고를 함께 담는다.
+     */
+    public SubscriptionDraftResponse getSubscriptionDraft(UUID userId) {
+        userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+
+        return subscriptionDraftService.findDraft(userId)
+            .map(subscriptionDraft -> SubscriptionDraftResponse.of(subscriptionDraft,
+                findLogoUrlsByServiceId(subscriptionDraft)))
+            .orElse(null);
+    }
+
+    /**
+     * 임시저장한 사전 등록 서비스의 로고를 조회한다. 비활성 · 삭제 서비스와 로고가 없는 서비스는 넣지 않는다 (응답 logoUrl = null).
+     */
+    private Map<UUID, String> findLogoUrlsByServiceId(SubscriptionDraft subscriptionDraft) {
+        Set<UUID> serviceIds = subscriptionDraft.items().stream()
+            .map(SubscriptionDraftItem::serviceId)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toSet());
+        if (serviceIds.isEmpty()) {
+            return Map.of();
+        }
+        return serviceCatalogGetService.findActiveServicesByIds(serviceIds).stream()
+            .filter(service -> service.getLogoUrl() != null)
+            .collect(Collectors.toMap(ServiceCatalog::getId, ServiceCatalog::getLogoUrl));
     }
 
     /**
