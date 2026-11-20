@@ -1,5 +1,6 @@
 package com.subscribers.gudogging.domain.subscription.presentation;
 
+import com.subscribers.gudogging.domain.subscription.application.dto.request.ChangeSubscriptionSteadyRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
@@ -16,6 +17,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSteadyResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import com.subscribers.gudogging.domain.subscription.presentation.response.SubscriptionResponseCode;
@@ -242,6 +244,40 @@ public class SubscriptionController {
         SubscriptionReactivationResponse response = subscriptionUseCase.reactivateSubscription(userId,
             subscriptionId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_REACTIVATED, response);
+    }
+
+    @Operation(
+        summary = "꾸준히 쓰는 구독 설정",
+        description = """
+            **기능**
+            구독 상세(M-03)의 '꾸준히 쓰는 구독' 토글('점검 알림 없이 그대로 유지해요') 값을 저장합니다.
+            - 켜면(true): D-3 점검 알림을 보내지 않고, 홈 점검 유도 · 결제 예정 점검 버튼(홈 '구독 점검하기')에서 빠집니다.
+            - 켜도 그대로: D-1 결제 알림 발송(토글과 관계없음), 구독 목록 · 캘린더 · 결제 정보 표시, 상세 '구독 점검' 버튼으로 직접 점검 가능
+            - 끄면(false): 다음 결제 일정부터 점검 알림을 다시 발송합니다.
+            현재 값과 같은 값을 보내도 성공합니다.
+            - 구독 종료(ENDED) 구독이면 40405(409)
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - isSteady가 없거나 null이면 40001(400), 불리언이 아니면 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+            - isSteady (Boolean, 필수): 꾸준히 쓰는 구독 여부
+            
+            **응답값**
+            - subscriptionId (UUID): 구독 ID
+            - isSteady (Boolean): 변경된 값
+            """
+    )
+    @PatchMapping("/{subscriptionId}/steady")
+    public CommonResponse<SubscriptionSteadyResponse> changeSubscriptionSteady(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId,
+        @RequestBody @Valid ChangeSubscriptionSteadyRequest request
+    ) {
+        SubscriptionSteadyResponse response = subscriptionUseCase.changeSubscriptionSteady(userId, subscriptionId,
+            request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_STEADY_CHANGED, response);
     }
 
     @Operation(
