@@ -3,6 +3,7 @@ package com.subscribers.gudogging.domain.check.domain.form;
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 카테고리별 점검 문항 문구 상수 (ERD 5.2 문항 · 보조 문구 · 선택지, 화면설계서 K-11~K-70 메모 예시 문구 · 칩).
@@ -148,8 +149,11 @@ public enum CheckupForm {
         return "을".equals(objectParticle) ? "으로" : "로";
     }
 
+    /**
+     * 천 단위 쉼표 (13,500). JVM 기본 로케일과 무관하게 한국 표기로 고정한다.
+     */
     private static String money(long amount) {
-        return "%,d".formatted(amount);
+        return String.format(Locale.KOREA, "%,d", amount);
     }
 
     private static final class Usage {
