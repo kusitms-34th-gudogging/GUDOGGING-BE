@@ -1,6 +1,6 @@
 # Feature Specification
 # Status: Implemented
-# Last Updated: 2026-11-20 (구현 완료)
+# Last Updated: 2026-11-20 (구현 완료, SUBSCRIPTION-011에서 lastStep INPUT_SUBSCRIPTION · editingItemIndex 확장)
 
 meta:
   id: SUBSCRIPTION-009
@@ -43,7 +43,11 @@ technical_spec:
           - name: lastStep
             type: SubscriptionDraftStep
             required: true
-            validation: "@NotNull (SELECT_SERVICES = A-02 / CONFIRM_SUBSCRIPTIONS = A-04). 불러오기 때 이 화면으로 복원"
+            validation: "@NotNull (SELECT_SERVICES = A-02 / CONFIRM_SUBSCRIPTIONS = A-04 / INPUT_SUBSCRIPTION = A-03 · A-03s — SUBSCRIPTION-011에서 추가). 불러오기 때 이 화면으로 복원"
+          - name: editingItemIndex
+            type: Integer
+            required: false
+            validation: "SUBSCRIPTION-011에서 추가. lastStep = INPUT_SUBSCRIPTION일 때 입력 · 수정 중이던 items 순번(0부터), 새 직접 입력이면 null. 다른 lastStep이면 null — @AssertTrue isEditingItemIndexValid()"
           - name: items
             type: List<SubscriptionDraftItemRequest>
             required: true
@@ -142,7 +146,7 @@ technical_spec:
       action: >
         항목마다 SubscriptionDraftItem.of(serviceId, serviceName.strip(), category, amount, billingCycleValue,
         billingCycleUnit, nextBillingDate, paymentMethod) (UseCase private toDraftItem) →
-        SubscriptionDraft.of(userId, lastStep, items, savedAt). 순수 값 객체 (JPA 엔티티 아님)
+        SubscriptionDraft.of(userId, lastStep, editingItemIndex, items, savedAt) (editingItemIndex는 SUBSCRIPTION-011). 순수 값 객체 (JPA 엔티티 아님)
     - step: 6
       layer: Domain Service (SubscriptionDraftService — 신규)
       action: "saveDraft(SubscriptionDraft) → SubscriptionDraftRepository.save (RefreshTokenService 패턴)"
@@ -157,7 +161,7 @@ technical_spec:
     note: "MySQL 변경 없음 (엔티티 · 테이블 추가 없음)"
     redis:
       key: "subscription-draft:{userId}"
-      value: "SubscriptionDraft JSON { userId, lastStep, items[], savedAt }"
+      value: "SubscriptionDraft JSON { userId, lastStep, editingItemIndex, items[], savedAt } (editingItemIndex는 SUBSCRIPTION-011)"
       ttl: "없음 (Notion '임시저장은 따로 만료되지 않음')"
       deleted_when: "SUBSCRIPTION-001 등록 성공 (이 스펙), DELETE /api/v1/subscriptions/drafts (SUBSCRIPTION-010)"
     reads:
@@ -198,7 +202,8 @@ technical_spec:
     - "본인 임시저장만 저장 — userId는 Access Token에서만 받는다"
     - "회원당 1건 — 기존 임시저장은 새 요청으로 통째로 덮어씀 (부분 병합 없음)"
     - "items 1~50개 (Notion '1개 이상', 상한은 SUBSCRIPTION-001과 동일)"
-    - "lastStep 필수 — SELECT_SERVICES / CONFIRM_SUBSCRIPTIONS"
+    - "lastStep 필수 — SELECT_SERVICES / CONFIRM_SUBSCRIPTIONS / INPUT_SUBSCRIPTION (SUBSCRIPTION-011)"
+    - "editingItemIndex는 lastStep = INPUT_SUBSCRIPTION일 때만 — null 또는 items 범위 안 순번 (SUBSCRIPTION-011)"
     - "serviceName 필수(strip 후 저장), 직접 입력 서비스는 strip 후 1~30자"
     - "사전 등록 서비스: 결제 정보 6개 전부 null 또는 전부 입력 (일부 입력 저장 불가 — Figma A-03)"
     - "직접 입력 서비스: 결제 정보 6개 전부 입력"
@@ -218,8 +223,8 @@ package_structure:
     - "application/dto/response/SubscriptionDraftSaveResponse.java (신규, record + from(SubscriptionDraft))"
     - "domain/draft/SubscriptionDraft.java (신규, record + of())"
     - "domain/draft/SubscriptionDraftItem.java (신규, record + of())"
-    - "domain/draft/SubscriptionDraftStep.java (신규, enum 값만: SELECT_SERVICES, CONFIRM_SUBSCRIPTIONS)"
-    - "domain/repository/SubscriptionDraftRepository.java (신규, interface: save, deleteByUserId — 조회는 불러오기 스펙에서 추가)"
+    - "domain/draft/SubscriptionDraftStep.java (신규, enum 값만: SELECT_SERVICES, CONFIRM_SUBSCRIPTIONS — INPUT_SUBSCRIPTION은 SUBSCRIPTION-011에서 추가)"
+    - "domain/repository/SubscriptionDraftRepository.java (신규, interface: save, deleteByUserId — findByUserId는 SUBSCRIPTION-011에서 추가)"
     - "domain/service/SubscriptionDraftService.java (신규: saveDraft, deleteDraft)"
     - "infrastructure/RedisSubscriptionDraftRepository.java (신규, StringRedisTemplate + JsonMapper)"
 
@@ -243,8 +248,8 @@ notes:
   - "결정 (2026-11-20, 사용자): 등록 성공 시 임시저장 삭제는 서버가 보장 (이 스펙에 포함). 클라이언트가 DELETE를 빠뜨려도 재노출되지 않음"
   - "ERD 10.1 #1(2026-11-16 '구독 등록 임시 정보는 클라이언트 로컬')을 이 스펙으로 대체 — 점검 중 임시 응답은 클라이언트 로컬 유지"
   - "Figma 기준 항목 상태: A-04 항목은 '결제 정보 미입력'(사전 등록 서비스를 A-02에서 고르기만 함) 또는 '입력 완료'(A-03 / A-03s 저장하기) 두 가지뿐. A-03의 저장하지 않은 입력값은 임시저장 대상이 아님 ('필수 정보 일부만 입력한 상태에서 임시 저장 불가능')"
-  - "lastStep: A-03 / A-03s의 미저장 입력은 남지 않으므로 A-03에서 이탈해도 복원 지점은 A-04(CONFIRM_SUBSCRIPTIONS). 그래서 A-02 · A-04 두 값만 둠. 고정 값이라 코딩 규칙(고정 데이터 → Enum)대로 Enum"
-  - "[가정] 클라이언트 호출 시점: A-04 목록이 바뀔 때(A-02 선택 완료, A-03 / A-03s 저장하기, A-02로 돌아가 선택 추가 · 해제)와 A-02 ⇄ A-04 이동 시. 키 입력마다 호출하지 않음. 선택이 0개가 되면 PUT 대신 DELETE"
+  - "lastStep: [변경 — SUBSCRIPTION-011, 2026-11-20 사용자 '무조건 Figma와 동일'] 처음에는 'A-03에서 이탈해도 복원 지점은 A-04'로 A-02 · A-04 두 값만 뒀으나, Figma A-01s '이전에 등록을 중단한 화면으로 이동'에 맞춰 INPUT_SUBSCRIPTION(A-03 · A-03s) + editingItemIndex 추가. A-03 / A-03s의 미저장 입력은 여전히 저장하지 않음. 고정 값이라 코딩 규칙(고정 데이터 → Enum)대로 Enum"
+  - "[가정] 클라이언트 호출 시점: A-04 목록이 바뀔 때(A-02 선택 완료, A-03 / A-03s 저장하기, A-02로 돌아가 선택 추가 · 해제)와 A-02 ⇄ A-04 이동 시 (A-03 / A-03s 이동 시점은 SUBSCRIPTION-011 save_api_extension.client_call_timing). 키 입력마다 호출하지 않음. 선택이 0개가 되면 PUT 대신 DELETE"
   - "[가정] 범위는 직접 등록 흐름(A-02 · A-03 · A-04)만 — Figma A-01s · Notion lastStep 예시가 직접 등록 화면만 가리킴. 스크린샷(A-09) · Gmail(A-13) 결과 화면 임시저장은 범위 외"
   - "[가정] 등록 성공 시 삭제는 source(MANUAL / SCREENSHOT / GMAIL)와 무관 (Notion '등록 성공 시 서버 임시저장 삭제'에 구분 없음)"
   - "[가정] 등록 트랜잭션 안에서 deleteDraft 호출 — Redis 삭제가 실패하면 예외로 등록도 롤백되어 상태가 어긋나지 않음. 반대로 삭제 후 커밋이 실패하는 경우(flush 이후라 드묾)는 임시저장만 사라지고 앱 화면의 입력은 남아 있어 감수"
