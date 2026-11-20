@@ -235,6 +235,17 @@ public class SubscriptionUseCase {
         return SubscriptionDraftSaveResponse.from(subscriptionDraft);
     }
 
+    /**
+     * 회원의 구독 등록 임시저장을 삭제한다 (Redis). 임시저장이 없어도 성공한다.
+     */
+    @Transactional
+    public void deleteSubscriptionDraft(UUID userId) {
+        userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+
+        subscriptionDraftService.deleteDraft(userId);
+    }
+
     private SubscriptionDraftItem toDraftItem(SubscriptionDraftItemRequest item) {
         return SubscriptionDraftItem.of(item.serviceId(), item.serviceName().strip(), item.category(), item.amount(),
             item.billingCycleValue(), item.billingCycleUnit(), item.nextBillingDate(), item.paymentMethod());
