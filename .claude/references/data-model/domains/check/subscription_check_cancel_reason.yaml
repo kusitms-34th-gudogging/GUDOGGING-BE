@@ -1,5 +1,5 @@
 # SubscriptionCheckCancelReason Entity
-# Last Updated: 2026-11-16
+# Last Updated: 2026-11-20 (CHECK-004 재결정 시 restore)
 # Source: docs/ERD.md v1.1 §4.6 subscription_check_cancel_reasons, §5.6 CancelReason
 
 entity: SUBSCRIPTION_CHECK_CANCEL_REASON
@@ -37,15 +37,15 @@ enums:
     - CUSTOM: "직접 입력 — 내용은 subscription_checks.cancel_reason_text"
 
 constants:
-  labels: "(Category, CancelReason) 조합별 표시 문구 상수 (ERD 5.6, CHK-009 원문)"
+  labels: "(Category, CancelReason) 조합별 표시 문구는 클라이언트가 표시 (CHK-009). 서버는 코드만 주고받음 — 결정 API · 구독 상세 모두 코드 (2026-11-20 확인)"
 
 constraints:
-  - "UNIQUE (subscription_check_id, reason) — uk_subscription_check_cancel_reasons_check_reason"
+  - "UNIQUE (subscription_check_id, reason) — uk_subscription_check_cancel_reasons_check_reason. Soft Delete된 행도 포함해 검사하므로 같은 이유를 다시 저장할 때는 새 행 대신 기존 행을 restore() (CHECK-004)"
   - "조회는 항상 deleted = false 조건"
 
 business_logic:
   - "create(subscriptionCheck, reason): 정적 팩토리"
-  - "softDelete(): → BaseEntity 위임"
+  - "softDelete() / restore(): → BaseEntity 위임 (restore는 CHECK-004에서 BaseEntity에 추가)"
 
 notes:
   - "SubscriptionCheck → 이유 목록은 단방향 @ManyToOne만 매핑 (@OneToMany 없음). 여러 이유는 saveAll()로 한 번에 저장"

@@ -1,5 +1,5 @@
 # SubscriptionCheck Entity
-# Last Updated: 2026-11-20 (CHECK-003 결과 조회 — 응답 문구 · mainFactor · 카테고리 지출)
+# Last Updated: 2026-11-20 (CHECK-004 유지/해지 결정)
 # Source: docs/ERD.md v1.1 §4.5 subscription_checks, §5.5 점검 문항, §6.4 점검 결과
 
 entity: SUBSCRIPTION_CHECK
@@ -90,7 +90,7 @@ constraints:
 
 business_logic:
   - "create(subscription, targetBillingOn, category, usageScore, satisfactionScore, planScore, scorePercent, stage, memo): 정적 팩토리. K-70 '결과 보기' 시 저장 — CheckUseCase.submitCheckup (CHECK-002): targetBillingOn = 제출 시점 다음 결제일, category = 구독 카테고리 스냅샷, memo는 strip 후 비면 NULL"
-  - "keep(decidedAt): decision = KEEP, decidedAt 저장 (K-80 '유지하기')"
+  - "keep(decidedAt): decision = KEEP, cancelReasonText = null, decidedAt 저장 (K-80 '유지하기')"
   - "cancel(cancelReasonText, decidedAt): decision = CANCEL, decidedAt 저장 (K-90). 선택한 이유 목록은 SubscriptionCheckCancelReason으로 별도 저장"
   - "softDelete(): 구독 삭제·회원 탈퇴 시 → BaseEntity 위임"
 
@@ -100,6 +100,7 @@ notes:
   - "점검 도중 임시 응답(K-11 이어서 진행)은 서버에 저장하지 않음 — 클라이언트 로컬"
   - "D-1 해지 확인 알림(CANCEL_CONFIRM) 대상: 이번 주기 최근 점검이 decision = CANCEL인데 구독이 아직 ACTIVE"
   - "홈 '내 구독 사용 현황': 가장 최근 점검의 활용도 < 60%이고 decision != KEEP인 구독"
+  - "유지/해지 결정(CHECK-004): CheckUseCase.decideCheckup — 같은 점검에 다시 결정하면 덮어씀. 해지 이유는 요청과 맞춤(빠진 이유 Soft Delete, 예전에 지운 이유는 restore), 결정과 맞지 않는 값(KEEP의 이유, CUSTOM 없는 텍스트)은 무시. 본인 점검이면 지난 점검 · 구독 종료 구독의 점검도 결정 가능"
   - "점검 결과 조회(K-80, CHECK-003): SubscriptionCheckGetService.findCheck(user, checkupId) — 점검 · 구독 · 서비스 fetch join, 점검 · 구독 deleted = false. 응답 문구는 점검 당시 category의 CheckupForm.answerOf, mainFactor는 CheckScore.mainFactorOf"
   - "가장 최근 점검(지난 메모 lastMemo)은 SubscriptionCheckGetService.findLatestCheck(subscription) — deleted = false 중 created_at 최신 1건 (CHECK-001)"
   - "활용도·결과 단계·영향 문항 계산(ERD 6.4)과 memo 공백 → null 처리는 기능 구현 시 추가. 계산·검색·표시 로직은 엔티티에 두지 않음 — 해당 기능 스펙 구현 시 추가 (2026-11-16 결정, 기존 User/Post 방식)"
