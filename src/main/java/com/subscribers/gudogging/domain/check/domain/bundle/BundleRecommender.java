@@ -6,6 +6,7 @@ import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleDiscountTarg
 import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleProviderType;
 import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleRecommendType;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
@@ -40,7 +41,7 @@ public final class BundleRecommender {
         Map<String, Subscription> subscriptionsByService = subscriptions.stream()
             .filter(subscription -> subscription.getServiceCatalog() != null)
             .collect(Collectors.toMap(subscription -> subscription.getServiceCatalog().getName(), Function.identity(),
-                (first, second) -> first, LinkedHashMap::new));
+                BundleRecommender::preferActive, LinkedHashMap::new));
 
         List<BundleRecommendation> recommendations = candidates.stream()
             .map(bundle -> recommendationOf(bundle, subscriptionsByService))
@@ -87,7 +88,7 @@ public final class BundleRecommender {
     }
 
     /**
-     * 최대 절약(카드) — 할인 대상 구독마다 할인율(내림) 또는 min(할인액, 금액)을 더함. 택1 그룹은 가장 비싼 1개에만 적용.
+     * 최대 절약(카드) — 할인 대상 구독마다 할인율(내림) 또는 min(할인액, 금액)을 더함. 택1 그룹은 가장 비싼 1개에만 적용, 카테고리 할인은 고정 포함 서비스에만 적용.
      */
     private static Optional<BundleRecommendation> maxSaving(Bundle bundle,
                                                           Map<String, Subscription> subscriptionsByService) {
@@ -110,7 +111,7 @@ public final class BundleRecommender {
             List<Subscription> targets = switch (discount.target()) {
                 case ALL -> all;
                 case FIXED, A, B -> groups.get(discount.target());
-                case CATEGORY -> all.stream()
+                case CATEGORY -> groups.get(BundleDiscountTarget.FIXED).stream()
                     .filter(subscription -> subscription.getServiceCatalog().getCategory() == discount.category())
                     .toList();
             };
@@ -136,6 +137,15 @@ public final class BundleRecommender {
             ? appliedPercents.iterator().next()
             : (int) (saving * PERCENT / targetAmount);
         return Optional.of(new BundleRecommendation(bundle, saving, rate, null));
+    }
+
+    /**
+     * 같은 요금제 구독이 여럿이면 구독 중(ACTIVE)인 것 — ACTIVE는 요금제마다 최대 1개. 둘 다 종료면 먼저 나온 것.
+     */
+    private static Subscription preferActive(Subscription first, Subscription second) {
+        return first.getStatus() != SubscriptionStatus.ACTIVE && second.getStatus() == SubscriptionStatus.ACTIVE
+            ? second
+            : first;
     }
 
     private static List<Subscription> includedSubscriptions(Bundle bundle,

@@ -1333,6 +1333,42 @@ class CheckUseCaseTest {
         }
 
         @Test
+        @DisplayName("카드: 카테고리 할인은 고정 포함 서비스에만 적용하고 택1 그룹 서비스에는 적용하지 않는다")
+        void appliesCategoryDiscountToFixedOnly() {
+            // given — 고정 넷플릭스 13,500(영상) · 택1 유튜브 14,900(영상), 영상 50% → 넷플릭스만 6,750
+            Subscription netflix = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            Subscription youtube = plan("YouTube Premium", Category.VIDEO_OTT, 14900);
+            Bundle bundle = card("카테고리 카드", List.of("Netflix 스탠다드"), List.of("YouTube Premium"), List.of(),
+                List.of(new BundleDiscount(BundleDiscountTarget.CATEGORY, Category.VIDEO_OTT, 50, null)));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflix, List.of(bundle), netflix, youtube);
+
+            // then
+            assertThat(bundles).singleElement()
+                .extracting(CheckupBundleResponse::monthlySaving)
+                .isEqualTo(6750L);
+        }
+
+        @Test
+        @DisplayName("같은 요금제에 종료된 구독과 구독 중인 구독이 있으면 구독 중인 구독 금액으로 계산한다")
+        void prefersActiveSubscriptionOfSamePlan() {
+            // given — 점검한 구독은 종료된 넷플릭스(10,000), 새로 등록한 넷플릭스는 13,500 → 13,500 − 12,000 = 1,500
+            Subscription ended = plan("Netflix 스탠다드", Category.VIDEO_OTT, 10000);
+            ended.cancel(today);
+            Subscription active = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            Bundle bundle = fixed("넷플릭스 할인", BundleProviderType.PLATFORM, 12000, List.of("Netflix 스탠다드"));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(ended, List.of(bundle), ended, active);
+
+            // then
+            assertThat(bundles).singleElement()
+                .extracting(CheckupBundleResponse::monthlySaving)
+                .isEqualTo(1500L);
+        }
+
+        @Test
         @DisplayName("통신 요금제: 계산 없이 monthlySaving · savingRate는 null, monthlyPrice는 요금제 가격이다")
         void returnsBenefitWithoutCalculation() {
             // given
