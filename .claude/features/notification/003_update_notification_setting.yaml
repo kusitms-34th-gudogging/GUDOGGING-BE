@@ -1,0 +1,78 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: NOTIFICATION-003
+  title: 알림 설정 변경
+  type: Feature
+  author: parkdo0918
+  issue: "#43"
+  depends_on:
+    - NOTIFICATION-002   # NotificationSettingResponse
+  sources:
+    - "노션 API 명세서 Notification — 알림 설정 변경 (2026-11-21 확인)"
+    - "화면설계서 E-05 알림 설정 (토글 즉시 저장, 실패 시 이전 상태 유지)"
+
+overview:
+  summary: >
+    결제 3일 전 점검 알림(D-3) 수신 여부를 바꾼다. D-1 · 해지 확인 알림은 이 설정과 관계없이 항상 발송한다. 토글하면 바로 저장하고 바뀐 값을 응답한다.
+  user_story: >
+    As a 로그인한 회원, I want to 토글로 결제 전 점검 알림을 켜고 끄기를,
+    so that 원하는 알림만 받을 수 있다.
+  goals:
+    - users.is_check_notification_enabled 변경 후 바뀐 값 반환
+
+technical_spec:
+  api:
+    - method: PATCH
+      path: /api/v1/notifications/settings
+      summary: 알림 설정 변경
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        body:
+          dto: UpdateNotificationSettingRequest (record, @Valid)
+          fields:
+            - "paymentReminderEnabled (Boolean, 필수): @NotNull — true = 수신, false = 수신 안 함"
+          mock: |
+            { "paymentReminderEnabled": false }
+      response:
+        http_status: 200 OK
+        dto: NotificationSettingResponse (NOTIFICATION-002 재사용)
+        wrapper: CommonResponse<NotificationSettingResponse>
+        response_code: "NotificationResponseCode.NOTIFICATION_SETTING_UPDATED (200, HttpStatus.OK, \"알림 설정을 변경했습니다.\")"
+        fields:
+          - "paymentReminderEnabled (boolean): 변경된 수신 여부"
+        mock: |
+          { "code": 200, "message": "알림 설정을 변경했습니다.", "data": { "paymentReminderEnabled": false } }
+
+  data_flow:
+    - step: 1
+      layer: Presentation (NotificationController)
+      action: "@CurrentUserId userId, @RequestBody @Valid UpdateNotificationSettingRequest → NotificationUseCase.updateNotificationSetting(...) → CommonResponse.success(NOTIFICATION_SETTING_UPDATED, response)"
+    - step: 2
+      layer: UseCase (NotificationUseCase)
+      action: "회원 확인(없으면 40201) → user.changeCheckNotification(enabled) (기존 메서드, 변경 감지) → NotificationSettingResponse.from(user)"
+      transaction: "@Transactional (쓰기)"
+
+  error_codes:
+    - code: 40201
+      name: USER_NOT_FOUND
+    - code: 40001
+      note: "paymentReminderEnabled 누락"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/notification/presentation/NotificationController.java (수정 — updateNotificationSetting)"
+    - "domain/notification/presentation/response/NotificationResponseCode.java (수정 — NOTIFICATION_SETTING_UPDATED)"
+    - "domain/notification/application/usecase/NotificationUseCase.java (수정 — updateNotificationSetting)"
+    - "domain/notification/application/dto/request/UpdateNotificationSettingRequest.java (신규)"
+
+testing_strategy:
+  happy_path:
+    - "updateNotificationSetting: true로 바꾸면 저장하고 true를 반환한다"
+    - "updateNotificationSetting: false로 바꾸면 저장하고 false를 반환한다"
+  error_cases:
+    - "updateNotificationSetting: 회원이 없으면 USER_NOT_FOUND"

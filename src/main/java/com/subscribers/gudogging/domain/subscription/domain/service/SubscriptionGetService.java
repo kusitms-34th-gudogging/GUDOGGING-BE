@@ -32,4 +32,11 @@ public class SubscriptionGetService {
     public Optional<Subscription> findSubscription(User user, UUID subscriptionId) {
         return subscriptionRepository.findWithServiceByIdAndUser(subscriptionId, user);
     }
+
+    /**
+     * 푸시 토큰이 있는 회원(탈퇴 제외)의 구독 중 구독 — 푸시 발송 배치 대상. 회원 · 서비스를 함께 조회한다.
+     */
+    public List<Subscription> findActiveSubscriptionsOfPushUsers() {
+        return subscriptionRepository.findAllActiveWithUserAndServiceOfPushUsers();
+    }
 }

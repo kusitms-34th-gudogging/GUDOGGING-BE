@@ -1,0 +1,88 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: NOTIFICATION-007
+  title: FCM 실제 발송 (Firebase Admin SDK) + 없는 토큰 정리
+  type: Feature (Infra)
+  author: parkdo0918
+  issue: "#43"
+  depends_on:
+    - NOTIFICATION-006   # PushSender 인터페이스, 발송 배치
+  sources:
+    - "이슈 #43 참고사항: FCM 서버 연동에 Firebase 서비스 계정 키 필요, 환경변수 추가 시 .env.example · GitHub Secret 갱신"
+    - "Firebase 프로젝트 gudogging-official 서비스 계정 키 (2026-11-21 프론트 전달)"
+
+overview:
+  summary: >
+    PushSender의 Firebase Admin SDK 구현을 추가한다. 환경변수 FIREBASE_CREDENTIALS가 있으면 실제 FCM으로 보내고,
+    없으면 지금처럼 로그만 남긴다(LoggingPushSender). FCM이 없는 토큰이라고 응답하면 그 회원의 푸시 토큰 · 기기 종류를 비운다.
+  goals:
+    - firebase-admin 의존성, FirebasePushSender
+    - 환경변수 유무로 구현 선택 (배포 전 Secret 갱신 전에도 앱이 뜸)
+    - 없는 토큰(UNREGISTERED) 정리
+
+technical_spec:
+  dependency: "com.google.firebase:firebase-admin:9.11.0 (2026-09 배포. 9.12.0은 배포 2주 미만이라 제외)"
+
+  credentials:
+    env: "FIREBASE_CREDENTIALS — 서비스 계정 JSON 파일 내용을 Base64로 인코딩한 한 줄 (base64 -i 키.json | tr -d '\\n')"
+    property: "application.yaml firebase.credentials: ${FIREBASE_CREDENTIALS:} — 기본값(빈 값)이 있어 배포 전 검사(check-env.sh) 필수 항목이 아님"
+    files: ".env.example에 키 이름 · 설명 추가, 로컬 .env에 값 추가 (값은 커밋하지 않음). GitHub Secret DEV_ENV_FILE · PROD_ENV_FILE은 직접 추가"
+
+  sender_selection:
+    config: "global/config/push/PushSenderConfig (@Configuration)"
+    firebase: "firebase.credentials가 비어 있지 않으면 FirebaseApp 초기화(GoogleCredentials.fromStream(Base64 디코딩)) → FirebasePushSender 빈"
+    logging: "비어 있으면 LoggingPushSender 빈 (기존 @Component 제거하고 설정에서 등록)"
+    rule: "PushSender 빈은 항상 하나만 등록"
+    test_profile: "application-test.yaml firebase.credentials: \"\" — 로컬 .env에 키가 있어도 테스트는 로그 구현"
+
+  push_sender_change:
+    interface: "PushSender.send(PushMessage) 반환형 void → PushSendResult (SENT / INVALID_TOKEN)"
+    firebase: >
+      Message(token, Notification(title, body), data) → FirebaseMessaging.send.
+      FirebaseMessagingException의 MessagingErrorCode가 UNREGISTERED 또는 INVALID_ARGUMENT면 INVALID_TOKEN 반환,
+      그 밖의 실패는 예외를 그대로 던짐 (배치에서 로그만 남기고 다음 건 계속 — 기존 동작)
+    logging: "항상 SENT"
+
+  invalid_token_cleanup:
+    rule: "배치에서 INVALID_TOKEN을 받으면 notification.getUser().clearPushToken() — push_token · platform = NULL (트랜잭션 안 변경 감지). 같은 회원의 남은 알림은 토큰이 없으므로 발송 건너뜀"
+    effect: "다음 배치부터 그 회원은 토큰이 없어 대상에서 빠짐. 앱이 다시 토큰을 등록하면 정상 발송"
+    history: "이미 저장한 알림 행은 그대로 (알림 목록에 보임)"
+
+  data_flow:
+    - step: 1
+      layer: Config
+      action: "앱 시작 시 FIREBASE_CREDENTIALS 유무로 FirebasePushSender / LoggingPushSender 선택"
+    - step: 2
+      layer: UseCase (NotificationUseCase.sendScheduledNotifications)
+      action: "기존 흐름 + send 결과가 INVALID_TOKEN이면 회원 토큰 비우기"
+
+  db: "변경 없음"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "build.gradle (수정 — firebase-admin)"
+    - "src/main/resources/application.yaml (수정 — firebase.credentials)"
+    - ".env.example (수정 — FIREBASE_CREDENTIALS)"
+    - "global/config/push/PushSenderConfig.java (신규)"
+    - "domain/notification/domain/PushSender.java (수정 — PushSendResult 반환)"
+    - "domain/notification/domain/PushSendResult.java (신규 enum)"
+    - "domain/notification/external/FirebasePushSender.java (신규)"
+    - "domain/notification/external/LoggingPushSender.java (수정 — @Component 제거, SENT 반환)"
+    - "domain/notification/application/usecase/NotificationUseCase.java (수정 — INVALID_TOKEN이면 clearPushToken, 토큰 없으면 발송 건너뜀)"
+    - "src/test/resources/application-test.yaml (수정 — firebase.credentials 빈 값)"
+
+testing_strategy:
+  # NotificationUseCaseTest @Nested SendScheduledNotifications
+  added:
+    - "FCM이 없는 토큰이라고 응답하면 그 회원의 푸시 토큰과 기기 종류를 비우고 다음 알림은 보내지 않는다"
+    - "정상 발송이면 토큰을 그대로 둔다"
+  note: "FirebasePushSender 자체는 UseCase 테스트 규칙상 테스트하지 않음 — 키를 넣고 실기기 토큰으로 수동 확인"
+
+notes:
+  - "[결정] 키는 Base64 환경변수 한 줄 (파일 마운트 없이 기존 .env · Secret 방식 그대로)"
+  - "[결정] 환경변수 없으면 로그 구현 — Secret 갱신 전에 배포돼도 앱이 뜨고 발송만 로그로 남음"
+  - "[범위] 알림 소리 · 배지 등 APNs/Android 세부 설정은 넣지 않음 (명세 없음)"

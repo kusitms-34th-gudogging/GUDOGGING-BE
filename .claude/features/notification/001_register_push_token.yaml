@@ -1,0 +1,101 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: NOTIFICATION-001
+  title: 푸시 토큰 등록
+  type: Feature
+  author: parkdo0918
+  issue: "#43"
+  depends_on:
+    - AUTH-001   # @CurrentUserId
+  sources:
+    - "노션 API 명세서 Notification — 푸시 토큰 등록 (2026-11-21 확인)"
+    - "화면설계서 O-03 알림 권한 요청, O-04"
+
+overview:
+  summary: >
+    알림 권한 요청(O-03)에서 권한을 허용하면 FCM 기기 토큰과 기기 종류(IOS/ANDROID)를 회원에 저장한다.
+    이미 토큰이 있으면 새 토큰 · 기기 종류로 덮어쓴다. 권한을 거부하면 클라이언트가 호출하지 않는다.
+  user_story: >
+    As a 로그인한 회원, I want to 알림 권한을 허용하면 내 기기가 등록되기를,
+    so that 결제 전 푸시 알림을 받을 수 있다.
+  goals:
+    - users.push_token · users.platform 저장 (회원당 1개, 마지막 기기)
+    - 로그아웃 때 토큰과 platform을 함께 NULL로 비우는 도메인 메서드 준비
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/notifications/tokens
+      summary: 푸시 토큰 등록
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        body:
+          dto: RegisterPushTokenRequest (record, @Valid)
+          fields:
+            - "deviceToken (String, 필수): @NotBlank @Size(max = 255) — FCM 기기 토큰"
+            - "platform (Platform, 필수): @NotNull — IOS / ANDROID"
+          mock: |
+            { "deviceToken": "fcm_token_value", "platform": "IOS" }
+      response:
+        http_status: "200 OK (노션 명세 기준 — POST지만 리소스 생성이 아닌 회원 정보 갱신)"
+        wrapper: CommonResponse<Void>
+        response_code: "NotificationResponseCode.PUSH_TOKEN_REGISTERED (200, HttpStatus.OK, \"푸시 토큰을 등록했습니다.\")"
+        mock: |
+          { "code": 200, "message": "푸시 토큰을 등록했습니다.", "data": null }
+
+  entity_changes:
+    user:
+      - "platform 컬럼 추가 — VARCHAR(10), nullable, @Enumerated(EnumType.STRING), enum Platform(IOS, ANDROID)"
+      - "updatePushToken(pushToken) → updatePushToken(pushToken, platform): 토큰 · 기기 종류 함께 저장"
+      - "clearPushToken(): pushToken = null, platform = null (로그아웃 API에서 호출 — 로그아웃 API는 Auth 담당, 아직 미구현)"
+      - "withdraw(): platform = null 추가"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (NotificationController, 신규)
+      action: "@CurrentUserId userId, @RequestBody @Valid RegisterPushTokenRequest → NotificationUseCase.registerPushToken(...) → CommonResponse.success(PUSH_TOKEN_REGISTERED)"
+    - step: 2
+      layer: UseCase (NotificationUseCase, 신규)
+      action: "회원 확인(UserGetService.findUserById, 없으면 40201) → user.updatePushToken(deviceToken, platform) (변경 감지)"
+      transaction: "@Transactional (쓰기)"
+
+  error_codes:
+    - code: 40201
+      name: USER_NOT_FOUND
+    - code: 40001 / 40002
+      note: "토큰 누락 · 255자 초과(40001), 잘못된 platform 값(40002)"
+
+  migration:
+    file: "docs/migration/2026-11-21_notification.sql (배포 전에 개발 · 운영 DB에 직접 실행)"
+    sql: "ALTER TABLE users ADD COLUMN platform ENUM('ANDROID','IOS') NULL; — Hibernate가 enum 컬럼을 MySQL ENUM으로 생성하므로 같은 타입으로 맞춤 (validate 통과)"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/user/domain/entity/Platform.java (신규 enum)"
+    - "domain/user/domain/entity/User.java (수정 — platform, updatePushToken, clearPushToken, withdraw)"
+    - "domain/notification/presentation/NotificationController.java (신규, @Tag \"Notification\")"
+    - "domain/notification/presentation/response/NotificationResponseCode.java (신규 — PUSH_TOKEN_REGISTERED)"
+    - "domain/notification/application/usecase/NotificationUseCase.java (신규)"
+    - "domain/notification/application/dto/request/RegisterPushTokenRequest.java (신규)"
+    - "docs/migration/2026-11-21_notification.sql (신규)"
+
+testing_strategy:
+  # NotificationUseCaseTest — Mock: UserGetService
+  happy_path:
+    - "registerPushToken: 토큰과 기기 종류를 회원에 저장한다"
+  edge_cases:
+    - "registerPushToken: 이미 토큰이 있으면 새 토큰과 기기 종류로 덮어쓴다"
+  error_cases:
+    - "registerPushToken: 회원이 없으면 USER_NOT_FOUND"
+  test_files:
+    - "test/.../domain/notification/application/usecase/NotificationUseCaseTest.java (신규)"
+
+notes:
+  - "[결정] platform은 users 테이블에 컬럼 추가해 저장, 로그아웃 때 토큰과 함께 NULL (2026-11-21 합의)"
+  - "[결정] 응답 코드 200 — 노션 명세 우선 (컨벤션 POST 201과 다름)"
+  - "[범위] 같은 토큰이 다른 회원에 남아 있는 경우의 정리는 명세에 없어 하지 않음 (로그아웃 때 NULL 처리로 해결)"
