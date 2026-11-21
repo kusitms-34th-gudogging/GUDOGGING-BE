@@ -45,6 +45,10 @@ public final class BillingSchedule {
         return new BillingSchedule(subscription, List.copyOf(periods));
     }
 
+    public Subscription subscription() {
+        return subscription;
+    }
+
     /**
      * base 이후(포함) 첫 결제일. base가 수정일 전이면 그때 조건의 결제일부터 보고, 수정일부터는 수정한 조건(사용자가 입력한 다음 결제일)을 따른다.
      */
@@ -81,6 +85,58 @@ public final class BillingSchedule {
         return total;
     }
 
+    /**
+     * from ~ to (양끝 포함) 사이 결제 목록 (캘린더 C-01, C-02). 등록일 전 · 해지일 뒤 결제일은 빼고(해지일 당일은 포함), 결제일마다 그때 조건의 금액 · 주기를 담는다.
+     */
+    public List<Billing> billingsBetween(LocalDate from, LocalDate to) {
+        LocalDate start = laterOf(from, subscription.startedOn());
+        LocalDate end = billingEndOf(to);
+        List<Billing> billings = new ArrayList<>();
+        for (Period period : periods) {
+            addBillings(billings, period, period.cycle().datesBetween(start, earlierOf(end, period.lastBillingOn())));
+        }
+        return sortedByDate(billings);
+    }
+
+    /**
+     * 등록 전 기간도 같은 주기로 결제했다고 보고 from ~ to 결제 목록 (홈 연 금액 — '1년에 이 정도 나간다' 예상치). 등록일 이후에 쓰인 첫 조건을 거꾸로
+     * 펼치고, 재등록 전 조건(등록일 전에 끝난 이력)은 쓰지 않는다. 해지일 뒤는 뺀다.
+     */
+    public List<Billing> billingsBetweenIncludingBeforeStart(LocalDate from, LocalDate to) {
+        LocalDate end = billingEndOf(to);
+        List<Period> currentPeriods = periods.stream()
+            .filter(period -> !period.lastBillingOn().isBefore(subscription.startedOn()))
+            .toList();
+        List<Billing> billings = new ArrayList<>();
+        for (int i = 0; i < currentPeriods.size(); i++) {
+            Period period = currentPeriods.get(i);
+            LocalDate periodEnd = earlierOf(end, period.lastBillingOn());
+            List<LocalDate> dates = i == 0
+                ? period.cycle().datesBetweenExtendingBack(from, periodEnd)
+                : period.cycle().datesBetween(from, periodEnd);
+            addBillings(billings, period, dates);
+        }
+        return sortedByDate(billings);
+    }
+
+    private LocalDate billingEndOf(LocalDate to) {
+        return subscription.getStatus() == SubscriptionStatus.ENDED
+            ? earlierOf(to, subscription.getCanceledOn())
+            : to;
+    }
+
+    private static void addBillings(List<Billing> billings, Period period, List<LocalDate> dates) {
+        BillingCycle cycle = period.cycle();
+        for (LocalDate date : dates) {
+            billings.add(new Billing(date, period.amount(), cycle.value(), cycle.unit()));
+        }
+    }
+
+    private static List<Billing> sortedByDate(List<Billing> billings) {
+        billings.sort(Comparator.comparing(Billing::date));
+        return List.copyOf(billings);
+    }
+
     private long paidCountOf(Period period, LocalDate today) {
         LocalDate paidUntil = subscription.getStatus() == SubscriptionStatus.ENDED
             ? subscription.getCanceledOn()
@@ -90,6 +146,10 @@ public final class BillingSchedule {
 
     private static LocalDate earlierOf(LocalDate a, LocalDate b) {
         return a.isBefore(b) ? a : b;
+    }
+
+    private static LocalDate laterOf(LocalDate a, LocalDate b) {
+        return a.isAfter(b) ? a : b;
     }
 
     /**

@@ -1,5 +1,5 @@
 # Notification Entity
-# Last Updated: 2026-11-16
+# Last Updated: 2026-11-21 (HOME-001 읽지 않은 알림 조회)
 # Source: docs/ERD.md v1.1 §4.7 notifications, §5.7 NotificationType, §7 배치
 
 entity: NOTIFICATION
@@ -75,6 +75,7 @@ constraints:
 business_logic:
   - "create(user, subscription, type, targetBillingOn, title, body, sentAt): 정적 팩토리. isRead = false"
   - "read(): isRead = true (알림 목록에서 탭)"
+  - "홈 읽지 않은 점(HOME-001): NotificationGetService.hasUnreadNotification(user, now) — is_read = false · 삭제 제외 · 최근 30일 존재 여부 (exists 쿼리)"
   - "softDelete(): 구독 삭제·회원 탈퇴 시 → BaseEntity 위임"
 
 notes:

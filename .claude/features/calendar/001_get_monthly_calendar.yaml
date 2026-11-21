@@ -1,0 +1,173 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21 (노션 명세 변경 반영 — monthlyTotal · paymentCount 제거)
+
+meta:
+  id: CALENDAR-001
+  title: 월별 결제 캘린더 조회
+  type: Feature
+  author: parkdo0918
+  issue: "#39"
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, @CurrentUserId
+  sources:
+    - "노션 API 명세서 Calendar — 월별 결제 캘린더 조회 (2026-11-21 확인)"
+    - "노션 ERD 계산 규칙 — 캘린더 결제일: billing_anchor_on 기준으로 주기만큼 펼쳐 계산, started_on 이전 날짜는 표시하지 않음"
+    - "화면설계서 CAL-001 — C-01 캘린더(월별 결제 일정), C-01 연월 바텀시트(2024~2028), C-02 다른 날짜 선택"
+
+overview:
+  summary: >
+    선택한 연 · 월의 결제 예정일을 날짜별로 조회한다 (C-01, C-02).
+    구독마다 결제 일정(결제 조건 이력 + 현재 조건)을 펼쳐 그 달 결제일만 모으고, 날짜별 합계 · 결제 목록을 반환한다.
+    상단 '이번 달 결제 합계' 배지용으로 오늘이 속한 달의 합계(currentMonthTotal)를 조회 월과 관계없이 함께 반환한다.
+  user_story: >
+    As a 로그인한 회원, I want to 달력에서 날짜별 결제 예정 구독을 보기를,
+    so that 언제 얼마가 빠져나가는지 한눈에 알 수 있다.
+  goals:
+    - 연 · 월(2024~2028, 1~12)별 결제일 계산 — 이용 시작일 전 · 해지일 이후 제외
+    - 날짜별 합계 · 결제 목록, 이번 달 합계
+    - 결제일 펼치기는 BillingSchedule 공통 로직으로 분리 (홈 API에서 재사용)
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/calendar
+      summary: 월별 결제 캘린더 조회
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        query_params:
+          - "year (Integer, 필수): 조회 연도 2024~2028"
+          - "month (Integer, 필수): 조회 월 1~12"
+      response:
+        http_status: 200 OK
+        dto: CalendarResponse
+        wrapper: CommonResponse<CalendarResponse>
+        response_code: "CalendarResponseCode.CALENDAR_FOUND (200, HttpStatus.OK, \"월별 결제 일정을 조회했습니다.\")"
+        fields:
+          - "currentMonthTotal (int): 오늘이 속한 달의 결제 예정 합계 (캘린더 상단 배지용, 조회 월과 무관) — 1일~말일 전체 (지난 날짜 포함)"
+          - "days (List<CalendarDayResponse>): 결제가 있는 날짜만, 날짜 오름차순"
+          - "days[].date (LocalDate)"
+          - "days[].totalAmount (int): 해당일 결제 합계 (C-02 'n건 · 금액' 표시용, 건수는 payments 길이)"
+          - "days[].payments (List<CalendarPaymentResponse>): 금액 낮은 순, 같으면 서비스명 가나다순"
+          - "payments[].subscriptionId (UUID)"
+          - "payments[].serviceName (String): subscriptions.name"
+          - "payments[].logoUrl (String): 사전 등록 서비스 로고, 직접 입력 구독은 null"
+          - "payments[].amount (int): 그 결제일의 결제 금액 (그때 결제 조건 금액)"
+          - "payments[].billingCycleValue (int) / billingCycleUnit (BillingCycleUnit): 그 결제일의 결제 주기"
+          - "payments[].paymentMethod (PaymentMethod): 결제 경로 APP_STORE / GOOGLE_PLAY / WEB_DIRECT"
+        mock: |
+          {
+            "code": 200,
+            "message": "월별 결제 일정을 조회했습니다.",
+            "data": {
+              "currentMonthTotal": 142400,
+              "days": [
+                {
+                  "date": "2026-10-17",
+                  "totalAmount": 57400,
+                  "payments": [
+                    { "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000001", "serviceName": "넷플릭스",
+                      "logoUrl": "https://.../netflix.png", "amount": 13500,
+                      "billingCycleValue": 1, "billingCycleUnit": "MONTH", "paymentMethod": "APP_STORE" },
+                    { "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000002", "serviceName": "유튜브 프리미엄",
+                      "logoUrl": "https://.../youtube.png", "amount": 14900,
+                      "billingCycleValue": 1, "billingCycleUnit": "MONTH", "paymentMethod": "GOOGLE_PLAY" },
+                    { "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000003", "serviceName": "ChatGPT Plus",
+                      "logoUrl": "https://.../chatgpt.png", "amount": 29000,
+                      "billingCycleValue": 1, "billingCycleUnit": "MONTH", "paymentMethod": "WEB_DIRECT" }
+                  ]
+                }
+              ]
+            }
+          }
+
+  billing_rules:
+    target: "회원의 삭제되지 않은 구독 전체 (구독 중 · 구독 종료 모두). 삭제된 구독 · 결제 조건 이력은 제외"
+    dates: >
+      BillingSchedule(결제 조건 이력 + 현재 조건)로 결제일을 펼친다. 결제일 = 기준일 + k × 주기 (BillingCycle, 기존 규칙).
+      이력 조건은 그 조건의 마지막 결제일 상한까지, 현재 조건은 상한 없음
+    month_end: "말일 규칙은 기존 BillingCycle 그대로 — 매번 기준일에서 계산 (1/31 → 2/28 → 3/31)"
+    start: "이용 시작일(started_on) 전 결제일은 제외 (재등록 전 기간 포함)"
+    cancel: "구독 종료 구독은 해지일(canceled_on) 당일 결제까지 포함, 그 뒤는 제외 — 구독 상세 결제 횟수 · statusOn과 같은 기준 (2026-11-21 합의)"
+    amount: "결제 금액 · 주기는 그 결제일에 적용된 조건 기준 — 수정 전 결제는 수정 전 금액 (지금까지 결제 금액과 같은 기준, 2026-11-21 합의)"
+    order: "날짜 오름차순, 같은 날은 금액 낮은 순 → 서비스명 가나다순 (피그마 C-02 예시, 2026-11-21 합의). 날짜 칸 로고 2개 + '+n'은 이 순서로 클라이언트가 표시"
+    current_month: "today = LocalDate.now(). currentMonthTotal = 오늘이 속한 달 1일~말일 결제 합계 (지난 날짜 포함, 피그마 '이번 달 결제 합계', 2026-11-21 합의)"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (CalendarController)
+      action: "@CurrentUserId userId, @RequestParam Integer year, @RequestParam Integer month → CalendarUseCase.getMonthlyCalendar(userId, year, month) → CommonResponse.success(CALENDAR_FOUND, response)"
+    - step: 2
+      layer: UseCase (CalendarUseCase)
+      action: >
+        year 2024~2028 · month 1~12가 아니면 InvalidCalendarMonthException(40601)
+        → 회원 확인 → 구독 전체(서비스 fetch) 조회 → 결제 조건 이력 일괄 조회 후 구독별 그룹핑
+        → 구독마다 BillingSchedule.billingsBetween(조회 월 1일, 말일) / (이번 달 1일, 말일)
+        → CalendarResponse.of(조회 월 결제 목록, 이번 달 합계)
+      transaction: "@Transactional(readOnly = true) (클래스)"
+    - step: 3
+      layer: Domain
+      action: >
+        BillingCycle.datesBetween(from, to) — 신규, from~to(양끝 포함) 결제일 목록 /
+        BillingSchedule.subscription() · billingsBetween(from, to) — 신규, 조건별 결제일을 시작일 · 해지일 · 조건 상한으로 자른 Billing(date, amount, cycleValue, cycleUnit) 목록 /
+        UserGetService · SubscriptionGetService.findSubscriptions · SubscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions — 기존 재사용
+
+  error_codes:
+    - code: 40601
+      name: INVALID_CALENDAR_MONTH
+      status: 400 BAD_REQUEST
+      message: "조회할 수 없는 연월입니다."
+      note: "신규 — calendar 도메인 범위 406xx 신설 (system-design · coding-style 반영)"
+    - code: 40201
+      name: USER_NOT_FOUND
+      note: "기존"
+
+  performance:
+    - "쿼리 3번 고정 (회원 · 구독+서비스 fetch join · 결제 조건 이력 IN) — 구독 수와 무관, N+1 없음"
+    - "결제일은 해당 월 범위만 인덱스 계산으로 펼침 (DAY 주기도 한 달 최대 31개)"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/subscription/domain/billing/BillingCycle.java (수정 — datesBetween)"
+    - "domain/subscription/domain/billing/BillingSchedule.java (수정 — billingsBetween)"
+    - "domain/subscription/domain/billing/Billing.java (신규 record — date, amount, cycleValue, cycleUnit)"
+    - "domain/calendar/presentation/CalendarController.java (신규, @Tag \"Calendar\")"
+    - "domain/calendar/presentation/response/CalendarResponseCode.java (신규 — CALENDAR_FOUND)"
+    - "domain/calendar/application/usecase/CalendarUseCase.java (신규)"
+    - "domain/calendar/application/dto/response/CalendarResponse.java (신규, record + of)"
+    - "domain/calendar/application/dto/response/CalendarDayResponse.java (신규)"
+    - "domain/calendar/application/dto/response/CalendarPaymentResponse.java (신규)"
+    - "domain/calendar/application/exception/CalendarErrorCode.java (신규 — 40601)"
+    - "domain/calendar/application/exception/InvalidCalendarMonthException.java (신규)"
+  other:
+    - "core/system-design.yaml — calendar: 406xx"
+    - "references/conventions/coding-style.yaml — 40601"
+
+testing_strategy:
+  # CalendarUseCaseTest — Mock: UserGetService, SubscriptionGetService, SubscriptionBillingHistoryGetService
+  happy_path:
+    - "조회 월의 결제일을 날짜별로 묶고 날짜별 합계를 반환한다"
+    - "같은 날 결제는 금액 낮은 순, 금액이 같으면 서비스명 순으로 정렬한다"
+    - "직접 입력 구독은 logoUrl이 null이다"
+    - "미래 달은 결제 주기로 계산한 결제일을 반환한다 (MONTH · WEEK · YEAR)"
+    - "currentMonthTotal은 조회 월과 관계없이 오늘이 속한 달의 합계다"
+  edge_cases:
+    - "월말 기준일은 짧은 달에 말일로 계산한다 (1/31 기준 → 2월 28일)"
+    - "이용 시작일 전 달에는 결제를 반환하지 않는다"
+    - "구독 종료 구독은 해지일 당일 결제까지 반환하고 이후 결제는 반환하지 않는다"
+    - "결제 조건을 수정한 구독은 수정 전 결제일에 수정 전 금액 · 주기를 반환한다"
+    - "결제가 없는 달이면 days는 빈 목록이다"
+    - "year가 2024~2028, month가 1~12 밖이면 INVALID_CALENDAR_MONTH(40601) — 경계 2023 · 2029 · 0 · 13"
+    - "회원이 없으면 USER_NOT_FOUND"
+  test_files:
+    - "test/.../domain/calendar/application/usecase/CalendarUseCaseTest.java (신규)"
+
+notes:
+  - "[결정] 해지일 당일 포함 · 그때 금액 · 금액 낮은 순 · 범위 밖 40601 (2026-11-21 합의)"
+  - "[결정] 노션 캘린더 명세의 paymentMethod 'WEB'은 오타로 보고 WEB_DIRECT (코드 · ERD · 기존 API와 동일) — 노션 수정 요청 (2026-11-21 합의)"
+  - "[결정] currentMonthTotal = 이번 달 1일~말일 전체 합계 (2026-11-21 합의)"
+  - "[변경] 노션 명세 변경 (2026-11-21): 응답에서 monthlyTotal · paymentCount 제거 — currentMonthTotal · days만"
+  - "[범위] year · month 누락 · 숫자 아님은 스프링 기본 400 처리 (전역 핸들러 미추가 — 기존 baseDate와 같음)"
+  - "[범위] 홈 조회 API는 후속 스펙 (CALENDAR/HOME-xxx), BillingSchedule.billingsBetween 재사용"

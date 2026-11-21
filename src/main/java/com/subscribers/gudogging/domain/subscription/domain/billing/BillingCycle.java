@@ -3,6 +3,8 @@ package com.subscribers.gudogging.domain.subscription.domain.billing;
 import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleUnit;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 결제 조건 하나의 결제일 — 기준일(anchorOn) + k × 주기 (k ≥ 0) (ERD 6.2). 매번 기준일에서 계산하므로 월말 결제일이 밀리지 않는다 (1/31 → 2/28 →
@@ -28,6 +30,47 @@ public record BillingCycle(int value, BillingCycleUnit unit, LocalDate anchorOn)
             return 0;
         }
         return firstIndexOnOrAfter(to.plusDays(1)) - firstIndexOnOrAfter(from);
+    }
+
+    /**
+     * from ~ to (양끝 포함) 사이 결제일 목록. to가 from보다 앞서면 빈 목록.
+     */
+    public List<LocalDate> datesBetween(LocalDate from, LocalDate to) {
+        List<LocalDate> dates = new ArrayList<>();
+        for (long index = firstIndexOnOrAfter(from); !dateAt(index).isAfter(to); index++) {
+            dates.add(dateAt(index));
+        }
+        return dates;
+    }
+
+    /**
+     * from ~ to (양끝 포함) 사이 결제일 목록. 기준일 전에도 같은 주기로 결제했다고 보고 거꾸로 펼친다 (k < 0 포함, 홈 연 금액).
+     */
+    public List<LocalDate> datesBetweenExtendingBack(LocalDate from, LocalDate to) {
+        List<LocalDate> dates = new ArrayList<>();
+        for (long index = firstSignedIndexOnOrAfter(from); !dateAt(index).isAfter(to); index++) {
+            dates.add(dateAt(index));
+        }
+        return dates;
+    }
+
+    private long firstSignedIndexOnOrAfter(LocalDate date) {
+        if (!date.isBefore(anchorOn)) {
+            return firstIndexOnOrAfter(date);
+        }
+        long index = switch (unit) {
+            case DAY -> -(ChronoUnit.DAYS.between(date, anchorOn) / value);
+            case WEEK -> -(ChronoUnit.DAYS.between(date, anchorOn) / ((long) DAYS_PER_WEEK * value));
+            case MONTH -> -(ChronoUnit.MONTHS.between(date, anchorOn) / value);
+            case YEAR -> -(ChronoUnit.MONTHS.between(date, anchorOn) / ((long) MONTHS_PER_YEAR * value));
+        };
+        while (dateAt(index).isBefore(date)) {
+            index++;
+        }
+        while (!dateAt(index - 1).isBefore(date)) {
+            index--;
+        }
+        return index;
     }
 
     private LocalDate dateAt(long index) {

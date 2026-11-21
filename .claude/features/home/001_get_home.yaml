@@ -1,0 +1,171 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: HOME-001
+  title: 홈 조회 (이번 달 요약 · 구독 점검하기 · 잘 안 쓰는 구독)
+  type: Feature
+  author: parkdo0918
+  issue: "#39"
+  depends_on:
+    - CALENDAR-001   # BillingSchedule.billingsBetween, BillingCycle.datesBetween
+    - CHECK-002      # subscription_checks.target_billing_on · score_percent
+    - CHECK-004      # subscription_checks.decision (KEEP 제외)
+  sources:
+    - "노션 API 명세서 Home — 홈 조회 (이번 달 요약·구독 점검하기·잘 안 쓰는 구독) (2026-11-21 확인)"
+    - "화면설계서 HOM-001 — H-01 등록된 구독 없음, H-02 구독 있음, H-03 예정 결제 없음 · 점검 유도"
+
+overview:
+  summary: >
+    홈 화면 정보를 한 번에 조회한다 (H-01, H-02, H-03).
+    이번 달 요약(결제 예정액 · 연 금액 · 구독 중 개수 · 로고), 구독 점검하기 목록(최대 5개),
+    잘 안 쓰는 구독(최대 3개 미리보기 · 점검 유도), 읽지 않은 알림 여부를 반환한다.
+  user_story: >
+    As a 로그인한 회원, I want to 홈에서 이번 달 결제와 점검할 구독을 한눈에 보기를,
+    so that 결제 전에 필요 없는 구독을 점검할 수 있다.
+  goals:
+    - 이번 달 요약 (오늘~말일 결제 예정액, 올해 1~12월 결제 합계, 구독 중 개수, 로고 최대 10개)
+    - 이번 결제 주기 점검 안 한 구독 최대 5개
+    - 활용도 60% 미만 · 유지하기 안 고른 구독 집계와 미리보기 3개, 점검 유도 구독
+    - 읽지 않은 알림 여부
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/home
+      summary: 홈 조회
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        params: "없음"
+      response:
+        http_status: 200 OK
+        dto: HomeResponse
+        wrapper: CommonResponse<HomeResponse>
+        response_code: "HomeResponseCode.HOME_FOUND (200, HttpStatus.OK, \"홈 정보를 조회했습니다.\")"
+        fields:
+          - "summary (HomeSummaryResponse)"
+          - "summary.expectedAmount (int): 이번 달 결제 예정액 (오늘~이번 달 말일 결제 금액 합계)"
+          - "summary.yearlyAmount (int): 연 환산 금액 (올해 1~12월 결제 합계, 등록 전 기간도 같은 주기로 포함)"
+          - "summary.subscriptionCount (int): 구독 중 개수"
+          - "summary.logos (List<String>): 구독 로고 URL (최대 10개, 결제일 가까운 순, 직접 입력 구독 제외)"
+          - "upcomingPayments (List<HomeUpcomingPaymentResponse>): 구독 점검하기 목록 (최대 5개)"
+          - "upcomingPayments[].subscriptionId (UUID) / serviceName (String) / logoUrl (String, 직접 입력 null) / amount (int)"
+          - "upcomingPayments[].nextBillingDate (LocalDate) / dDay (int): 남은 일수"
+          - "upcomingPayments[].needsCheckup (boolean): 이번 결제 주기 점검 미완료 여부"
+          - "usage (HomeUsageResponse): 잘 안 쓰는 구독"
+          - "usage.hasCheckup (boolean): 점검 기록 존재 여부"
+          - "usage.nudgeSubscriptionId (UUID, nullable): 점검 유도 대상 구독 ID (결제일 가장 가까운 구독)"
+          - "usage.unusedCount (int): 잘 안 쓰는 구독 개수"
+          - "usage.monthlyAmount (int): 대상 구독 전체의 이번 달 결제 금액 합계 (미리보기 합계 아님)"
+          - "usage.yearlyAmount (int): 대상 구독 전체의 연 환산 금액"
+          - "usage.items (List<HomeUsageItemResponse>): 미리보기 최대 3개 — subscriptionId, serviceName, logoUrl, amount, scorePercent"
+          - "hasUnreadNotification (boolean): 읽지 않은 알림 여부"
+        mock: |
+          {
+            "code": 200,
+            "message": "홈 정보를 조회했습니다.",
+            "data": {
+              "summary": { "expectedAmount": 13500, "yearlyAmount": 162000, "subscriptionCount": 1,
+                           "logos": ["https://.../netflix.png"] },
+              "upcomingPayments": [
+                { "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000001", "serviceName": "넷플릭스",
+                  "logoUrl": "https://.../netflix.png", "amount": 13500,
+                  "nextBillingDate": "2026-11-05", "dDay": 1, "needsCheckup": true }
+              ],
+              "hasUnreadNotification": false,
+              "usage": { "hasCheckup": false, "nudgeSubscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000001",
+                         "unusedCount": 0, "monthlyAmount": 0, "yearlyAmount": 0, "items": [] }
+            }
+          }
+
+  home_rules:
+    base: "today = LocalDate.now(). 구독 = 회원의 삭제되지 않은 구독. 다음 결제일 = subscription.nextBillingOn(today)"
+    summary:
+      target: "구독 중(ACTIVE) 구독 — 구독 종료 구독은 제외 (구독 없으면 모두 0 · 빈 목록, H-01)"
+      expected_amount: "BillingSchedule.billingsBetween(today, 이번 달 말일) 금액 합계 (오늘 결제 포함)"
+      yearly_amount: >
+        올해 1/1 ~ 12/31 결제 합계. 등록 전 기간도 결제됐다고 보고 가장 첫 결제 조건의 주기를 1/1까지 거꾸로 펼친다 (started_on 무시).
+        결제 조건 이력이 있으면 각 구간은 그때 금액. 예: 11/21 등록, 매달 5일 13,500원 → 12번 = 162,000원.
+        '지금 구독으로 1년에 이 정도 나간다'는 예상치(화면설계서 H-02)이므로 재등록 구독도 예외 없이 같은 방식 — started_on은 앱 등록일이라 '구독 시작일을 알면'에 해당하지 않음 (2026-11-21 합의)
+      logos: "로고가 있는 구독(직접 입력 제외)만, 다음 결제일 가까운 순 → 금액 큰 순, 최대 10개"
+    upcoming_payments:
+      target: "구독 중 · 꾸준히 쓰는 구독 아님 · 이번 결제 주기 점검 안 함 (화면설계서 H-02 '점검 완료 · 꾸준히 쓰는 구독 제외')"
+      checked_this_cycle: "가장 최근 점검의 target_billing_on = 다음 결제일이면 점검 완료 (제출 때 target_billing_on = 그때 다음 결제일)"
+      order: "다음 결제일 가까운 순 → 금액 큰 순, 최대 5개, 7일 제한 없음"
+      fields: "amount = 현재 결제 금액, dDay = today ~ 다음 결제일 일수, needsCheckup = 항상 true (점검 완료 구독은 목록에 없음)"
+    usage:
+      has_checkup: "삭제되지 않은 구독(구독 종료 포함)에 점검 기록이 하나라도 있으면 true"
+      nudge: "구독 중 · 꾸준히 쓰는 구독 아님 중 다음 결제일 가장 가까운 구독(같으면 금액 큰 순). 없으면 null"
+      target: "구독 중 · 꾸준히 쓰는 구독 아님 · 가장 최근 점검 활용도 < 60 · 가장 최근 점검 결정이 KEEP 아님 (점검 기록 없으면 제외)"
+      monthly_amount: "대상 전체의 이번 달 1일~말일 결제 합계 (2026-11-21 합의)"
+      yearly_amount: "대상 전체의 올해 1~12월 결제 합계 — summary.yearlyAmount와 같은 계산"
+      items: "활용도 낮은 순 → 다음 결제일 가까운 순, 최대 3개. amount = 현재 결제 금액, scorePercent = 가장 최근 점검 활용도"
+    has_unread_notification: "회원의 읽지 않은 알림(is_read = false, 삭제 제외, 최근 30일 sent_at — 알림 목록 조회 조건과 동일)이 있으면 true — 실제 조회 (2026-11-21 합의, 이슈 #39 수정)"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (HomeController)
+      action: "@CurrentUserId userId → HomeUseCase.getHome(userId) → CommonResponse.success(HOME_FOUND, response)"
+    - step: 2
+      layer: UseCase (HomeUseCase)
+      action: >
+        회원 확인 → 구독 전체(서비스 fetch) → 구독 중 구독의 결제 조건 이력 일괄 조회 → 구독 전체의 점검 일괄 조회(구독별 가장 최근)
+        → 읽지 않은 알림 존재 여부 → summary · upcomingPayments · usage 계산 → HomeResponse
+      transaction: "@Transactional(readOnly = true) (클래스)"
+    - step: 3
+      layer: Domain
+      action: >
+        BillingCycle.datesBetweenExtendingBack(from, to) — 신규, 기준일 전(k < 0)까지 포함한 결제일 /
+        BillingSchedule.billingsBetweenIncludingBeforeStart(from, to) — 신규, 등록일 이후 쓰인 첫 조건을 거꾸로 펼치고 등록일은 보지 않음(재등록 전에 끝난 이력은 제외, 해지일 상한은 유지) /
+        SubscriptionCheckGetService.findChecksBySubscriptions — 기존 재사용 /
+        NotificationGetService.hasUnreadNotification(user, now) — 신규, NotificationRepository.existsByUserAndIsReadFalseAndDeletedFalseAndSentAtGreaterThanEqual(user, now − 30일)
+
+  error_codes:
+    - code: 40201
+      name: USER_NOT_FOUND
+      note: "기존 — 새 에러 코드 없음"
+
+  performance:
+    - "쿼리 5번 고정 (회원 · 구독+서비스 · 결제 조건 이력 IN · 점검 IN · 알림 exists) — 구독 수와 무관, N+1 없음"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/subscription/domain/billing/BillingCycle.java (수정 — datesBetweenExtendingBack)"
+    - "domain/subscription/domain/billing/BillingSchedule.java (수정 — billingsBetweenIncludingBeforeStart)"
+    - "domain/notification/domain/repository/NotificationRepository.java (수정 — existsByUserAndIsReadFalseAndDeletedFalseAndSentAtGreaterThanEqual)"
+    - "domain/notification/domain/service/NotificationGetService.java (수정 — hasUnreadNotification)"
+    - "domain/home/presentation/HomeController.java (신규, @Tag \"Home\")"
+    - "domain/home/presentation/response/HomeResponseCode.java (신규 — HOME_FOUND)"
+    - "domain/home/application/usecase/HomeUseCase.java (신규)"
+    - "domain/home/application/dto/response/HomeResponse.java · HomeSummaryResponse.java · HomeUpcomingPaymentResponse.java · HomeUsageResponse.java · HomeUsageItemResponse.java (신규, record + of/from)"
+
+testing_strategy:
+  # HomeUseCaseTest — Mock: UserGetService, SubscriptionGetService, SubscriptionBillingHistoryGetService, SubscriptionCheckGetService, NotificationGetService
+  happy_path:
+    - "summary: 오늘~말일 결제 예정액, 구독 중 개수, 로고(직접 입력 제외 · 결제일 가까운 순)를 반환한다"
+    - "summary.yearlyAmount: 등록 전 기간도 1/1부터 같은 주기로 펼쳐 올해 1~12월 결제 합계를 낸다 (매달 → 12회, 연 결제 → 1회)"
+    - "upcomingPayments: 점검 안 한 구독을 결제일 가까운 순 → 금액 큰 순으로 최대 5개 반환하고 dDay를 계산한다"
+    - "usage: 활용도 60% 미만 · 유지하기 안 고른 구독의 개수 · 이번 달 결제 합계 · 연 금액과 활용도 낮은 순 3개를 반환한다"
+    - "hasUnreadNotification: 읽지 않은 알림 여부를 그대로 반환한다"
+  edge_cases:
+    - "구독이 없으면 summary는 0 · 빈 로고, 목록은 비어 있고 nudgeSubscriptionId는 null이다 (H-01)"
+    - "구독 종료 구독은 summary · 목록 · usage에서 제외한다"
+    - "로고는 최대 10개다"
+    - "이번 결제 주기에 점검한 구독(최근 점검 target_billing_on = 다음 결제일)과 꾸준히 쓰는 구독은 upcomingPayments에서 제외한다"
+    - "지난 주기에만 점검한 구독은 다시 upcomingPayments에 나온다"
+    - "최근 점검이 유지하기(KEEP)이거나 활용도 60% 이상이면 usage 대상에서 제외한다 (경계 59 · 60)"
+    - "꾸준히 쓰는 구독은 usage 대상과 nudgeSubscriptionId에서 제외한다"
+    - "점검 기록이 없으면 hasCheckup = false, 있으면 true"
+    - "결제 조건을 수정한 구독의 연 금액은 수정 전 구간을 그때 금액으로 계산한다"
+    - "회원이 없으면 USER_NOT_FOUND"
+  test_files:
+    - "test/.../domain/home/application/usecase/HomeUseCaseTest.java (신규)"
+
+notes:
+  - "[결정] 연 금액 = 모든 구독(재등록 포함) 1/1부터 거꾸로 펼친 1~12월 결제 합계(예상치), usage 월 금액 = 이번 달 실제 결제 합계, 알림 여부 실제 조회 (2026-11-21 합의)"
+  - "[가정] summary · 목록 · usage는 구독 중 구독만 (summary.subscriptionCount '구독 중 개수'와 같은 기준)"
+  - "[가정] 점검하기 목록 · 점검 유도에서 꾸준히 쓰는 구독 제외 — 화면설계서 H-02 · 노션 M-03"
+  - "[범위] 섹션 숨김 · 빈 상태 문구 · 로고 애니메이션은 클라이언트 처리"
