@@ -116,12 +116,15 @@ public class CheckController {
         summary = "구독 점검 결과 조회",
         description = """
             **기능**
-            점검 결과 화면(K-80)에 필요한 활용도 · 단계 · 응답 문구 · 메모 · 가장 큰 영향 문항(mainFactor)과 같은 카테고리 지출을 조회합니다.
+            점검 결과 화면(K-80)에 필요한 활용도 · 단계 · 응답 문구 · 메모 · 가장 큰 영향 문항(mainFactor), 같은 카테고리 지출, 절약 제안(번들 추천)을 조회합니다.
             checkupId는 구독 점검 제출 API 응답에서 받습니다. 구독 종료된 구독의 점검도 조회할 수 있습니다(이때 nextBillingDate = null).
             - 응답 문구는 점검 당시 카테고리의 선택지 문구입니다.
             - mainFactor: 활용도 60% 이상은 가중 점수, 60% 미만은 가중 감점이 가장 큰 문항. 동점이면 계획 > 이용도 > 만족도, 계획 1점이면 PLAN.
             - categorySpending: 점검 당시 카테고리의 구독 중 구독을 월 환산 금액으로 합산합니다. 점검한 구독이 맨 위(구독 종료여도 포함)이고 나머지는 월 금액이 큰 순이며, 개수와 상관없이 모든 구독을 내려줍니다.
-            - 절약 제안(bundles · maxMonthlySaving)은 현재 빈 배열 · 0입니다 (번들 데이터 준비 후 제공).
+            - bundles: 점검한 요금제가 포함된 상품 중 확정 절약(절약액 큰 순) → 카드(최대 금액 큰 순) → 통신 요금제 순, 같은 제공사 유형 최대 2개 · 전체 최대 4개. 0개면 빈 배열(영역 숨김). 직접 입력 구독은 빈 배열
+              - 확정 절약: 구독 중인 포함 서비스 월 금액 합 − 상품 가격 (0원 이하 제외, 택1은 가장 비싼 1개)
+              - 카드: 구독 중인 포함 서비스 월 금액 × 할인율 (택1은 가장 비싼 1개)
+              - 통신 요금제: 계산 없이 혜택(tags[1]) 표시
             - 추천 문구 · 유형명 · 보조 문구는 클라이언트가 stage · mainFactor로 고릅니다.
             - 없거나 삭제됐거나 다른 회원의 점검이면 40503(404)
             - 회원이 없거나 탈퇴했으면 40201(404)
@@ -139,8 +142,14 @@ public class CheckController {
             - stage (String): KEEP_RECOMMENDED / KEEP_CONSIDER / CANCEL_CONSIDER / CANCEL_RECOMMENDED
             - usageAnswer / satisfactionAnswer / planAnswer (String): 이용도 · 만족도 · 계획 응답 문구
             - memo (String, nullable): 메모
-            - bundles (List): 절약 제안 번들 — 현재 빈 배열
-            - maxMonthlySaving (Long): 번들 중 최대 월 절약 금액 — 현재 0
+            - bundles (List): 절약 제안 카드
+              - name (String): 상품명
+              - includes (String): 포함 내용 한 줄
+              - tags (List<String>): [제공사 · 상품군, 핵심 혜택]
+              - priceType (String): FIXED(확정 절약 '월 N원') / MAX(카드 '최대 N원') / BENEFIT(통신 요금제, 큰 숫자 대신 tags[1])
+              - monthlySaving (Long, nullable): 큰 숫자 금액. BENEFIT은 null
+              - savingRate (Integer, nullable): 절약 막대 % (0~100). BENEFIT은 null
+              - monthlyPrice (Integer, nullable): 아래 문구 상품 월 가격 (FIXED '월 N원에 이용', BENEFIT '요금제 월 N원'). MAX는 null
             - mainFactor (String): USAGE / SATISFACTION / PLAN
             - categorySpending (Object): 같은 카테고리 지출
               - category (String): 카테고리
