@@ -55,7 +55,7 @@ technical_spec:
     duplicate: "같은 (대표 구독, CHECK_REMINDER, 결제일) 알림이 이미 있으면 그 회원은 그날 보내지 않음 (결정 1 A, 2026-11-21 합의 — 이미 앞 묶음에 들어간 구독)"
 
   d1_billing_reminder:
-    target: "구독 중 구독 중 다음 결제일이 today + 1인 모든 구독 (꾸준히 쓰는 구독 포함, 알림 설정과 무관)"
+    target: "구독 중 구독 중 내일(today + 1)이 결제일인 모든 구독 — nextBillingOn(tomorrow) == tomorrow로 판단 (매일 결제 구독 포함, 꾸준히 쓰는 구독 포함, 알림 설정과 무관). CodeRabbit 리뷰 반영 2026-11-22"
     type_rule: "가장 최근 점검의 target_billing_on = 내일이고 decision = CANCEL이면 CANCEL_CONFIRM, 아니면 BILLING_REMINDER"
     billing_reminder: "제목 '내일 {서비스명} {금액}원이 결제돼요' / 본문 '해지 안 했다면 오늘이 마지막 해지 기회예요.'"
     cancel_confirm: "제목 '{서비스명}, 해지하셨나요?' / 본문 '아직이라면 내일 {금액}원이 결제돼요. 오늘 해지하세요.'"

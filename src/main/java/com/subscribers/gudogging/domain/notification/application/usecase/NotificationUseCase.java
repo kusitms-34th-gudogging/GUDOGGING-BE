@@ -191,7 +191,8 @@ public class NotificationUseCase {
     private Optional<Notification> billingReminderOf(Subscription subscription, SubscriptionCheck latestCheck,
                                                      Set<SentKey> sentKeys, LocalDate today, LocalDateTime sentAt) {
         LocalDate tomorrow = today.plusDays(1);
-        if (!subscription.nextBillingOn(today).equals(tomorrow)) {
+        // 내일이 결제일인지 내일 기준으로 본다 — 매일 결제 구독은 오늘 기준 다음 결제일이 항상 오늘이라 비교가 어긋난다
+        if (!subscription.nextBillingOn(tomorrow).equals(tomorrow)) {
             return Optional.empty();
         }
         if (sentKeys.contains(new SentKey(subscription.getId(), NotificationType.BILLING_REMINDER, tomorrow))

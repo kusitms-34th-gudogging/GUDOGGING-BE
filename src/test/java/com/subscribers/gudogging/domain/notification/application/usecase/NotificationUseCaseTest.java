@@ -579,7 +579,7 @@ class NotificationUseCaseTest {
             // when
             notificationUseCase.sendScheduledNotifications(today);
 
-            // then — D-1 데일리 알림도 함께 저장
+            // then — 매일 결제라 D-1 알림도 함께 저장
             assertThat(savedNotifications())
                 .filteredOn(notification -> notification.getType() == NotificationType.CHECK_REMINDER)
                 .singleElement()
@@ -625,6 +625,26 @@ class NotificationUseCaseTest {
                     assertThat(notification.getTitle()).isEqualTo("내일 넷플릭스 13,500원이 결제돼요");
                     assertThat(notification.getBody()).isEqualTo("해지 안 했다면 오늘이 마지막 해지 기회예요.");
                 });
+        }
+
+        @Test
+        @DisplayName("D-1: 매일 결제 구독도 내일 결제되므로 결제 알림을 보낸다")
+        void sendsBillingReminderForDailySubscription() {
+            // given — 오늘(11/4)도 결제일인 매일 결제 구독
+            User user = pushUser(false);
+            Subscription daily = subscription(user, "데일리", 1000, 1, BillingCycleUnit.DAY, LocalDate.of(2026, 11, 1));
+            givenBatch(List.of(daily), List.of(), List.of());
+            givenSaved();
+
+            // when
+            notificationUseCase.sendScheduledNotifications(today);
+
+            // then
+            assertThat(savedNotifications()).singleElement().satisfies(notification -> {
+                assertThat(notification.getType()).isEqualTo(NotificationType.BILLING_REMINDER);
+                assertThat(notification.getTargetBillingOn()).isEqualTo(LocalDate.of(2026, 11, 5));
+                assertThat(notification.getTitle()).isEqualTo("내일 데일리 1,000원이 결제돼요");
+            });
         }
 
         @Test
