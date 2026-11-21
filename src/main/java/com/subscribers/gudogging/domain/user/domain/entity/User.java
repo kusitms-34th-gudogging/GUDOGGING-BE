@@ -50,24 +50,30 @@ public class User extends BaseEntity {
     @Column(name = "push_token", length = 255)
     private String pushToken;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "platform", length = 10)
+    private Platform platform;
+
     @ColumnDefault("true")
     @Column(name = "is_check_notification_enabled", nullable = false)
     private boolean isCheckNotificationEnabled = true;
 
     public static User create(SocialProvider socialProvider, String socialId, String email, String name) {
-        return new User(socialProvider, socialId, email, name, null, null, true);
+        return new User(socialProvider, socialId, email, name, null, null, null, true);
     }
 
     public void updateAppleRefreshToken(String appleRefreshToken) {
         this.appleRefreshToken = appleRefreshToken;
     }
 
-    public void updatePushToken(String pushToken) {
+    public void updatePushToken(String pushToken, Platform platform) {
         this.pushToken = pushToken;
+        this.platform = platform;
     }
 
     public void clearPushToken() {
         this.pushToken = null;
+        this.platform = null;
     }
 
     public void changeCheckNotification(boolean enabled) {
@@ -81,6 +87,7 @@ public class User extends BaseEntity {
         this.email = null;
         this.appleRefreshToken = null;
         this.pushToken = null;
+        this.platform = null;
     }
 
 }
