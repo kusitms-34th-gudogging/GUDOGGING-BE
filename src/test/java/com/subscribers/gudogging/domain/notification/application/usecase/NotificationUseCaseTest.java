@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -24,6 +23,7 @@ import com.subscribers.gudogging.domain.notification.application.dto.response.No
 import com.subscribers.gudogging.domain.notification.application.exception.NotificationErrorCode;
 import com.subscribers.gudogging.domain.notification.application.exception.NotificationNotFoundException;
 import com.subscribers.gudogging.domain.notification.domain.PushMessage;
+import com.subscribers.gudogging.domain.notification.domain.PushSendResult;
 import com.subscribers.gudogging.domain.notification.domain.PushSender;
 import com.subscribers.gudogging.domain.notification.domain.entity.Notification;
 import com.subscribers.gudogging.domain.notification.domain.entity.NotificationType;
@@ -700,13 +700,53 @@ class NotificationUseCaseTest {
             Subscription tving = subscription(user, "티빙", 9500, LocalDate.of(2026, 10, 5));
             givenBatch(List.of(netflix, tving), List.of(), List.of());
             givenSaved();
-            willThrow(new IllegalStateException("FCM 오류")).willDoNothing().given(pushSender).send(any());
+            given(pushSender.send(any())).willThrow(new IllegalStateException("FCM 오류"))
+                .willReturn(PushSendResult.SENT);
 
             // when
             notificationUseCase.sendScheduledNotifications(today);
 
             // then
             verify(pushSender, times(2)).send(any());
+        }
+
+        @Test
+        @DisplayName("FCM이 없는 토큰이라고 응답하면 그 회원의 푸시 토큰과 기기 종류를 비우고 다음 알림은 보내지 않는다")
+        void clearsTokenWhenInvalid() {
+            // given — 같은 회원의 D-1 알림 2건
+            User user = pushUser(true);
+            Subscription netflix = subscription(user, "넷플릭스", 13500, LocalDate.of(2026, 10, 5));
+            Subscription tving = subscription(user, "티빙", 9500, LocalDate.of(2026, 10, 5));
+            givenBatch(List.of(netflix, tving), List.of(), List.of());
+            givenSaved();
+            given(pushSender.send(any())).willReturn(PushSendResult.INVALID_TOKEN);
+
+            // when
+            notificationUseCase.sendScheduledNotifications(today);
+
+            // then
+            assertThat(user.getPushToken()).isNull();
+            assertThat(user.getPlatform()).isNull();
+            verify(pushSender, times(1)).send(any());
+            assertThat(savedNotifications()).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("정상 발송이면 푸시 토큰을 그대로 둔다")
+        void keepsTokenWhenSent() {
+            // given
+            User user = pushUser(true);
+            Subscription netflix = subscription(user, "넷플릭스", 13500, LocalDate.of(2026, 10, 5));
+            givenBatch(List.of(netflix), List.of(), List.of());
+            givenSaved();
+            given(pushSender.send(any())).willReturn(PushSendResult.SENT);
+
+            // when
+            notificationUseCase.sendScheduledNotifications(today);
+
+            // then
+            assertThat(user.getPushToken()).isNotNull();
+            assertThat(user.getPlatform()).isEqualTo(Platform.IOS);
         }
 
         @Test

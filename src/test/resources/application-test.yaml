@@ -16,6 +16,10 @@ spring:
 google:
   client-ids: test-dummy-client-id
 
+# 테스트는 로컬 .env에 키가 있어도 실제 FCM을 쓰지 않음 (LoggingPushSender)
+firebase:
+  credentials: ""
+
 # 생성자에서 형식을 검증하므로 형식은 맞춘 더미 값 (EC P-256 PKCS#8 Base64)
 apple:
   client-id: test.dummy.client.id
