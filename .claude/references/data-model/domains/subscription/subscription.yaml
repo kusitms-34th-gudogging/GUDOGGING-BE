@@ -1,5 +1,5 @@
 # Subscription Entity
-# Last Updated: 2026-11-21 (CALENDAR-001 billingsBetween / billing_anchor_changed_on 제거 → subscription_billing_histories, ERD v1.7 / SUBSCRIPTION-007 해지 완료 · SUBSCRIPTION-008 재등록, started_on 추가)
+# Last Updated: 2026-11-21 (CALENDAR-001 billingsBetween · HOME-001 billingsBetweenIncludingBeforeStart / billing_anchor_changed_on 제거 → subscription_billing_histories, ERD v1.7 / SUBSCRIPTION-007 해지 완료 · SUBSCRIPTION-008 재등록, started_on 추가)
 # Source: docs/ERD.md v1.7 §4.4 subscriptions, §4.4.1 subscription_billing_histories, §6 계산 규칙
 
 entity: SUBSCRIPTION
@@ -140,6 +140,7 @@ business_logic:
   - "startedOn(): 구독 시작일 = started_on (등록일, 재등록하면 재등록일). BillingSchedule의 결제 횟수 · 금액은 이 날짜부터 센다"
   - "지금까지 결제 횟수 · 금액과 과거 날짜 기준 다음 결제일은 BillingSchedule.of(subscription, 결제 조건 이력) — paidCount(today) · totalPaidAmount(today)(결제일마다 그때 금액) · nextBillingOn(base)(base가 이력 ended_on 전이면 그 조건부터). 엔티티에 두지 않음 (이력 필요)"
   - "BillingSchedule.billingsBetween(from, to) → List<Billing(date, amount, cycleValue, cycleUnit)>: from~to 결제 목록 (캘린더 C-01 · C-02, CALENDAR-001). 등록일 전 · 해지일 뒤 제외(해지일 당일 포함), 결제일마다 그때 조건의 금액 · 주기. BillingCycle.datesBetween(from, to)로 펼침"
+  - "BillingSchedule.billingsBetweenIncludingBeforeStart(from, to): 홈 연 금액(HOME-001) 예상치 — 등록 전 기간도 같은 주기로 결제했다고 보고 등록일 이후 쓰인 첫 조건을 BillingCycle.datesBetweenExtendingBack으로 거꾸로 펼침. 재등록 전에 끝난 이력은 제외, 해지일 뒤 제외"
   - "cancelGuideType(): 해지 안내 4분기 (X-01/X-03/X-04/X-05) — APP_STORE · GOOGLE_PLAY는 결제 경로로, WEB_DIRECT는 serviceCatalog.cancelUrl이 비어 있지 않으면 WEB_WITH_URL, 아니면(직접 입력 구독 포함) WEB_WITHOUT_URL (SUBSCRIPTION-006)"
   - "objectParticle(): 서비스명 뒤 목적격 조사 — 마지막 글자가 한글 음절이면 받침 유무로 '을'/'를', 그 외는 serviceCatalog.objectParticle, 없으면 '를' (SUBSCRIPTION-006)"
 
