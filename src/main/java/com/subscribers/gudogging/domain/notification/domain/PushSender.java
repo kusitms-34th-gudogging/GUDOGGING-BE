@@ -1,9 +1,10 @@
 package com.subscribers.gudogging.domain.notification.domain;
 
 /**
- * 푸시 발송. 지금은 Firebase 서비스 계정 키가 없어 로그만 남기는 구현(LoggingPushSender)을 쓰고, 키를 받으면 Firebase Admin SDK 구현으로 교체한다.
+ * 푸시 발송. FIREBASE_CREDENTIALS가 있으면 Firebase Admin SDK 구현(FirebasePushSender), 없으면 로그만 남기는 구현(LoggingPushSender)을 쓴다.
+ * 없는 토큰이면 INVALID_TOKEN을 돌려주고, 그 밖의 실패는 예외를 던진다.
  */
 public interface PushSender {
 
-    void send(PushMessage message);
+    PushSendResult send(PushMessage message);
 }

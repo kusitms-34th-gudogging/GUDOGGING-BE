@@ -47,6 +47,10 @@ apple:
   key-id: ${APPLE_KEY_ID}
   private-key: ${APPLE_PRIVATE_KEY}
 
+# FCM 서비스 계정 키 JSON을 Base64로 인코딩한 값. 비어 있으면 푸시를 실제로 보내지 않고 로그만 남긴다
+firebase:
+  credentials: ${FIREBASE_CREDENTIALS:}
+
 encryption:
   key: ${ENCRYPTION_KEY}
 
