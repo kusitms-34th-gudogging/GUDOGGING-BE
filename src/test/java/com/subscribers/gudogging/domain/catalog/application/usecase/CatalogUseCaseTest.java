@@ -83,11 +83,11 @@ class CatalogUseCaseTest {
         private final UUID userId = UUID.randomUUID();
         private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
 
-        private final ServiceCatalog netflix = service("넷플릭스", "Netflix", "넷플,netflix", Category.VIDEO_OTT, 13500,
+        private final ServiceCatalog netflix = service("넷플릭스", "Netflix 스탠다드", "넷플,netflix", Category.VIDEO_OTT, 13500,
             1);
         private final ServiceCatalog youtube = service("유튜브 프리미엄", "YouTube Premium", "유튭,youtube", Category.VIDEO_OTT,
             2);
-        private final ServiceCatalog melon = service("멜론", "Melon", null, Category.MUSIC, 3);
+        private final ServiceCatalog melon = service("멜론 스트리밍 클럽", "Melon", null, Category.MUSIC, 3);
         private final ServiceCatalog spotify = service("스포티파이", "Spotify", null, Category.MUSIC, 4);
 
         private void givenServices(Set<UUID> registeredServiceIds, ServiceCatalog... services) {
@@ -106,7 +106,7 @@ class CatalogUseCaseTest {
             List<ServiceResponse> responses = catalogUseCase.getServices(userId, null).services();
 
             // then
-            assertThat(namesOf(responses)).containsExactly("넷플릭스", "유튜브 프리미엄", "멜론", "스포티파이");
+            assertThat(namesOf(responses)).containsExactly("넷플릭스", "유튜브 프리미엄", "멜론 스트리밍 클럽", "스포티파이");
             ServiceResponse first = responses.getFirst();
             assertThat(first.serviceId()).isEqualTo(netflix.getId());
             assertThat(first.category()).isEqualTo(Category.VIDEO_OTT);
@@ -139,7 +139,7 @@ class CatalogUseCaseTest {
             List<ServiceResponse> responses = catalogUseCase.getServices(userId, "   ").services();
 
             // then
-            assertThat(namesOf(responses)).containsExactly("넷플릭스", "유튜브 프리미엄", "멜론");
+            assertThat(namesOf(responses)).containsExactly("넷플릭스", "유튜브 프리미엄", "멜론 스트리밍 클럽");
         }
 
         @Test
@@ -230,7 +230,7 @@ class CatalogUseCaseTest {
             List<ServiceResponse> responses = catalogUseCase.getServices(userId, "음악").services();
 
             // then
-            assertThat(namesOf(responses)).containsExactly("멜론", "스포티파이");
+            assertThat(namesOf(responses)).containsExactly("멜론 스트리밍 클럽", "스포티파이");
         }
 
         @Test
@@ -327,9 +327,9 @@ class CatalogUseCaseTest {
     class SeedServices {
 
         private final List<ServiceSeedRow> rows = List.of(
-            new ServiceSeedRow("Netflix", Category.VIDEO_OTT, "https://logo.example.com/netflix.png",
-                "https://www.netflix.com/cancelplan", 1),
-            new ServiceSeedRow("멜론", Category.MUSIC, null, null, 2)
+            new ServiceSeedRow("Netflix 스탠다드", Category.VIDEO_OTT, "https://logo.example.com/netflix.png",
+                "https://www.netflix.com/cancelplan", 13500, 1),
+            new ServiceSeedRow("멜론 스트리밍 클럽", Category.MUSIC, null, null, null, 2)
         );
 
         private ServiceCatalog existing(String name, String nameEn, String searchKeywords, Category category,
@@ -353,10 +353,11 @@ class CatalogUseCaseTest {
             verify(serviceCatalogCreateService).saveAllServices(servicesCaptor.capture());
             List<ServiceCatalog> saved = servicesCaptor.getValue();
             assertThat(saved).hasSize(2);
-            assertThat(saved.get(0).getName()).isEqualTo("Netflix");
+            assertThat(saved.get(0).getName()).isEqualTo("Netflix 스탠다드");
             assertThat(saved.get(0).getCategory()).isEqualTo(Category.VIDEO_OTT);
             assertThat(saved.get(0).getLogoUrl()).isEqualTo("https://logo.example.com/netflix.png");
             assertThat(saved.get(0).getCancelUrl()).isEqualTo("https://www.netflix.com/cancelplan");
+            assertThat(saved.get(0).getDefaultAmount()).isEqualTo(13500);
             assertThat(saved.get(0).getSortOrder()).isEqualTo(1);
             assertThat(saved.get(0).isActive()).isTrue();
             assertThat(saved.get(0).getNameEn()).isNull();
@@ -364,13 +365,14 @@ class CatalogUseCaseTest {
             assertThat(saved.get(0).getObjectParticle()).isNull();
             assertThat(saved.get(1).getLogoUrl()).isNull();
             assertThat(saved.get(1).getCancelUrl()).isNull();
+            assertThat(saved.get(1).getDefaultAmount()).isNull();
         }
 
         @Test
         @DisplayName("DB에 없는 이름의 CSV 행만 추가하고 이미 있는 서비스는 추가하지 않는다")
         void addsOnlyMissingServices() {
             // given
-            ServiceCatalog netflix = existing("Netflix", null, null, Category.VIDEO_OTT,
+            ServiceCatalog netflix = existing("Netflix 스탠다드", null, null, Category.VIDEO_OTT,
                 "https://logo.example.com/netflix.png", "https://www.netflix.com/cancelplan", 1);
             given(serviceCatalogGetService.findAllServices()).willReturn(List.of(netflix));
 
@@ -379,14 +381,14 @@ class CatalogUseCaseTest {
 
             // then
             verify(serviceCatalogCreateService).saveAllServices(servicesCaptor.capture());
-            assertThat(servicesCaptor.getValue()).extracting(ServiceCatalog::getName).containsExactly("멜론");
+            assertThat(servicesCaptor.getValue()).extracting(ServiceCatalog::getName).containsExactly("멜론 스트리밍 클럽");
         }
 
         @Test
-        @DisplayName("이미 있는 서비스는 CSV의 category · logoUrl · cancelUrl · sortOrder로 갱신한다")
+        @DisplayName("이미 있는 서비스는 CSV의 category · logoUrl · cancelUrl · defaultAmount · sortOrder로 갱신한다")
         void updatesExistingServiceWithCsvColumns() {
             // given
-            ServiceCatalog netflix = existing("Netflix", null, null, Category.ETC, "https://old.example.com/logo.png",
+            ServiceCatalog netflix = existing("Netflix 스탠다드", null, null, Category.ETC, "https://old.example.com/logo.png",
                 "https://old.example.com/cancel", 99);
             given(serviceCatalogGetService.findAllServices()).willReturn(List.of(netflix));
 
@@ -397,16 +399,16 @@ class CatalogUseCaseTest {
             assertThat(netflix.getCategory()).isEqualTo(Category.VIDEO_OTT);
             assertThat(netflix.getLogoUrl()).isEqualTo("https://logo.example.com/netflix.png");
             assertThat(netflix.getCancelUrl()).isEqualTo("https://www.netflix.com/cancelplan");
+            assertThat(netflix.getDefaultAmount()).isEqualTo(13500);
             assertThat(netflix.getSortOrder()).isEqualTo(1);
         }
 
         @Test
-        @DisplayName("갱신해도 nameEn · searchKeywords · objectParticle · isActive 등 CSV에 없는 컬럼은 유지한다")
+        @DisplayName("갱신해도 nameEn · searchKeywords · objectParticle 등 CSV에 없는 컬럼은 유지한다")
         void keepsColumnsNotInCsv() {
             // given
-            ServiceCatalog melon = existing("멜론", "Melon", "멜론,melon", Category.ETC, null, null, 99);
+            ServiceCatalog melon = existing("멜론 스트리밍 클럽", "Melon", "멜론,melon", Category.ETC, null, null, 99);
             ReflectionTestUtils.setField(melon, "objectParticle", "을");
-            ReflectionTestUtils.setField(melon, "isActive", false);
             given(serviceCatalogGetService.findAllServices()).willReturn(List.of(melon));
 
             // when
@@ -418,15 +420,29 @@ class CatalogUseCaseTest {
             assertThat(melon.getNameEn()).isEqualTo("Melon");
             assertThat(melon.getSearchKeywords()).isEqualTo("멜론,melon");
             assertThat(melon.getObjectParticle()).isEqualTo("을");
-            assertThat(melon.isActive()).isFalse();
+        }
+
+        @Test
+        @DisplayName("비활성화된 서비스가 CSV에 다시 있으면 활성화한다")
+        void reactivatesServiceBackInCsv() {
+            // given
+            ServiceCatalog melon = existing("멜론 스트리밍 클럽", null, null, Category.MUSIC, null, null, 2);
+            melon.deactivate();
+            given(serviceCatalogGetService.findAllServices()).willReturn(List.of(melon));
+
+            // when
+            catalogUseCase.seedServices(List.of(rows.get(1)));
+
+            // then
+            assertThat(melon.isActive()).isTrue();
         }
 
         @Test
         @DisplayName("CSV의 모든 서비스가 DB에 이미 있으면 추가 저장하지 않는다")
         void doesNotSaveWhenAllServicesExist() {
             // given
-            ServiceCatalog netflix = existing("Netflix", null, null, Category.VIDEO_OTT, null, null, 1);
-            ServiceCatalog melon = existing("멜론", null, null, Category.MUSIC, null, null, 2);
+            ServiceCatalog netflix = existing("Netflix 스탠다드", null, null, Category.VIDEO_OTT, null, null, 1);
+            ServiceCatalog melon = existing("멜론 스트리밍 클럽", null, null, Category.MUSIC, null, null, 2);
             given(serviceCatalogGetService.findAllServices()).willReturn(List.of(netflix, melon));
 
             // when
@@ -437,9 +453,9 @@ class CatalogUseCaseTest {
         }
 
         @Test
-        @DisplayName("DB에 있고 CSV에 없는 서비스는 변경하지 않는다")
-        void leavesServicesMissingFromCsvUntouched() {
-            // given
+        @DisplayName("DB에 있고 CSV에 없는 서비스는 비활성화하고 다른 값은 그대로 둔다")
+        void deactivatesServicesMissingFromCsv() {
+            // given — 요금제 단위로 바뀌어 시트에서 빠진 서비스 단위 행
             ServiceCatalog watcha = existing("왓챠", "Watcha", "왓챠", Category.VIDEO_OTT, "https://logo.example.com/w.png",
                 "https://watcha.com/cancel", 7);
             given(serviceCatalogGetService.findAllServices()).willReturn(List.of(watcha));
@@ -448,18 +464,18 @@ class CatalogUseCaseTest {
             catalogUseCase.seedServices(rows);
 
             // then
+            assertThat(watcha.isActive()).isFalse();
             assertThat(watcha.getCategory()).isEqualTo(Category.VIDEO_OTT);
             assertThat(watcha.getLogoUrl()).isEqualTo("https://logo.example.com/w.png");
             assertThat(watcha.getCancelUrl()).isEqualTo("https://watcha.com/cancel");
             assertThat(watcha.getSortOrder()).isEqualTo(7);
-            assertThat(watcha.isActive()).isTrue();
         }
 
         @Test
         @DisplayName("CSV에 cancelUrl이 비어 있으면 기존 cancelUrl을 null로 갱신한다")
         void clearsCancelUrlWhenCsvHasNone() {
             // given
-            ServiceCatalog melon = existing("멜론", null, null, Category.MUSIC, null, "https://melon.com/cancel", 2);
+            ServiceCatalog melon = existing("멜론 스트리밍 클럽", null, null, Category.MUSIC, null, "https://melon.com/cancel", 2);
             given(serviceCatalogGetService.findAllServices()).willReturn(List.of(melon));
 
             // when
