@@ -10,6 +10,7 @@ import com.subscribers.gudogging.domain.notification.application.dto.response.No
 import com.subscribers.gudogging.domain.notification.application.exception.NotificationNotFoundException;
 import com.subscribers.gudogging.domain.notification.domain.NotificationContent;
 import com.subscribers.gudogging.domain.notification.domain.PushMessage;
+import com.subscribers.gudogging.domain.notification.domain.PushSendResult;
 import com.subscribers.gudogging.domain.notification.domain.PushSender;
 import com.subscribers.gudogging.domain.notification.domain.entity.Notification;
 import com.subscribers.gudogging.domain.notification.domain.entity.NotificationType;
@@ -215,9 +216,12 @@ public class NotificationUseCase {
     }
 
     /**
-     * 한 건 발송이 실패해도 나머지는 계속 보낸다. 저장한 알림은 그대로 둔다 (알림 목록에는 보임).
+     * 한 건 발송이 실패해도 나머지는 계속 보낸다. 저장한 알림은 그대로 둔다 (알림 목록에는 보임). FCM이 없는 토큰이라고 하면 회원 토큰 · 기기 종류를 비우고, 같은 회원의 다음 알림은 보내지 않는다.
      */
     private void send(Notification notification) {
+        if (notification.getUser().getPushToken() == null) {
+            return;
+        }
         PushMessage message = new PushMessage(
             notification.getUser().getPushToken(),
             notification.getTitle(),
@@ -227,7 +231,9 @@ public class NotificationUseCase {
                 "subscriptionId", notification.getSubscription().getId().toString(),
                 "notificationId", notification.getId().toString()));
         try {
-            pushSender.send(message);
+            if (pushSender.send(message) == PushSendResult.INVALID_TOKEN) {
+                notification.getUser().clearPushToken();
+            }
         } catch (RuntimeException e) {
             log.warn("[푸시 발송 실패] notificationId={}", notification.getId(), e);
         }
