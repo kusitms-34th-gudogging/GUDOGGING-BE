@@ -45,6 +45,10 @@ public final class BillingSchedule {
         return new BillingSchedule(subscription, List.copyOf(periods));
     }
 
+    public Subscription subscription() {
+        return subscription;
+    }
+
     /**
      * base 이후(포함) 첫 결제일. base가 수정일 전이면 그때 조건의 결제일부터 보고, 수정일부터는 수정한 조건(사용자가 입력한 다음 결제일)을 따른다.
      */
@@ -81,6 +85,25 @@ public final class BillingSchedule {
         return total;
     }
 
+    /**
+     * from ~ to (양끝 포함) 사이 결제 목록 (캘린더 C-01, C-02). 등록일 전 · 해지일 뒤 결제일은 빼고(해지일 당일은 포함), 결제일마다 그때 조건의 금액 · 주기를 담는다.
+     */
+    public List<Billing> billingsBetween(LocalDate from, LocalDate to) {
+        LocalDate start = laterOf(from, subscription.startedOn());
+        LocalDate end = subscription.getStatus() == SubscriptionStatus.ENDED
+            ? earlierOf(to, subscription.getCanceledOn())
+            : to;
+        List<Billing> billings = new ArrayList<>();
+        for (Period period : periods) {
+            BillingCycle cycle = period.cycle();
+            for (LocalDate date : cycle.datesBetween(start, earlierOf(end, period.lastBillingOn()))) {
+                billings.add(new Billing(date, period.amount(), cycle.value(), cycle.unit()));
+            }
+        }
+        billings.sort(Comparator.comparing(Billing::date));
+        return List.copyOf(billings);
+    }
+
     private long paidCountOf(Period period, LocalDate today) {
         LocalDate paidUntil = subscription.getStatus() == SubscriptionStatus.ENDED
             ? subscription.getCanceledOn()
@@ -90,6 +113,10 @@ public final class BillingSchedule {
 
     private static LocalDate earlierOf(LocalDate a, LocalDate b) {
         return a.isBefore(b) ? a : b;
+    }
+
+    private static LocalDate laterOf(LocalDate a, LocalDate b) {
+        return a.isAfter(b) ? a : b;
     }
 
     /**
