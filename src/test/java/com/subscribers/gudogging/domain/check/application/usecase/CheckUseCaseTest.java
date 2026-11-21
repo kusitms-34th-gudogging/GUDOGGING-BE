@@ -1172,7 +1172,7 @@ class CheckUseCaseTest {
         private Bundle bundle(String name, BundleRecommendType type, BundleProviderType provider, Integer price,
                               List<String> fixed, List<String> choiceA, List<String> choiceB,
                               Map<String, Integer> appliedPrices, List<BundleDiscount> discounts) {
-            return new Bundle(name, type, provider, price, name + " 포함 내용", null, name + " 태그1", name + " 태그2",
+            return new Bundle(name, type, provider, price, null, name + " 태그1", name + " 태그2",
                 fixed, choiceA, choiceB, appliedPrices, discounts);
         }
 
@@ -1226,7 +1226,7 @@ class CheckUseCaseTest {
             // then
             assertThat(bundles).singleElement().satisfies(response -> {
                 assertThat(response.name()).isEqualTo("유독 더블 스트리밍");
-                assertThat(response.includes()).isEqualTo("유독 더블 스트리밍 포함 내용");
+                assertThat(response.includes()).isEqualTo("Netflix 스탠다드 + YouTube Premium");
                 assertThat(response.tags()).containsExactly("유독 더블 스트리밍 태그1", "유독 더블 스트리밍 태그2");
                 assertThat(response.priceType()).isEqualTo(BundleRecommendType.FIXED);
                 assertThat(response.monthlySaving()).isEqualTo(9500);
@@ -1281,10 +1281,11 @@ class CheckUseCaseTest {
             // when
             List<CheckupBundleResponse> bundles = bundlesOf(netflix, List.of(bundle), netflix);
 
-            // then
+            // then — 같은 서비스 요금제 여러 개는 서비스 이름 하나로 줄인다
             assertThat(bundles).singleElement().satisfies(response -> {
                 assertThat(response.monthlySaving()).isEqualTo(1000);
                 assertThat(response.monthlyPrice()).isEqualTo(12500);
+                assertThat(response.includes()).isEqualTo("Netflix 택1");
             });
         }
 
@@ -1327,6 +1328,7 @@ class CheckUseCaseTest {
             assertThat(bundles).singleElement().satisfies(response -> {
                 assertThat(response.monthlySaving()).isEqualTo(10450);
                 assertThat(response.savingRate()).isEqualTo(45);
+                assertThat(response.includes()).isEqualTo("Netflix 광고형 스탠다드 · YouTube Premium 등 택1");
             });
         }
 
