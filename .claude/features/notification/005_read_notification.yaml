@@ -1,0 +1,91 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: NOTIFICATION-005
+  title: 알림 읽음 처리
+  type: Feature
+  author: parkdo0918
+  issue: "#43"
+  depends_on:
+    - NOTIFICATION-004   # 알림 목록
+    - HOME-001           # hasUnreadNotification (is_read = false 존재 여부)
+  sources:
+    - "노션 API 명세서 Notification — 알림 읽음 처리 (2026-11-21 확인)"
+    - "화면설계서 H-04 알림 목록 (읽지 않은 알림 연한 배경)"
+
+overview:
+  summary: >
+    알림 목록(H-04)에서 알림을 탭하면 읽음 처리한다. 이미 읽은 알림이어도 성공으로 응답한다.
+    읽음 처리하면 홈의 hasUnreadNotification(읽지 않은 알림 존재 여부)에도 바로 반영된다.
+  user_story: >
+    As a 로그인한 회원, I want to 알림을 탭하면 읽음으로 바뀌기를,
+    so that 아직 안 본 알림만 구분할 수 있다.
+  goals:
+    - notifications.is_read = true
+
+technical_spec:
+  api:
+    - method: PATCH
+      path: /api/v1/notifications/{notificationId}/read
+      summary: 알림 읽음 처리
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: notificationId
+            type: UUID
+            required: true
+      response:
+        http_status: 200 OK
+        wrapper: CommonResponse<Void>
+        response_code: "NotificationResponseCode.NOTIFICATION_READ (200, HttpStatus.OK, \"알림을 읽음 처리했습니다.\")"
+        mock: |
+          { "code": 200, "message": "알림을 읽음 처리했습니다.", "data": null }
+
+  rules:
+    target: "회원 본인 · deleted = false 알림. 30일이 지난 알림도 읽음 처리 가능 (조회 범위 제한 없음)"
+    idempotent: "이미 읽은 알림이어도 notification.read() 후 성공 (노션 명세)"
+    home_link: "홈 hasUnreadNotification은 같은 is_read · 삭제 제외 · 최근 30일 조건으로 조회하므로 추가 처리 없이 반영 (HOME-001 기존 구현)"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (NotificationController)
+      action: "@CurrentUserId userId, @PathVariable notificationId → NotificationUseCase.readNotification(...) → CommonResponse.success(NOTIFICATION_READ)"
+    - step: 2
+      layer: UseCase (NotificationUseCase)
+      action: "회원 확인(없으면 40201) → NotificationGetService.findNotification(user, notificationId) (없으면 40701) → notification.read() (변경 감지)"
+      transaction: "@Transactional (쓰기)"
+    - step: 3
+      layer: Domain Service / Repository
+      action: "NotificationGetService.findNotification(user, id) — 신규, NotificationRepository.findByIdAndUserAndDeletedFalse"
+
+  error_codes:
+    - code: 40701
+      name: NOTIFICATION_NOT_FOUND
+      status: 404
+      message: "알림을 찾을 수 없습니다."
+      note: "신규 — 알림 도메인 407xx 신설. 없는 알림 · 삭제된 알림 · 다른 회원 알림"
+    - code: 40201
+      name: USER_NOT_FOUND
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/notification/domain/repository/NotificationRepository.java (수정 — findByIdAndUserAndDeletedFalse)"
+    - "domain/notification/domain/service/NotificationGetService.java (수정 — findNotification)"
+    - "domain/notification/application/exception/NotificationErrorCode.java · NotificationNotFoundException.java (신규)"
+    - "domain/notification/application/usecase/NotificationUseCase.java (수정 — readNotification)"
+    - "domain/notification/presentation/NotificationController.java (수정 — readNotification)"
+    - "domain/notification/presentation/response/NotificationResponseCode.java (수정 — NOTIFICATION_READ)"
+    - ".claude/core/system-design.yaml · references/conventions/coding-style.yaml (수정 — notification 407xx, 이후 408xx~)"
+
+testing_strategy:
+  happy_path:
+    - "readNotification: 읽지 않은 알림을 읽음 처리한다"
+  edge_cases:
+    - "readNotification: 이미 읽은 알림이어도 성공한다"
+  error_cases:
+    - "readNotification: 알림이 없거나 다른 회원 것이면 NOTIFICATION_NOT_FOUND(40701)"
+    - "readNotification: 회원이 없으면 USER_NOT_FOUND"

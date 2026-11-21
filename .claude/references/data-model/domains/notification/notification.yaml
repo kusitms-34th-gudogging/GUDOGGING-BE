@@ -1,5 +1,5 @@
 # Notification Entity
-# Last Updated: 2026-11-21 (HOME-001 읽지 않은 알림 조회)
+# Last Updated: 2026-11-21 (NOTIFICATION-004 알림 목록, NOTIFICATION-005 읽음 처리)
 # Source: docs/ERD.md v1.1 §4.7 notifications, §5.7 NotificationType, §7 배치
 
 entity: NOTIFICATION
@@ -74,7 +74,9 @@ constraints:
 
 business_logic:
   - "create(user, subscription, type, targetBillingOn, title, body, sentAt): 정적 팩토리. isRead = false"
-  - "read(): isRead = true (알림 목록에서 탭)"
+  - "read(): isRead = true (알림 목록에서 탭, NOTIFICATION-005). 이미 읽은 알림이어도 성공"
+  - "알림 목록(NOTIFICATION-004): NotificationGetService.findRecentNotifications(user, now) — 삭제 제외 · 최근 30일 · sent_at 최신순, 구독 · 서비스 fetch join. logoUrl = 저장된 구독의 서비스 로고(직접 입력 null)"
+  - "읽음 대상 조회: NotificationGetService.findNotification(user, id) — 본인 · 삭제 제외, 없으면 NOTIFICATION_NOT_FOUND(40701)"
   - "홈 읽지 않은 점(HOME-001): NotificationGetService.hasUnreadNotification(user, now) — is_read = false · 삭제 제외 · 최근 30일 존재 여부 (exists 쿼리)"
   - "softDelete(): 구독 삭제·회원 탈퇴 시 → BaseEntity 위임"
 
@@ -83,4 +85,4 @@ notes:
   - "'오늘' / '이전 알림' 구분은 sent_at 기준으로 클라이언트에서 처리"
   - "발송 배치 (매일 09:00, ERD 7장): D-3 = is_steady_use = false, 이번 주기 미점검, users.is_check_notification_enabled = true, push_token 있음 → 회원별로 7일 안에 결제될 미점검 구독을 묶어 1건. D-1 = 내일 결제인 모든 ACTIVE 구독, 서비스마다 1건 (이번 주기 최근 점검이 CANCEL이면 CANCEL_CONFIRM)"
   - "문구 — D-3 여러 건: '{서비스명} 외 N건, {합계}원 결제 예정' / 1건: '{서비스명} {금액}원 결제 예정', 본문 '7일 안에 빠져나갈 구독료를 확인하세요.' · BILLING_REMINDER: '내일 {서비스명} {금액}원이 결제돼요' / '해지 안 했다면 오늘이 마지막 해지 기회예요.' · CANCEL_CONFIRM: '{서비스명}, 해지하셨나요?' / '아직이라면 내일 {금액}원이 결제돼요. 오늘 해지하세요.'"
-  - "종류 태그 문구(결제 3일 전 / 결제 1일 전)는 기능 구현 시 응답 DTO에서 처리"
+  - "종류 태그 문구는 응답하지 않음 — type은 탭 시 이동 분기에만 사용 (노션 명세)"
