@@ -19,6 +19,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Sub
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.ScreenshotAnalysisResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCancelResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
@@ -42,6 +43,9 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationS
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotCandidate;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotImage;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.SubscriptionScreenshotAnalyzer;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryCreateService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryGetService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionCreateService;
@@ -51,6 +55,8 @@ import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundE
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.entity.BaseEntity;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -70,6 +76,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
 @Slf4j
 @Service
@@ -87,6 +94,7 @@ public class SubscriptionUseCase {
     private final SubscriptionCheckCancelReasonGetService subscriptionCheckCancelReasonGetService;
     private final NotificationGetService notificationGetService;
     private final SubscriptionDraftService subscriptionDraftService;
+    private final SubscriptionScreenshotAnalyzer subscriptionScreenshotAnalyzer;
 
     /**
      * 선택한 탭(status)의 구독을 정렬 기준(sort)대로 조회하고, 두 탭 개수와 탭의 월 환산 합계를 함께 반환한다.
@@ -245,6 +253,38 @@ public class SubscriptionUseCase {
         List<Subscription> createdSubscriptions = subscriptionCreateService.createSubscriptions(subscriptions);
         deleteDraftAfterCommit(userId);
         return SubscriptionCreationResponse.from(createdSubscriptions);
+    }
+
+    /**
+     * 스크린샷을 OCR 서버로 분석해 A-09 구독 후보를 반환한다. 저장하지 않는다 (등록은 createSubscriptions, source = SCREENSHOT). DB에 없거나 비활성인 서비스, 이미
+     * 구독 중(ACTIVE)인 서비스는 후보에서 뺀다. 후보가 없으면 빈 목록 (A-08e).
+     */
+    public ScreenshotAnalysisResponse analyzeScreenshots(UUID userId, List<MultipartFile> images) {
+        User user = userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+        List<ScreenshotImage> screenshots = toScreenshotImages(images);
+        LocalDate today = LocalDate.now();
+
+        List<ScreenshotCandidate> candidates = subscriptionScreenshotAnalyzer.analyzeScreenshots(screenshots, today);
+        if (candidates.isEmpty()) {
+            return ScreenshotAnalysisResponse.from(List.of(), Map.of());
+        }
+
+        Set<UUID> candidateServiceIds = candidates.stream()
+            .map(ScreenshotCandidate::serviceId)
+            .collect(Collectors.toSet());
+        Map<UUID, ServiceCatalog> servicesById = serviceCatalogGetService.findActiveServicesByIds(candidateServiceIds)
+            .stream()
+            .collect(Collectors.toMap(ServiceCatalog::getId, Function.identity()));
+        logUnknownServices(candidateServiceIds, servicesById.keySet());
+
+        Set<UUID> activeServiceIds = subscriptionGetService.findActiveServiceIds(user);
+        List<ScreenshotCandidate> registrableCandidates = candidates.stream()
+            .filter(candidate -> servicesById.containsKey(candidate.serviceId()))
+            .filter(candidate -> !activeServiceIds.contains(candidate.serviceId()))
+            .map(candidate -> candidate.correct(today))
+            .toList();
+        return ScreenshotAnalysisResponse.from(registrableCandidates, servicesById);
     }
 
     /**
@@ -427,6 +467,35 @@ public class SubscriptionUseCase {
         }
         return subscriptionBillingHistoryGetService.findBillingHistoriesBySubscriptions(subscriptions).stream()
             .collect(Collectors.groupingBy(billingHistory -> billingHistory.getSubscription().getId()));
+    }
+
+    /**
+     * 업로드 순서(스크롤 순서)를 유지한 채 장수·용량·형식을 검증한다.
+     */
+    private List<ScreenshotImage> toScreenshotImages(List<MultipartFile> images) {
+        ScreenshotImage.validateCount(images);
+        return images.stream()
+            .map(image -> ScreenshotImage.of(image.getOriginalFilename(), readBytes(image)))
+            .toList();
+    }
+
+    private byte[] readBytes(MultipartFile image) {
+        try {
+            return image.getBytes();
+        } catch (IOException e) {
+            throw new UncheckedIOException("업로드한 스크린샷을 읽지 못했습니다.", e);
+        }
+    }
+
+    /**
+     * OCR 서버의 서비스 목록 파일과 DB가 어긋난 경우 — 후보에서 빼고 서비스 ID만 남긴다.
+     */
+    private void logUnknownServices(Set<UUID> candidateServiceIds, Set<UUID> foundServiceIds) {
+        Set<UUID> unknownServiceIds = new HashSet<>(candidateServiceIds);
+        unknownServiceIds.removeAll(foundServiceIds);
+        if (!unknownServiceIds.isEmpty()) {
+            log.warn("스크린샷 분석 후보 중 사용할 수 없는 서비스를 제외합니다: serviceIds={}", unknownServiceIds);
+        }
     }
 
     private Map<UUID, ServiceCatalog> findServicesById(Set<UUID> serviceIds) {
