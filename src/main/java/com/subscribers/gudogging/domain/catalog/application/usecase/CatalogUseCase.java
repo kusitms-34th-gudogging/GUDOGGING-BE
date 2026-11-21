@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -48,13 +49,14 @@ public class CatalogUseCase {
     }
 
     /**
-     * 시드 CSV를 이름 기준으로 services에 동기화한다. 이름이 없으면 추가하고, 있으면 CSV 컬럼(category, logo_url, cancel_url, sort_order)만 갱신한다.
-     * CSV에 없는 컬럼과 CSV에 없는 서비스는 건드리지 않는다.
+     * 시드 CSV(요금제 단위)를 이름 기준으로 services에 동기화한다. 이름이 없으면 추가하고, 있으면 CSV 컬럼(category, logo_url, cancel_url,
+     * default_amount, sort_order)을 갱신하고 활성화한다. CSV에 없는 서비스는 비활성화하고(행은 유지), CSV에 없는 컬럼은 건드리지 않는다.
      */
     @Transactional
     public void seedServices(List<ServiceSeedRow> rows) {
+        List<ServiceCatalog> existingServices = serviceCatalogGetService.findAllServices();
         Map<String, ServiceCatalog> servicesByName = new HashMap<>();
-        for (ServiceCatalog service : serviceCatalogGetService.findAllServices()) {
+        for (ServiceCatalog service : existingServices) {
             if (servicesByName.putIfAbsent(service.getName(), service) != null) {
                 log.warn("services에 같은 이름의 서비스가 여러 개 있어 첫 번째 행만 동기화합니다. name={}", service.getName());
             }
@@ -65,19 +67,31 @@ public class CatalogUseCase {
         for (ServiceSeedRow row : rows) {
             ServiceCatalog existing = servicesByName.get(row.name());
             if (existing == null) {
-                ServiceCatalog created = ServiceCatalog.create(row.name(), null, null, row.category(), row.logoUrl(), null,
-                    row.cancelUrl(), row.sortOrder());
+                ServiceCatalog created = ServiceCatalog.create(row.name(), null, null, row.category(), row.logoUrl(),
+                    row.defaultAmount(), row.cancelUrl(), row.sortOrder());
                 newServices.add(created);
                 servicesByName.put(row.name(), created);
             } else {
-                existing.updateFromSeed(row.category(), row.logoUrl(), row.cancelUrl(), row.sortOrder());
+                existing.updateFromSeed(row.category(), row.logoUrl(), row.cancelUrl(), row.defaultAmount(),
+                    row.sortOrder());
                 updatedCount++;
+            }
+        }
+
+        Set<String> seedNames = rows.stream()
+            .map(ServiceSeedRow::name)
+            .collect(Collectors.toSet());
+        int deactivatedCount = 0;
+        for (ServiceCatalog service : existingServices) {
+            if (service.isActive() && !seedNames.contains(service.getName())) {
+                service.deactivate();
+                deactivatedCount++;
             }
         }
 
         if (!newServices.isEmpty()) {
             serviceCatalogCreateService.saveAllServices(newServices);
         }
-        log.info("서비스 시드 동기화: 추가 {}건, 갱신 {}건", newServices.size(), updatedCount);
+        log.info("서비스 시드 동기화: 추가 {}건, 갱신 {}건, 비활성화 {}건", newServices.size(), updatedCount, deactivatedCount);
     }
 }
