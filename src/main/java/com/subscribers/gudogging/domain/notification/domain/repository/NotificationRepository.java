@@ -3,6 +3,7 @@ package com.subscribers.gudogging.domain.notification.domain.repository;
 import com.subscribers.gudogging.domain.notification.domain.entity.Notification;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -28,4 +29,7 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     List<Notification> findRecentWithSubscriptionByUser(@Param("user") User user, @Param("from") LocalDateTime from);
 
     Optional<Notification> findByIdAndUserAndDeletedFalse(UUID id, User user);
+
+    List<Notification> findAllBySubscriptionInAndTargetBillingOnGreaterThanEqual(Collection<Subscription> subscriptions,
+                                                                                  LocalDate from);
 }

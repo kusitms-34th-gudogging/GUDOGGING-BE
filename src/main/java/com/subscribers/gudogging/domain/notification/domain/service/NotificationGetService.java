@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.notification.domain.entity.Notification;
 import com.subscribers.gudogging.domain.notification.domain.repository.NotificationRepository;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -41,5 +42,12 @@ public class NotificationGetService {
 
     public Optional<Notification> findNotification(User user, UUID notificationId) {
         return notificationRepository.findByIdAndUserAndDeletedFalse(notificationId, user);
+    }
+
+    /**
+     * 결제일이 from 이후인 알림 (중복 발송 확인용). UNIQUE (subscription_id, type, target_billing_on)이 삭제된 행도 포함하므로 삭제 여부를 보지 않는다.
+     */
+    public List<Notification> findNotificationsFrom(Collection<Subscription> subscriptions, LocalDate from) {
+        return notificationRepository.findAllBySubscriptionInAndTargetBillingOnGreaterThanEqual(subscriptions, from);
     }
 }
