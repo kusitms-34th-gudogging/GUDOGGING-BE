@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.notification.presentation;
 
 import com.subscribers.gudogging.domain.notification.application.dto.request.RegisterPushTokenRequest;
 import com.subscribers.gudogging.domain.notification.application.dto.request.UpdateNotificationSettingRequest;
+import com.subscribers.gudogging.domain.notification.application.dto.response.NotificationListResponse;
 import com.subscribers.gudogging.domain.notification.application.dto.response.NotificationSettingResponse;
 import com.subscribers.gudogging.domain.notification.application.usecase.NotificationUseCase;
 import com.subscribers.gudogging.domain.notification.presentation.response.NotificationResponseCode;
@@ -14,6 +15,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -93,5 +95,58 @@ public class NotificationController {
     ) {
         NotificationSettingResponse response = notificationUseCase.updateNotificationSetting(userId, request);
         return CommonResponse.success(NotificationResponseCode.NOTIFICATION_SETTING_UPDATED, response);
+    }
+
+    @Operation(
+        summary = "알림 목록 조회",
+        description = """
+            **기능**
+            홈 알림 아이콘으로 들어가는 알림 목록(H-04)을 조회합니다.
+            발송한 푸시(결제 3일 전 · 결제 1일 전 · 해지 확인)를 최근 30일 동안 최신순으로 내려줍니다.
+            '오늘' · '이전 알림' 구분은 sentAt으로 나눕니다. 탭하면 읽음 처리 API를 호출한 뒤 type에 따라 이동합니다
+            (CHECK_REMINDER → 구독 점검 1/4, BILLING_REMINDER → 구독 상세, CANCEL_CONFIRM → 구독 상세 + 해지 완료 확인 모달).
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - 없음 (Authorization: Bearer Access Token 필요)
+
+            **응답값**
+            - notifications (Array): 알림 목록 (최신순, 최근 30일, 없으면 빈 배열)
+            - notifications[].notificationId (UUID): 알림 ID
+            - notifications[].type (String): CHECK_REMINDER / BILLING_REMINDER / CANCEL_CONFIRM — 화면 표시 없이 이동 분기에만 사용
+            - notifications[].title (String): 푸시 제목
+            - notifications[].body (String): 푸시 본문
+            - notifications[].subscriptionId (UUID): 이동할 구독 ID (묶음이면 금액이 가장 큰 구독)
+            - notifications[].logoUrl (String): 서비스 로고 URL (직접 입력 구독은 null, 묶음이면 금액이 가장 큰 구독의 로고)
+            - notifications[].sentAt (String): 발송 시각 (ISO 8601)
+            - notifications[].read (Boolean): 읽음 여부
+            """
+    )
+    @GetMapping
+    public CommonResponse<NotificationListResponse> getNotifications(@CurrentUserId UUID userId) {
+        NotificationListResponse response = notificationUseCase.getNotifications(userId);
+        return CommonResponse.success(NotificationResponseCode.NOTIFICATIONS_FOUND, response);
+    }
+
+    @Operation(
+        summary = "알림 읽음 처리",
+        description = """
+            **기능**
+            알림 목록(H-04)에서 알림을 탭하면 읽음 처리합니다. 이미 읽은 알림이어도 성공으로 응답합니다.
+            읽음 처리하면 홈 조회의 hasUnreadNotification에도 바로 반영됩니다.
+            - 알림이 없거나 다른 회원의 알림이면 40701(404)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+
+            **요청값**
+            - notificationId (UUID, 필수, Path): 알림 ID
+
+            **응답값**
+            - 없음 (data = null)
+            """
+    )
+    @PatchMapping("/{notificationId}/read")
+    public CommonResponse<Void> readNotification(@CurrentUserId UUID userId, @PathVariable UUID notificationId) {
+        notificationUseCase.readNotification(userId, notificationId);
+        return CommonResponse.success(NotificationResponseCode.NOTIFICATION_READ);
     }
 }
