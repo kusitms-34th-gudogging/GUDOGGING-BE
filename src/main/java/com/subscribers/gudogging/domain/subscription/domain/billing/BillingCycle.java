@@ -43,6 +43,36 @@ public record BillingCycle(int value, BillingCycleUnit unit, LocalDate anchorOn)
         return dates;
     }
 
+    /**
+     * from ~ to (양끝 포함) 사이 결제일 목록. 기준일 전에도 같은 주기로 결제했다고 보고 거꾸로 펼친다 (k < 0 포함, 홈 연 금액).
+     */
+    public List<LocalDate> datesBetweenExtendingBack(LocalDate from, LocalDate to) {
+        List<LocalDate> dates = new ArrayList<>();
+        for (long index = firstSignedIndexOnOrAfter(from); !dateAt(index).isAfter(to); index++) {
+            dates.add(dateAt(index));
+        }
+        return dates;
+    }
+
+    private long firstSignedIndexOnOrAfter(LocalDate date) {
+        if (!date.isBefore(anchorOn)) {
+            return firstIndexOnOrAfter(date);
+        }
+        long index = switch (unit) {
+            case DAY -> -(ChronoUnit.DAYS.between(date, anchorOn) / value);
+            case WEEK -> -(ChronoUnit.DAYS.between(date, anchorOn) / ((long) DAYS_PER_WEEK * value));
+            case MONTH -> -(ChronoUnit.MONTHS.between(date, anchorOn) / value);
+            case YEAR -> -(ChronoUnit.MONTHS.between(date, anchorOn) / ((long) MONTHS_PER_YEAR * value));
+        };
+        while (dateAt(index).isBefore(date)) {
+            index++;
+        }
+        while (!dateAt(index - 1).isBefore(date)) {
+            index--;
+        }
+        return index;
+    }
+
     private LocalDate dateAt(long index) {
         long cycles = index * value;
         return switch (unit) {
