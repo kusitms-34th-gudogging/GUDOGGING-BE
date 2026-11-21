@@ -32,7 +32,6 @@ technical_spec:
       - "recommend_type: FIXED(확정 절약) / MAX(최대 절약 · 카드) / BENEFIT(혜택 소개 · 통신 요금제) / EXCLUDED(제외) — 시트 '추천 노출 방식'"
       - "provider_type: PLATFORM / TELECOM / CARD — 시트 '제공사 유형'"
       - "monthly_price: 상품 월 가격 (시트 '월 가격(숫자)', 카드는 빈 값)"
-      - "includes_text: 화면 '포함 내용' 표시용 (시트 '포함된 서비스' 그대로)"
       - "condition: 적용 조건 (빈 값 가능)"
       - "tag1 · tag2: 카드 태그 (태그1 제공사 · 상품군, 태그2 핵심 혜택 — BENEFIT은 큰 숫자 대신 tag2 표시)"
       - "fixed_services: 고정 포함 서비스 (| 구분)"
@@ -50,10 +49,10 @@ technical_spec:
     script: "변환 스크립트는 레포에 두지 않음 (시트 변경 시 같은 규칙으로 다시 변환)"
 
   model:
-    Bundle: "record — name, recommendType, providerType, Integer monthlyPrice, includesText, condition, tag1, tag2, List<String> fixedServices, choiceAServices, choiceBServices, Map<String,Integer> appliedPrices, List<BundleDiscount> discounts"
+    Bundle: "record — name, recommendType, providerType, Integer monthlyPrice, condition, tag1, tag2, List<String> fixedServices, choiceAServices, choiceBServices, Map<String,Integer> appliedPrices, List<BundleDiscount> discounts"
     BundleDiscount: "record — target(BundleDiscountTarget: ALL / FIXED / A / B / CATEGORY), Category category(CATEGORY일 때), Integer percent, Integer amount (둘 중 하나)"
     enums: "BundleRecommendType(FIXED, MAX, BENEFIT, EXCLUDED), BundleProviderType(PLATFORM, TELECOM, CARD), BundleDiscountTarget"
-    method: "Bundle.includes(serviceName): 고정 · 택1 A · 택1 B 중 하나라도 같은 이름이면 true"
+    method: "Bundle.includes(serviceName): 고정 · 택1 A · 택1 B 중 하나라도 같은 이름이면 true / Bundle.includesSummary(): 카드 '포함 내용' 한 줄 자동 생성 (CHECK-005)"
 
   loading:
     repository: "BundleRepository (interface, domain/catalog/domain/repository) — findAll()"

@@ -37,13 +37,13 @@ technical_spec:
         - "bundles[].condition — 카드에 표시 없음"
         - "bundles[].providerType — 카드에 표시 없음 (개수 제한은 서버에서 처리)"
       changed:
-        - "bundles[].includes: Array<String> → String — 카드 둘째 줄 '포함 내용' 한 줄 (시트 '포함된 서비스' 그대로)"
+        - "bundles[].includes: Array<String> → String — 카드 둘째 줄 '포함 내용' 한 줄 (Bundle.includesSummary 자동 생성)"
         - "bundles[].priceType: FIXED / MAX + BENEFIT(통신 요금제) 추가"
       added:
         - "bundles[].savingRate (Integer, nullable): 절약 막대 % — 통신 요금제는 null(막대 없음)"
     bundle_fields:
       - "name (String): 상품명"
-      - "includes (String): 포함 내용 한 줄"
+      - "includes (String): 포함 내용 한 줄 — 고정 포함 ' + ', 택1은 첫 번째 그룹만 ' · … 택1'(각 최대 2개, 남으면 '등'), 같은 서비스 요금제는 서비스 이름 하나로 (예: 'Netflix · YouTube Premium 등 택1'). 서비스 목록 이름이라 영어가 섞임"
       - "tags (List<String>): [태그1 제공사 · 상품군, 태그2 핵심 혜택] — 빈 태그는 빼고 최대 2개"
       - "priceType (BundleRecommendType — 번들 데이터의 유형 enum 재사용, EXCLUDED는 응답에 나오지 않음): FIXED(큰 숫자 '월 N원') / MAX(카드, '최대 N원') / BENEFIT(통신 요금제, 큰 숫자 대신 tags[1] 혜택)"
       - "monthlySaving (Integer, nullable): 큰 숫자 금액 — BENEFIT은 null"
@@ -125,6 +125,7 @@ testing_strategy:
 notes:
   - "[결정] 응답은 화면설계서 기준: maxMonthlySaving · condition · providerType 삭제, includes 문자열, priceType BENEFIT · savingRate 추가 (2026-11-21)"
   - "[결정] 내 구독 금액 = 사용자가 등록한 금액의 월 환산 (시트 가격 아님)"
+  - "[결정] includes는 그룹 정보로 자동 생성 (2026-11-21 합의, Figma 예시처럼 한글 · 'OTT' 묶음 단어는 아님)"
   - "[해석] 카드 막대: 같은 할인율이면 그 %, 섞여 있거나 할인액이면 절약액 ÷ 대상 금액"
   - "[반영] 노션 응답 표 수정 완료 (2026-11-21). mock 코드 블록은 직접 교체 필요"
   - "[공유] 노션 '구독 점검 결과 조회'의 bundles · maxMonthlySaving을 이 스펙대로 고쳐 달라고 프론트 · 기획에 전달"

@@ -15,7 +15,6 @@ columns:
   - recommend_type: "BundleRecommendType — FIXED(확정 절약) / MAX(최대 절약 · 카드) / BENEFIT(혜택 소개 · 통신 요금제) / EXCLUDED(제외)"
   - provider_type: "BundleProviderType — PLATFORM / TELECOM / CARD"
   - monthly_price: "상품 월 가격 (카드는 빈 값)"
-  - includes_text: "화면 '포함 내용' 표시 문구 (시트 '포함된 서비스')"
   - condition: "적용 조건"
   - tag1: "태그1 — 제공사 · 상품군"
   - tag2: "태그2 — 핵심 혜택 (BENEFIT은 큰 숫자 대신 표시)"
@@ -32,6 +31,7 @@ conversion_rules:
   - "서비스 목록에 없는 포함 서비스(모아진 · 교보문고 sam · 라이너 등)는 그대로 두고 계산에서 0원"
 
 business_logic:
+  - "Bundle.includesSummary(): 카드 둘째 줄 '포함 내용' — 고정 포함 ' + ', 택1은 첫 번째 그룹만 ' · ' + ' 택1'(각 최대 2개), 남는 서비스(3개째 · 두 번째 택1 그룹)가 있으면 ' 등'. 같은 서비스 요금제 여러 개는 첫 단어(서비스 이름) 하나로. 예: 'Netflix · YouTube Premium 등 택1' (2026-11-21 합의 — 시트 '포함된 서비스' 원문은 너무 길어 쓰지 않음)"
   - "Bundle.includes(serviceName): 고정 · 택1 A · 택1 B 중 하나라도 같은 이름이면 true"
   - "BundleGetService.findBundlesIncluding(serviceName): EXCLUDED 제외, includes인 상품 — 점검 결과 절약 제안 후보 (CHECK-005)"
 
