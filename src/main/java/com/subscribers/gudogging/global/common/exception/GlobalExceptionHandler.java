@@ -1,5 +1,6 @@
 package com.subscribers.gudogging.global.common.exception;
 
+import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
 import com.subscribers.gudogging.global.common.response.CommonResponse;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -11,6 +12,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -61,6 +63,19 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<CommonResponse<Void>> handleDataIntegrityViolation() {
         ErrorCode errorCode = ErrorCode.DATA_INTEGRITY_ERROR;
+        CommonResponse<Void> body = CommonResponse.error(errorCode);
+
+        return ResponseEntity
+            .status(errorCode.getStatus())
+            .body(body);
+    }
+
+    /**
+     * 업로드 한도(spring.servlet.multipart) 초과. 현재 업로드 API는 스크린샷 구독 분석뿐이라 그 오류 코드로 응답한다.
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<CommonResponse<Void>> handleMaxUploadSizeExceeded() {
+        SubscriptionErrorCode errorCode = SubscriptionErrorCode.SCREENSHOT_TOO_LARGE;
         CommonResponse<Void> body = CommonResponse.error(errorCode);
 
         return ResponseEntity

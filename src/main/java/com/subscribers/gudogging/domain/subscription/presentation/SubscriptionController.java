@@ -8,6 +8,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Rea
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SaveSubscriptionDraftRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.ScreenshotAnalysisResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCancelResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
@@ -27,10 +28,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -40,8 +43,10 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @Tag(name = "Subscription", description = "구독 관련 API")
 @RestController
@@ -386,6 +391,48 @@ public class SubscriptionController {
     ) {
         SubscriptionCreationResponse response = subscriptionUseCase.createSubscriptions(userId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTIONS_CREATED, response);
+    }
+
+    @Operation(
+        summary = "스크린샷 구독 분석 (OCR)",
+        description = """
+            **기능**
+            iPhone 구독 화면 스크린샷을 분석해 불러온 구독 확인 화면(A-09)에 보여줄 구독 후보를 반환합니다.
+            이 API는 저장하지 않습니다. 사용자가 확인 · 수정한 뒤 구독 일괄 등록(POST /api/v1/subscriptions, source = SCREENSHOT)으로 저장합니다.
+            - 사전 등록 서비스에 매칭된 결제 예정 구독만 후보로 내려줍니다 (DB에 없는 서비스, 비활성 · 만료 · 가족 공유 구독 제외)
+            - 이미 구독 중인 서비스는 후보에서 제외합니다
+            - needsReview가 true면 '확인 필요', false면 '등록 가능'(기본 선택)으로 표시합니다
+            - reviewFields에 든 필드는 구독 정보 수정(A-15)에서 '[필드]을 정확히 읽지 못했어요' 문구를 표시합니다
+            - 후보가 없으면 빈 candidates를 반환합니다 → 분석 실패 화면(A-08e)
+            - 이미지가 없거나 6장 이상이면 40408(400), PNG · JPG가 아니면 40409(400), 1장이 10MB를 넘으면 40410(413)
+            - OCR 서버 오류 · 시간 초과면 40411(502)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값** (multipart/form-data)
+            - images (File[], 필수): 구독 화면 스크린샷 1~5장 (PNG · JPG, 1장당 10MB 이하). 스크롤한 순서대로 보냅니다
+            
+            **응답값**
+            - candidates (List): 구독 후보 목록 (화면 순서). 없으면 빈 배열
+              - serviceId (UUID): 사전 등록 서비스 ID
+              - serviceName (String): 서비스명 (요금제 단위, 예: Claude Pro)
+              - logoUrl (String): 서비스 로고 URL. 없으면 null
+              - category (String): 카테고리 코드 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC)
+              - amount (Integer): 결제 금액 (원). 읽지 못하면 null
+              - billingCycleValue (Integer): 결제 주기 값 (1~31)
+              - billingCycleUnit (String): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
+              - nextBillingDate (String): 다음 결제일 (yyyy-MM-dd). 읽지 못하면 null
+              - paymentMethod (String): 결제 수단 (항상 APP_STORE)
+              - needsReview (Boolean): 사용자 확인이 필요하면 true
+              - reviewFields (List<String>): 확인이 필요한 필드 (SERVICE, AMOUNT, BILLING_CYCLE, NEXT_BILLING_DATE). 없으면 빈 배열
+            """
+    )
+    @PostMapping(value = "/screenshots/analyses", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public CommonResponse<ScreenshotAnalysisResponse> analyzeScreenshots(
+        @CurrentUserId UUID userId,
+        @RequestPart(value = "images", required = false) List<MultipartFile> images
+    ) {
+        ScreenshotAnalysisResponse response = subscriptionUseCase.analyzeScreenshots(userId, images);
+        return CommonResponse.success(SubscriptionResponseCode.SCREENSHOTS_ANALYZED, response);
     }
 
     @Operation(
