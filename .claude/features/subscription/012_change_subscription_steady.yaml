@@ -1,0 +1,179 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: SUBSCRIPTION-012
+  title: 꾸준히 쓰는 구독 설정
+  type: Feature
+  author: 1winhyun
+  source: >
+    Figma 디자인 작업소(9cBKdlwBBUqHndoKPsrDfX) › 화면 설계서 › 구독 관리 › MNG-003 구독 상세 (M-03, 1745:6957 / Description 1745:6820 '3. 꾸준히 쓰는 구독 토글'),
+    홈 › Description 1238:3614 (H-02 '구독 점검하기' · '잘 안 쓰는 구독', H-03 점검 유도 카드), 알림 › NOT-001 Description 2108:9088 (N-01 · N-02)
+  api_doc: "Notion API 명세서 › 꾸준히 쓰는 구독 설정 (PATCH /api/v1/subscriptions/{subscriptionId}/steady)"
+  priority: "Figma → 코딩 규칙(ERD 포함) → Notion API 명세서"
+  depends_on:
+    - AUTH-001          # JWT 인증 필터, @CurrentUserId
+    - USER-001          # UserErrorCode.USER_NOT_FOUND, UserNotFoundException
+    - SUBSCRIPTION-004  # SubscriptionGetService.findSubscription(User, UUID), SUBSCRIPTION_NOT_FOUND, 상세 응답 isSteady
+    - SUBSCRIPTION-005  # SUBSCRIPTION_NOT_ACTIVE(40405) — 구독 종료 구독 변경 거부
+
+overview:
+  summary: >
+    구독 상세(M-03)의 '꾸준히 쓰는 구독' 토글('점검 알림 없이 그대로 유지해요') 값을 subscriptions.is_steady_use에 저장한다.
+    켜면 D-3 점검 알림을 보내지 않고 홈 점검 유도 · 결제 예정 점검 버튼에서 빠진다. 켜도 D-1 결제 알림은 그대로 발송하고,
+    구독 목록 · 캘린더 · 결제 정보는 그대로 표시하며, 상세의 '구독 점검' 버튼으로 직접 점검할 수 있다.
+    끄면 다음 결제 일정부터 점검 알림을 다시 발송한다. 제외 · 발송 여부는 조회 · 배치 시점에 is_steady_use로 계산하므로 이 API는 값만 저장한다.
+  user_story: >
+    As a 로그인한 회원, I want to 계속 쓸 구독을 '꾸준히 쓰는 구독'으로 표시하기를,
+    so that 점검할 필요 없는 구독에 대해 점검 알림과 점검 유도를 받지 않는다.
+  goals:
+    - 본인 구독 중(ACTIVE) 구독의 is_steady_use를 요청 값으로 변경 (Subscription.changeSteadyUse 재사용)
+    - 구독 종료(ENDED) 구독은 변경 불가 (M-05에는 토글 없음)
+    - 변경된 값 반환 (subscriptionId, isSteady)
+
+technical_spec:
+  api:
+    - method: PATCH
+      path: /api/v1/subscriptions/{subscriptionId}/steady
+      summary: 꾸준히 쓰는 구독 설정
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        path_params:
+          - name: subscriptionId
+            type: UUID
+            required: true
+        body:
+          dto: ChangeSubscriptionSteadyRequest (record, @Valid)
+          fields:
+            - name: isSteady
+              type: Boolean
+              required: true
+              validation: "@NotNull — 누락 · null이면 40001(400), 불리언이 아닌 값이면 40002(400)"
+          mock: |
+            {
+              "isSteady": true
+            }
+      response:
+        http_status: 200 OK
+        dto: SubscriptionSteadyResponse (record + static from(Subscription))
+        wrapper: CommonResponse<SubscriptionSteadyResponse>
+        response_code: "SubscriptionResponseCode.SUBSCRIPTION_STEADY_CHANGED (200, HttpStatus.OK, \"설정을 변경했습니다.\")"
+        fields:
+          - "subscriptionId (UUID): 구독 ID"
+          - "isSteady (boolean): 변경된 값 = subscriptions.is_steady_use"
+        mock: |
+          {
+            "code": 200,
+            "message": "설정을 변경했습니다.",
+            "data": {
+              "subscriptionId": "3f2b8c1e-5a4d-4e7b-9c21-000000000001",
+              "isSteady": true
+            }
+          }
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: "@CurrentUserId userId, @PathVariable subscriptionId, @RequestBody @Valid ChangeSubscriptionSteadyRequest → SubscriptionUseCase.changeSubscriptionSteady(userId, subscriptionId, request) → CommonResponse.success(SUBSCRIPTION_STEADY_CHANGED, response)"
+    - step: 2
+      layer: UseCase (SubscriptionUseCase)
+      action: >
+        회원 확인 → 본인 구독 조회 → status가 ACTIVE가 아니면 SubscriptionNotActiveException(40405)
+        → subscription.changeSteadyUse(request.isSteady()) → SubscriptionSteadyResponse.from(subscription)
+      transaction: "@Transactional (쓰기) — 변경 감지로 저장"
+    - step: 3
+      layer: Domain Service
+      action: >
+        UserGetService.findUserById(userId) — 없으면 UserNotFoundException(40201) /
+        SubscriptionGetService.findSubscription(user, subscriptionId) — 없거나 삭제 · 다른 회원 것이면 SubscriptionNotFoundException(40404) (기존 메서드 재사용)
+    - step: 4
+      layer: Domain (Subscription)
+      action: "changeSteadyUse(enabled): isSteadyUse = enabled (기존 메서드 재사용, 변경 없음)"
+
+  database:
+    entities:
+      - name: Subscription (subscriptions)
+        action: Update
+        fields: "is_steady_use (BOOLEAN, NOT NULL, 기본값 false) — 컬럼 · 엔티티 이미 있음, 스키마 변경 없음"
+
+  error_codes:
+    - code: 40405
+      name: SUBSCRIPTION_NOT_ACTIVE
+      status: 409 CONFLICT
+      message: "구독 중인 구독만 수정할 수 있습니다."
+      note: "기존 재사용 — 구독 종료(ENDED) 구독"
+    - code: 40404
+      name: SUBSCRIPTION_NOT_FOUND
+      status: 404
+      message: "구독을 찾을 수 없습니다."
+      note: 기존 재사용
+    - code: 40201
+      name: USER_NOT_FOUND
+      status: 404
+      note: 기존 재사용
+    - code: "40001 / 40002"
+      note: "전역 — isSteady 누락 · null(40001), 잘못된 JSON 값(40002)"
+
+  validation_rules:
+    - "본인 구독만 — 다른 회원 구독 · 삭제된 구독은 SUBSCRIPTION_NOT_FOUND (40404)"
+    - "구독 중(ACTIVE) 구독만 변경 가능 — ENDED면 SUBSCRIPTION_NOT_ACTIVE (40405). Figma: 토글은 M-03(구독 중)에만 있고 M-05(구독 종료)에는 없음"
+    - "isSteady 필수 (true / false)"
+    - "현재 값과 같은 값으로 요청해도 성공 (200, 같은 값 반환) — 토글 연타 · 재시도에 안전"
+
+  side_effects:
+    figma_rules: "MNG-003 Description '3. 꾸준히 쓰는 구독 토글' — 모두 조회 · 배치 시점에 is_steady_use로 계산, 이 API에서 별도 처리 없음"
+    when_on:
+      - "D-3 점검 알림(N-01) 미발송 — 배치 조건 is_steady_use = false (ERD 7장, NOT-001 '꾸준히 쓰는 구독 제외')"
+      - "홈 점검 유도 제외 — H-03 점검 유도 카드 '결제일이 가장 가까운 구독(꾸준히 쓰는 구독 제외)'"
+      - "결제 예정 점검 버튼 제외 — H-02 '구독 점검하기' 목록 '꾸준히 쓰는 구독 제외'"
+    unchanged_when_on:
+      - "D-1 결제 알림(N-02) 그대로 발송 — NOT-001 '꾸준히 쓰는 구독 포함'"
+      - "구독 목록 · 캘린더 · 결제 정보(상세) 그대로 표시"
+      - "상세 '구독 점검' 버튼으로 직접 점검 가능 — CHECK-001 · 002 이미 허용"
+    when_off:
+      - "다음 결제 일정부터 점검 알림 다시 발송 — 배치가 발송 시점에 is_steady_use를 보므로 저장만 하면 됨"
+    not_changed:
+      - "점검 기록(subscription_checks) · 이미 발송된 알림(notifications)은 변경하지 않음"
+
+package_structure:
+  base: "com.subscribers.gudogging.domain.subscription"
+  files:
+    - "presentation/SubscriptionController.java (수정 — changeSubscriptionSteady 핸들러 + Swagger 설명)"
+    - "presentation/response/SubscriptionResponseCode.java (수정 — SUBSCRIPTION_STEADY_CHANGED)"
+    - "application/usecase/SubscriptionUseCase.java (수정 — changeSubscriptionSteady)"
+    - "application/dto/request/ChangeSubscriptionSteadyRequest.java (신규, record — @NotNull Boolean isSteady)"
+    - "application/dto/response/SubscriptionSteadyResponse.java (신규, record + from)"
+    - "application/exception/* (변경 없음 — SubscriptionNotActiveException · SubscriptionNotFoundException 재사용)"
+    - "domain/entity/Subscription.java (변경 없음 — changeSteadyUse 재사용)"
+    - "domain/service/SubscriptionGetService.java (변경 없음 — findSubscription 재사용)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest only — Mock: UserGetService, SubscriptionGetService
+  happy_path:
+    - "changeSubscriptionSteady: 구독 중 구독을 꾸준히 쓰는 구독으로 켜면 isSteadyUse가 true가 되고 응답에 subscriptionId · isSteady(true)를 담는다"
+    - "changeSubscriptionSteady: 켜진 구독을 끄면 isSteadyUse가 false가 된다"
+    - "changeSubscriptionSteady: 현재 값과 같은 값으로 요청해도 예외 없이 같은 값을 반환한다"
+  edge_cases:
+    - "changeSubscriptionSteady: 구독 종료(ENDED) 구독이면 SUBSCRIPTION_NOT_ACTIVE(40405) 예외를 던지고 값을 바꾸지 않는다"
+    - "changeSubscriptionSteady: 구독이 없거나 삭제됐거나 다른 회원 것이면 SUBSCRIPTION_NOT_FOUND(40404) 예외를 던진다"
+    - "changeSubscriptionSteady: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND(40201) 예외를 던진다"
+  test_files:
+    - "test/.../domain/subscription/application/usecase/SubscriptionUseCaseTest.java (수정 — @Nested ChangeSubscriptionSteady 추가)"
+
+docs_to_update:
+  - "references/data-model/domains/subscription/subscription.yaml — changeSteadyUse 사용처(SUBSCRIPTION-012) · ACTIVE에서만 변경 명시"
+  - "docs/ERD.md 4.4 is_steady_use 설명 — '결제 예정 점검 버튼(H-02 구독 점검하기)' 제외 추가 (현재는 D-3 알림 · 홈 점검 유도만 적힘)"
+  - "memory.md — 스펙 작성 · 구현 기록"
+
+notes:
+  - "[Figma 대조] M-03 Description '3. 꾸준히 쓰는 구독 토글' 문구 1:1 — '점검 알림 없이 그대로 유지해요' / 켜면: D-3 점검 알림을 보내지 않고, 홈 점검 유도 · 결제 예정 점검 버튼에서 빠짐 / 켜도 그대로: D-1 결제 알림 발송(토글과 관계없음), 구독 목록 · 캘린더 · 결제 정보 표시, 상세 '구독 점검' 버튼으로 직접 점검 가능 / 끄면: 다음 결제 일정부터 점검 알림 다시 발송"
+  - "[Figma 우선 — Notion과 다름] Notion은 켜면 '내 구독 사용 현황'(Figma H-02 '잘 안 쓰는 구독')에서도 제외한다고 적었지만, Figma M-03 제외 목록과 H-02 '잘 안 쓰는 구독' 규칙(활용도 60% 미만, '유지하기' 고른 구독은 다음 점검 전까지 제외)에는 꾸준히 쓰는 구독 제외가 없음 → 이 스펙은 Figma대로 제외 대상에 넣지 않음. 홈 API 스펙 작성 때 재확인, Notion 수정 필요"
+  - "[Figma 우선 — 표현 차이] Notion '홈의 \"구독 점검\" 버튼' = Figma '결제 예정 점검 버튼' = H-02 '구독 점검하기' 목록(이번 주기 미점검, 최대 5개). 상세(M-03) 하단 '구독 점검' 버튼과는 다름 (상세 버튼은 계속 사용 가능)"
+  - "[결정(제안)] 구독 종료 구독 에러는 기존 40405 SUBSCRIPTION_NOT_ACTIVE 재사용 — 같은 M-03의 편집(SUBSCRIPTION-005)과 같은 '구독 중일 때만 바꿀 수 있는 설정' 성격, 문구 '구독 중인 구독만 수정할 수 있습니다.'가 맞음. 신규 코드 추가 없음"
+  - "[결정] 경로 · 메서드는 Notion(PATCH /{subscriptionId}/steady) — SUBSCRIPTION-004 notes에 기록된 경로, 하위 리소스 동작 경로는 /cancel · /reactivate와 같은 형식"
+  - "[결정] DTO 이름은 규칙({Action}{Resource}Request / {Resource}Response)대로 ChangeSubscriptionSteadyRequest / SubscriptionSteadyResponse. JSON 필드명 isSteady는 Notion · 상세 응답(SubscriptionDetailResponse.isSteady)과 같음"
+  - "[가정] 같은 값 요청도 성공 처리 (Notion · Figma에 언급 없음, 토글 특성상 멱등이 자연스러움)"
+  - "[가정] 알림 배치 · 홈 API는 아직 없음 — 제외 · 재발송 규칙은 각 기능 구현 시 is_steady_use 조건으로 반영 (ERD 6.3 · 7장에 이미 기술)"
+  - "[범위 외 · 참고] M-05 Description '재등록 시 … 점검 알림 다시 켜짐' — 재등록(SUBSCRIPTION-008, 구현됨)은 is_steady_use를 유지함. 문구가 'ENDED라 멈췄던 알림 재개'인지 '꾸준히 쓰는 구독 해제'인지 Figma만으로는 불명확 → 이 스펙에서 변경하지 않음, 필요 시 별도 확인"

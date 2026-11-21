@@ -1,5 +1,6 @@
 package com.subscribers.gudogging.domain.subscription.presentation;
 
+import com.subscribers.gudogging.domain.subscription.application.dto.request.ChangeSubscriptionSteadyRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.CreateSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.DeleteSubscriptionsRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
@@ -16,6 +17,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionDraftSaveResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionListResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionReactivationResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionSteadyResponse;
 import com.subscribers.gudogging.domain.subscription.application.usecase.SubscriptionUseCase;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
 import com.subscribers.gudogging.domain.subscription.presentation.response.SubscriptionResponseCode;
@@ -98,11 +100,13 @@ public class SubscriptionController {
         summary = "구독 상세 조회",
         description = """
             **기능**
-            구독 1건의 기본 정보와 결제 계산 값을 조회합니다. 구독 중 상세(M-03) · 구독 종료 상세(M-05)와
+            구독 1건의 기본 정보와 결제 계산 값, 점검 기록을 조회합니다. 구독 중 상세(M-03) · 구독 종료 상세(M-05)와
             캘린더에서 날짜를 눌러 들어온 구독 상세(C-03)에 사용합니다.
             baseDate가 있으면 그 날짜 기준으로 상태(등록일 ~ 해지일 사이면 ACTIVE) · 다음 결제일 · D-n을 계산합니다.
             지금까지 결제 금액 · 횟수는 baseDate와 무관하게 오늘(구독 종료면 해지일)까지로 계산합니다.
-            점검 기록(latestCheckup · pastCheckups · pastCheckupAverage)은 구독 점검 기능 구현 전까지 항상 null · 빈 배열입니다.
+            점검 기록은 baseDate와 무관합니다. latestCheckup은 가장 최근 점검 1건(M-05 '마지막 점검' · C-03 '최근 점검'),
+            pastCheckups · pastCheckupAverage는 이번 달 포함 최근 3개월(두 달 전 1일 ~ 오늘) 점검과 그 평균(M-03 '지난 점검')입니다.
+            응답 문구는 점검 당시 카테고리의 선택지 문구입니다. 평균 문구는 문항별 평균을 반올림한 점수의 선택지이고, 평균 활용도는 소수 평균으로 계산합니다(1건이면 그 기록 그대로).
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
             - 회원이 없거나 탈퇴했으면 40201(404)
             
@@ -120,17 +124,32 @@ public class SubscriptionController {
             - billingCycleValue (Integer): 결제 주기 값
             - billingCycleUnit (String): 결제 주기 단위 (DAY, WEEK, MONTH, YEAR)
             - nextBillingDate (String, nullable): 기준일 이후(포함) 첫 결제일 (yyyy-MM-dd). 구독 종료이고 해지일 이후면 null
-            - startedAt (String): 구독 시작일 = 등록일 (yyyy-MM-dd)
+            - startedAt (String): 구독 시작일 (yyyy-MM-dd). 재등록하면 재등록일
             - paymentMethod (String): 결제한 곳 (WEB_DIRECT, APP_STORE, GOOGLE_PLAY)
             - isSteady (Boolean): '꾸준히 쓰는 구독' 여부
             - canceledAt (String, nullable): 해지일 (yyyy-MM-dd). 구독 중이면 null
             - yearlyAmount (Integer): 연 환산 금액 (원)
-            - totalPaidAmount (Integer): 지금까지 결제 금액 (원) = 결제 횟수 × 금액
+            - totalPaidAmount (Integer): 지금까지 결제 금액 (원). 결제일마다 그때 금액의 합계 (결제 정보 수정 전 조건 포함)
             - paidCount (Integer): 지금까지 결제 횟수
             - dDay (Integer, nullable): 다음 결제일 − 기준일. nextBillingDate가 null이면 null
-            - latestCheckup (Object, nullable): 가장 최근 점검 1건. 현재 항상 null
-            - pastCheckups (List): 최근 90일 점검 기록. 현재 항상 빈 배열
-            - pastCheckupAverage (Object, nullable): 최근 90일 점검 평균. 현재 항상 null
+            - latestCheckup (Object, nullable): 가장 최근 점검 1건. 점검이 없으면 null
+              - checkupId (UUID): 점검 ID (점검 결과 조회 API에 사용)
+              - checkedAt (String): 점검일 (yyyy-MM-dd)
+              - decision (String, nullable): KEEP / CANCEL. 유지/해지를 고르지 않았으면 null
+              - usageAnswer · satisfactionAnswer · planAnswer (String): 이용도 · 만족도 · 다음 달 응답 문구
+              - stage (String): KEEP_RECOMMENDED / KEEP_CONSIDER / CANCEL_CONSIDER / CANCEL_RECOMMENDED
+              - score (Integer): 활용도 (%)
+              - memo (String, nullable): 메모
+              - cancelReasons (List): K-90에서 고른 해지 이유 코드 (RARELY_USED, PRICE_BURDEN, LACKING, SWITCHING, GOAL_ACHIEVED, CUSTOM — K-90 순서). 없으면 빈 배열. 문구는 앱에서 카테고리별로 표시
+              - cancelReasonText (String, nullable): 직접 입력한 해지 이유
+            - pastCheckups (List): 이번 달 포함 최근 3개월 점검 기록 (최신순, 없으면 빈 배열)
+              - checkedAt (String) · usageAnswer · satisfactionAnswer · planAnswer (String) · decision (String, nullable)
+            - pastCheckupAverage (Object, nullable): 최근 3개월 점검 평균. 기간 안 점검이 없으면 null
+              - periodFrom (String): 기간 시작일 = 두 달 전 1일 (yyyy-MM-dd)
+              - periodTo (String): 기간 종료일 = 오늘 (yyyy-MM-dd)
+              - usageAnswer · satisfactionAnswer · planAnswer (String): 문항별 평균을 반올림한 점수의 응답 문구
+              - score (Integer): 평균 활용도 (%)
+              - stage (String): 활용도 구간 단계
             """
     )
     @GetMapping("/{subscriptionId}")
@@ -242,6 +261,40 @@ public class SubscriptionController {
         SubscriptionReactivationResponse response = subscriptionUseCase.reactivateSubscription(userId,
             subscriptionId, request);
         return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_REACTIVATED, response);
+    }
+
+    @Operation(
+        summary = "꾸준히 쓰는 구독 설정",
+        description = """
+            **기능**
+            구독 상세(M-03)의 '꾸준히 쓰는 구독' 토글('점검 알림 없이 그대로 유지해요') 값을 저장합니다.
+            - 켜면(true): D-3 점검 알림을 보내지 않고, 홈 점검 유도 · 결제 예정 점검 버튼(홈 '구독 점검하기')에서 빠집니다.
+            - 켜도 그대로: D-1 결제 알림 발송(토글과 관계없음), 구독 목록 · 캘린더 · 결제 정보 표시, 상세 '구독 점검' 버튼으로 직접 점검 가능
+            - 끄면(false): 다음 결제 일정부터 점검 알림을 다시 발송합니다.
+            현재 값과 같은 값을 보내도 성공합니다.
+            - 구독 종료(ENDED) 구독이면 40405(409)
+            - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
+            - isSteady가 없거나 null이면 40001(400), 불리언이 아니면 40002(400)
+            - 회원이 없거나 탈퇴했으면 40201(404)
+            
+            **요청값**
+            - subscriptionId (UUID, 필수): 구독 ID (path variable)
+            - isSteady (Boolean, 필수): 꾸준히 쓰는 구독 여부
+            
+            **응답값**
+            - subscriptionId (UUID): 구독 ID
+            - isSteady (Boolean): 변경된 값
+            """
+    )
+    @PatchMapping("/{subscriptionId}/steady")
+    public CommonResponse<SubscriptionSteadyResponse> changeSubscriptionSteady(
+        @CurrentUserId UUID userId,
+        @PathVariable UUID subscriptionId,
+        @RequestBody @Valid ChangeSubscriptionSteadyRequest request
+    ) {
+        SubscriptionSteadyResponse response = subscriptionUseCase.changeSubscriptionSteady(userId, subscriptionId,
+            request);
+        return CommonResponse.success(SubscriptionResponseCode.SUBSCRIPTION_STEADY_CHANGED, response);
     }
 
     @Operation(

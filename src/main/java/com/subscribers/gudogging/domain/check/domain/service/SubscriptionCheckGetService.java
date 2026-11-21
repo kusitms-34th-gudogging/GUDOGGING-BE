@@ -4,6 +4,7 @@ import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.check.domain.repository.SubscriptionCheckRepository;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -26,6 +27,14 @@ public class SubscriptionCheckGetService {
      */
     public Optional<SubscriptionCheck> findLatestCheck(Subscription subscription) {
         return subscriptionCheckRepository.findFirstBySubscriptionAndDeletedFalseOrderByCreatedAtDesc(subscription);
+    }
+
+    /**
+     * 구독의 점검 중 from 이후(포함)에 한 점검 (삭제 제외), 최신순.
+     */
+    public List<SubscriptionCheck> findChecksCreatedSince(Subscription subscription, LocalDateTime from) {
+        return subscriptionCheckRepository
+            .findAllBySubscriptionAndCreatedAtGreaterThanEqualAndDeletedFalseOrderByCreatedAtDesc(subscription, from);
     }
 
     /**
