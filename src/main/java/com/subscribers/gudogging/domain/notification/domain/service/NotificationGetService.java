@@ -7,6 +7,8 @@ import com.subscribers.gudogging.domain.user.domain.entity.User;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -28,5 +30,16 @@ public class NotificationGetService {
     public boolean hasUnreadNotification(User user, LocalDateTime now) {
         return notificationRepository.existsByUserAndIsReadFalseAndDeletedFalseAndSentAtGreaterThanEqual(user,
             now.minusDays(RETENTION_DAYS));
+    }
+
+    /**
+     * 알림 목록 — 삭제 제외 · 최근 30일(sent_at) 알림을 최신순으로, 구독 · 서비스(로고)와 함께 조회한다.
+     */
+    public List<Notification> findRecentNotifications(User user, LocalDateTime now) {
+        return notificationRepository.findRecentWithSubscriptionByUser(user, now.minusDays(RETENTION_DAYS));
+    }
+
+    public Optional<Notification> findNotification(User user, UUID notificationId) {
+        return notificationRepository.findByIdAndUserAndDeletedFalse(notificationId, user);
     }
 }
