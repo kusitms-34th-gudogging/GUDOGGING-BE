@@ -20,7 +20,8 @@ public enum SubscriptionResponseCode implements ResponseCodeInterface {
     SUBSCRIPTION_STEADY_CHANGED(200, HttpStatus.OK, "설정을 변경했습니다."),
     SUBSCRIPTION_DRAFT_SAVED(200, HttpStatus.OK, "임시저장했습니다."),
     SUBSCRIPTION_DRAFT_FOUND(200, HttpStatus.OK, "임시저장을 조회했습니다."),
-    SUBSCRIPTION_DRAFT_DELETED(200, HttpStatus.OK, "임시저장을 삭제했습니다.");
+    SUBSCRIPTION_DRAFT_DELETED(200, HttpStatus.OK, "임시저장을 삭제했습니다."),
+    SCREENSHOTS_ANALYZED(200, HttpStatus.OK, "스크린샷을 분석했습니다.");
 
     private final int code;
     private final HttpStatus status;
