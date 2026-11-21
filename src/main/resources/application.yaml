@@ -17,6 +17,11 @@ spring:
         default_batch_fetch_size: 100
     hibernate:
       ddl-auto: update
+  servlet:
+    multipart:
+      # 스크린샷 구독 분석 (A-07): 1장당 10MB, 최대 5장. 기본값(1MB / 10MB)이면 여러 장 업로드가 실패한다
+      max-file-size: 10MB
+      max-request-size: 55MB
   data:
     redis:
       host: ${REDIS_HOST:localhost}
@@ -37,6 +42,13 @@ management:
   endpoint:
     health:
       show-details: never
+
+# 스크린샷 구독 분석 OCR 서버 (AI_SERVER_GUIDE.md). API 키는 OCR 담당자에게 따로 받는다 — 커밋 금지
+ocr:
+  base-url: ${OCR_BASE_URL:http://localhost:18000}
+  api-key: ${OCR_API_KEY:}
+  connect-timeout: 2s
+  read-timeout: 15s
 
 google:
   client-ids: ${GOOGLE_CLIENT_IDS}
