@@ -1,5 +1,5 @@
 # ServiceCatalog Entity
-# Last Updated: 2026-11-18
+# Last Updated: 2026-11-21 (CATALOG-002 요금제 단위 시드)
 # Source: docs/ERD.md v1.2 §4.3 services
 
 entity: SERVICE_CATALOG
@@ -76,7 +76,8 @@ constraints:
 business_logic:
   - "create(name, nameEn, searchKeywords, category, logoUrl, defaultAmount, sortOrder): 정적 팩토리. object_particle, cancel_url은 NULL, is_active = true. 주로 UseCase 테스트 픽스처에 사용 (테스트 가이드: 엔티티는 정적 팩토리로 생성)"
   - "create(name, nameEn, searchKeywords, category, logoUrl, defaultAmount, cancelUrl, sortOrder): cancel_url을 지정하는 오버로드 (SUBSCRIPTION-006). 위 7개 인자 버전은 cancelUrl = null로 위임. 서비스 시드(services_seed.csv)는 nameEn·searchKeywords·defaultAmount = null로 호출"
-  - "updateFromSeed(category, logoUrl, cancelUrl, sortOrder): 시드 CSV 동기화용 도메인 메서드. CSV에 있는 컬럼 4개만 갱신하고 나머지 컬럼(default_amount 포함)은 유지 (SUBSCRIPTION-006)"
+  - "updateFromSeed(category, logoUrl, cancelUrl, defaultAmount, sortOrder): 시드 CSV 동기화용 도메인 메서드. CSV 컬럼 5개를 갱신하고 is_active = true (CATALOG-002)"
+  - "deactivate(): is_active = false — 시드 CSV에서 빠진 서비스 (행은 유지, 기존 구독이 가리킬 수 있음) (CATALOG-002)"
 
 notes:
   - "클래스명: 스프링 @Service 어노테이션과 이름이 겹치지 않도록 ServiceCatalog로 명명 (테이블명은 services 유지, @Table(name = \"services\"))"
@@ -87,5 +88,7 @@ notes:
   - "서비스 검색(A-02)은 CATALOG-001에서 구현 — domain/catalog/domain/search/ServiceSearchKeyword (정규화·초성·점수 정렬), 조회는 ServiceCatalogRepository.findAllByIsActiveTrueAndDeletedFalseOrderBySortOrderAscNameAsc()"
   - "구독 등록(SUBSCRIPTION-001)의 serviceId 검증은 ServiceCatalogGetService.findActiveServicesByIds → findAllByIdInAndIsActiveTrueAndDeletedFalse(ids). 없거나 비활성이면 CatalogErrorCode.SERVICE_NOT_FOUND (40301)"
   - "해지 안내 문구(steps · caution)와 App Store/Google Play 링크는 DB에 저장하지 않고 CancelGuideType enum 상수로 관리 (SUBSCRIPTION-006). cancel_guide · cancel_notice 컬럼은 엔티티에서 제거됨 — ddl-auto=update는 컬럼을 지우지 않음. NULL 허용이라 남아 있어도 무해하며, 정리는 두 컬럼을 매핑하는 구버전 인스턴스가 모두 종료된 뒤(새 버전 배포 완료 · 롤백 가능 기간 이후)에만 실행: ALTER TABLE services DROP COLUMN cancel_guide, DROP COLUMN cancel_notice; (배포 전 실행 금지 — 구버전 조회 실패, 롤백 시 복구 불가)"
-  - "서비스 시드 동기화: src/main/resources/seed/services_seed.csv(92행, name,category,logo_url,cancel_url,sort_order)를 ServiceCatalogSeedRunner(ApplicationRunner)가 앱 시작 시마다 읽어 CatalogUseCase.seedServices로 name 기준 동기화 — DB에 없는 이름은 추가, 있는 이름은 CSV 컬럼 4개(category, logo_url, cancel_url, sort_order)만 갱신(updateFromSeed). name_en · search_keywords · object_particle · is_active와 CSV에 없는 서비스는 건드리지 않고 삭제·비활성화도 하지 않음. CSV 4개 컬럼은 CSV가 원본이므로 SQL로 직접 고치면 다음 기동 때 덮어써짐(수정은 CSV로). 서비스명 변경은 새 서비스로 추가되므로 SQL로 처리. object_particle은 CSV에 없으므로 영문으로 끝나는 서비스는 '를'로 처리됨 — 필요하면 SQL로 채움"
+  - "서비스 시드 동기화 (CATALOG-002): src/main/resources/seed/services_seed.csv(요금제 단위 195행, name,category,logo_url,cancel_url,default_amount,sort_order — 구글 시트 '서비스 DB > 서비스 목록' 변환)를 ServiceCatalogSeedRunner(ApplicationRunner)가 앱 시작 시마다 읽어 CatalogUseCase.seedServices로 name 기준 동기화 — DB에 없는 이름은 추가, 있는 이름은 CSV 컬럼 5개 갱신 + 활성화(updateFromSeed), CSV에 없는 서비스는 비활성화(deactivate, 행 유지). name_en · search_keywords · object_particle은 건드리지 않음. CSV 컬럼은 CSV가 원본이므로 SQL로 직접 고치면 다음 기동 때 덮어써짐(수정은 CSV로)"
+  - "default_amount: 시트 가격이 원화이고 결제 주기가 '월간' · '월간 (연간약정)'인 요금제만 값, 달러 · 연간 · 빈칸은 NULL (CATALOG-002)"
+  - "요금제 단위 전환 (CATALOG-002, 2026-11-21): 예전 서비스 단위 행(예: Netflix)은 비활성화되고, 그 행에 연결된 기존 구독은 그대로 유지 (요금제 정보가 없어 번들 추천 대상 아님)"
   - "목적격 조사 선택은 Subscription.objectParticle() — 한글이면 받침 자동 판별, 영문 등은 object_particle 값(없으면 '를'). 해지 링크 유무 분기는 Subscription.cancelGuideType() (SUBSCRIPTION-006)"
