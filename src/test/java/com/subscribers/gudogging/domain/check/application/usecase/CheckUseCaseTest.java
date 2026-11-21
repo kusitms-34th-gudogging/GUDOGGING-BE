@@ -130,7 +130,8 @@ class CheckUseCaseTest {
             given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
             given(subscriptionGetService.findSubscription(user, subscription.getId()))
                 .willReturn(Optional.of(subscription));
-            given(subscriptionCheckGetService.findLatestCheck(subscription)).willReturn(Optional.ofNullable(latestCheck));
+            given(subscriptionCheckGetService.findLatestCheck(subscription)).willReturn(
+                Optional.ofNullable(latestCheck));
             return checkUseCase.getCheckupForm(userId, subscription.getId());
         }
 
@@ -795,7 +796,6 @@ class CheckUseCaseTest {
             assertThat(spending.subscriptionCount()).isEqualTo(3);
             assertThat(itemNames(spending)).containsExactly("넷플릭스", "유튜브 프리미엄", "티빙");
             assertThat(spending.items().get(0).logoUrl()).isEqualTo("https://logo.example.com/넷플릭스.png");
-            assertThat(spending.otherCount()).isZero();
         }
 
         @Test
@@ -818,8 +818,8 @@ class CheckUseCaseTest {
         }
 
         @Test
-        @DisplayName("같은 카테고리 구독이 6개면 상위 4개와 그 외 개수 2를 반환하고 합계는 6개 전부다")
-        void truncatesOverFiveSubscriptions() {
+        @DisplayName("같은 카테고리 구독이 6개면 6개 전부를 목록으로 반환하고 합계도 6개 전부다")
+        void returnsAllSubscriptionsOverFive() {
             // given
             Subscription netflix = video("넷플릭스", 9000);
             Subscription a = video("디즈니+", 13900);
@@ -834,8 +834,7 @@ class CheckUseCaseTest {
             // then
             CategorySpendingResponse spending = result.categorySpending();
             assertThat(spending.subscriptionCount()).isEqualTo(6);
-            assertThat(itemNames(spending)).containsExactly("넷플릭스", "유튜브 프리미엄", "디즈니+", "티빙");
-            assertThat(spending.otherCount()).isEqualTo(2);
+            assertThat(itemNames(spending)).containsExactly("넷플릭스", "유튜브 프리미엄", "디즈니+", "티빙", "웨이브", "왓챠");
             assertThat(spending.monthlyTotal()).isEqualTo(70100);
         }
 

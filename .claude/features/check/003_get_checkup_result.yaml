@@ -62,8 +62,7 @@ technical_spec:
           - "categorySpending.category (Category): 점검 당시 카테고리"
           - "categorySpending.monthlyTotal (long): 같은 카테고리 구독 중 구독들의 월 환산 합계"
           - "categorySpending.subscriptionCount (int): 그 구독 개수"
-          - "categorySpending.items (List): serviceName · logoUrl(nullable) · monthlyAmount(long)"
-          - "categorySpending.otherCount (int): '그 외 n' (5개 이하면 0)"
+          - "categorySpending.items (List): 같은 카테고리 구독 전부 — serviceName · logoUrl(nullable) · monthlyAmount(long)"
         mock: |
           {
             "code": 200,
@@ -90,8 +89,7 @@ technical_spec:
                 "items": [
                   { "serviceName": "넷플릭스", "logoUrl": "https://...", "monthlyAmount": 13500 },
                   { "serviceName": "유튜브 프리미엄", "logoUrl": "https://...", "monthlyAmount": 14900 }
-                ],
-                "otherCount": 0
+                ]
               }
             }
           }
@@ -116,7 +114,7 @@ technical_spec:
     amount: "월 환산 금액 (subscription.monthlyAmount()) — 연 · 주 · 일 단위도 월 환산"
     checked_subscription: "점검한 구독은 목록 맨 위. 점검한 구독이 구독 종료 상태여도 맨 위에 포함하고 합계 · 개수에도 넣음 (결과 화면이 그 구독 기준이므로)"
     order: "점검한 구독 다음은 월 환산 금액이 큰 순 (같으면 서비스명 순)"
-    limit: "5개 이하면 전부, 5개 초과면 상위 4개(점검한 구독 포함) + otherCount = 전체 − 4"
+    limit: "개수 제한 없이 전부 내려줌 (2026-11-21 변경: 기존 '5개 초과 시 상위 4개 + 그 외 n' 폐지, otherCount 필드 삭제)"
 
   data_flow:
     - step: 1
@@ -179,7 +177,7 @@ testing_strategy:
     - "getCheckupResult: 계획이 1점이면 mainFactor는 PLAN이다"
     - "getCheckupResult: 연 결제 구독은 월 환산해 합산한다"
     - "getCheckupResult: 다른 카테고리 · 구독 종료 구독은 카테고리 지출에서 뺀다"
-    - "getCheckupResult: 같은 카테고리 구독이 6개면 상위 4개와 otherCount 2를 반환한다"
+    - "getCheckupResult: 같은 카테고리 구독이 6개면 6개 전부를 목록으로 반환하고 합계도 6개 전부다"
     - "getCheckupResult: 구독 종료된 구독의 점검이면 nextBillingDate는 null이고 점검한 구독은 카테고리 목록 맨 위에 포함된다"
     - "getCheckupResult: 점검이 없거나 다른 회원 것이면 CHECKUP_NOT_FOUND(40503) 예외를 던진다"
     - "getCheckupResult: 회원이 없으면 USER_NOT_FOUND 예외를 던진다"
@@ -191,6 +189,6 @@ notes:
   - "[가정] 구독 종료된 구독의 점검도 조회 가능, nextBillingDate = null"
   - "[가정] 카테고리 지출 기준 카테고리는 점검 당시 카테고리(subscription_checks.category)"
   - "[가정] 점검한 구독이 구독 종료 상태여도 카테고리 지출 맨 위 · 합계에 포함"
-  - "[가정] 점검한 구독 외 정렬은 월 환산 금액 큰 순, 같으면 서비스명 순 ('상위 4개' 기준)"
+  - "[가정] 점검한 구독 외 정렬은 월 환산 금액 큰 순, 같으면 서비스명 순"
   - "[참고] 동점 우선순위(계획 > 이용도 > 만족도)는 구현했지만 가중치 40 · 25 · 35로는 0이 아닌 동점이 생기지 않아 테스트로 재현할 수 없음 (0점 동점은 계획 1점 규칙 · 활용도 구간으로 생기지 않음)"
   - "[참고] 노션 응답 yearlyCost · maxMonthlySaving · monthlyAmount 타입은 Integer로 적혀 있으나 기존 금액 필드처럼 long 사용"
