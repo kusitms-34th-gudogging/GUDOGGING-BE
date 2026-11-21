@@ -30,9 +30,9 @@ public class TsvBundleRepository implements BundleRepository {
 
     private static final String SEED_FILE = "seed/bundles_seed.tsv";
     private static final String HEADER = String.join("\t", "name", "recommend_type", "provider_type",
-        "monthly_price", "includes_text", "condition", "tag1", "tag2", "fixed_services", "choice_a_services",
+        "monthly_price", "condition", "tag1", "tag2", "fixed_services", "choice_a_services",
         "choice_b_services", "applied_prices", "discounts");
-    private static final int COLUMN_COUNT = 13;
+    private static final int COLUMN_COUNT = 12;
     private static final String LIST_SEPARATOR = "\\|";
     private static final String KEY_VALUE_SEPARATOR = "=";
     private static final String PERCENT = "%";
@@ -82,15 +82,14 @@ public class TsvBundleRepository implements BundleRepository {
                 BundleRecommendType.valueOf(columns[1]),
                 BundleProviderType.valueOf(columns[2]),
                 columns[3].isEmpty() ? null : Integer.valueOf(columns[3]),
-                columns[4],
+                emptyToNull(columns[4]),
                 emptyToNull(columns[5]),
                 emptyToNull(columns[6]),
-                emptyToNull(columns[7]),
+                toList(columns[7]),
                 toList(columns[8]),
                 toList(columns[9]),
-                toList(columns[10]),
-                toAppliedPrices(columns[11]),
-                toDiscounts(columns[12])
+                toAppliedPrices(columns[10]),
+                toDiscounts(columns[11])
             );
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("번들 시드 TSV " + lineNumber + "행을 해석할 수 없습니다", e);
