@@ -45,10 +45,10 @@ public class CheckController {
             - 구독 종료된 구독이면 40501(409)
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - subscriptionId (UUID, 필수): 구독 ID (path variable)
-
+            
             **응답값**
             - category (String): 구독 카테고리 (VIDEO_OTT, MUSIC, SHOPPING_DELIVERY, EDUCATION, PRODUCTIVITY_AI, ENTERTAINMENT, ETC)
             - questions (List): 문항 3개 (USAGE → SATISFACTION → PLAN)
@@ -89,14 +89,14 @@ public class CheckController {
             - 없거나 삭제됐거나 다른 회원의 구독이면 40404(404)
             - 입력값 검증 실패 시 40001(400), 잘못된 type 값은 40002(400)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - subscriptionId (UUID, 필수): 구독 ID (path variable)
             - answers (List, 필수): 응답 3개
               - type (String, 필수): USAGE / SATISFACTION / PLAN
               - score (Integer, 필수): 선택한 점수 (1~5)
             - memo (String, 선택): 메모 (최대 100자)
-
+            
             **응답값**
             - checkupId (UUID): 저장한 점검 ID
             """
@@ -120,15 +120,15 @@ public class CheckController {
             checkupId는 구독 점검 제출 API 응답에서 받습니다. 구독 종료된 구독의 점검도 조회할 수 있습니다(이때 nextBillingDate = null).
             - 응답 문구는 점검 당시 카테고리의 선택지 문구입니다.
             - mainFactor: 활용도 60% 이상은 가중 점수, 60% 미만은 가중 감점이 가장 큰 문항. 동점이면 계획 > 이용도 > 만족도, 계획 1점이면 PLAN.
-            - categorySpending: 점검 당시 카테고리의 구독 중 구독을 월 환산 금액으로 합산합니다. 점검한 구독이 맨 위(구독 종료여도 포함)이고 나머지는 월 금액이 큰 순, 5개를 넘으면 상위 4개 + '그 외 n'.
+            - categorySpending: 점검 당시 카테고리의 구독 중 구독을 월 환산 금액으로 합산합니다. 점검한 구독이 맨 위(구독 종료여도 포함)이고 나머지는 월 금액이 큰 순이며, 개수와 상관없이 모든 구독을 내려줍니다.
             - 절약 제안(bundles · maxMonthlySaving)은 현재 빈 배열 · 0입니다 (번들 데이터 준비 후 제공).
             - 추천 문구 · 유형명 · 보조 문구는 클라이언트가 stage · mainFactor로 고릅니다.
             - 없거나 삭제됐거나 다른 회원의 점검이면 40503(404)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - checkupId (UUID, 필수): 점검 ID (path variable)
-
+            
             **응답값**
             - checkupId (UUID): 점검 ID
             - subscriptionId (UUID): 구독 ID
@@ -146,8 +146,7 @@ public class CheckController {
               - category (String): 카테고리
               - monthlyTotal (Long): 월 환산 합계 (원)
               - subscriptionCount (Integer): 구독 개수
-              - items (List): serviceName (String), logoUrl (String, nullable), monthlyAmount (Long)
-              - otherCount (Integer): '그 외 n' 개수 (5개 이하면 0)
+              - items (List): 같은 카테고리 구독 전부 — serviceName (String), logoUrl (String, nullable), monthlyAmount (Long)
             """
     )
     @GetMapping("/checkups/{checkupId}")
@@ -172,13 +171,13 @@ public class CheckController {
             - 없거나 삭제됐거나 다른 회원의 점검이면 40503(404)
             - 입력값 검증 실패 시 40001(400), 잘못된 enum 값은 40002(400)
             - 회원이 없거나 탈퇴했으면 40201(404)
-
+            
             **요청값**
             - checkupId (UUID, 필수): 점검 ID (path variable)
             - decision (String, 필수): KEEP / CANCEL
             - cancelReasons (List<String>, 선택): 해지 이유 코드 — RARELY_USED / PRICE_BURDEN / LACKING / SWITCHING / GOAL_ACHIEVED / CUSTOM
             - cancelReasonText (String, 선택): 직접 입력한 해지 이유 (최대 100자)
-
+            
             **응답값**
             - checkupId (UUID): 점검 ID
             - decision (String): KEEP / CANCEL
