@@ -1,6 +1,7 @@
 package com.subscribers.gudogging.domain.check.application.dto.response;
 
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
+import com.subscribers.gudogging.domain.check.domain.bundle.BundleRecommendation;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupForm;
 import com.subscribers.gudogging.domain.check.domain.form.CheckupQuestionType;
 import com.subscribers.gudogging.domain.check.domain.result.CheckResultStage;
@@ -12,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 점검 결과 (K-80). 응답 문구는 점검 당시 카테고리의 선택지 문구다. 절약 제안(bundles · maxMonthlySaving)은 번들 데이터 기준이 정해지기 전까지 빈 배열 · 0.
+ * 점검 결과 (K-80). 응답 문구는 점검 당시 카테고리의 선택지 문구다. 절약 제안(bundles)은 BundleRecommender가 계산한 최대 4개.
  * 추천 문구 · 유형명 · 보조 문구는 클라이언트가 stage · mainFactor로 고른다.
  */
 public record CheckupResultResponse(
@@ -28,13 +29,12 @@ public record CheckupResultResponse(
     String planAnswer,
     String memo,
     List<CheckupBundleResponse> bundles,
-    long maxMonthlySaving,
     CheckupQuestionType mainFactor,
     CategorySpendingResponse categorySpending
 ) {
 
     public static CheckupResultResponse of(SubscriptionCheck check, List<Subscription> subscriptions,
-                                           LocalDate today) {
+                                           List<BundleRecommendation> bundles, LocalDate today) {
         Subscription subscription = check.getSubscription();
         CheckupForm form = CheckupForm.of(check.getCategory());
         boolean active = subscription.getStatus() == SubscriptionStatus.ACTIVE;
@@ -50,8 +50,7 @@ public record CheckupResultResponse(
             form.answerOf(CheckupQuestionType.SATISFACTION, check.getSatisfactionScore()),
             form.answerOf(CheckupQuestionType.PLAN, check.getPlanScore()),
             check.getMemo(),
-            List.of(),
-            0,
+            bundles.stream().map(CheckupBundleResponse::from).toList(),
             CheckScore.mainFactorOf(check.getUsageScore(), check.getSatisfactionScore(), check.getPlanScore(),
                 check.getScorePercent()),
             CategorySpendingResponse.of(check.getCategory(), subscription, subscriptions)

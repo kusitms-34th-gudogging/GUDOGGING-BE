@@ -1,20 +1,39 @@
 package com.subscribers.gudogging.domain.check.application.dto.response;
 
+import com.subscribers.gudogging.domain.catalog.domain.bundle.Bundle;
+import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleRecommendType;
+import com.subscribers.gudogging.domain.check.domain.bundle.BundleRecommendation;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
- * 절약 제안 번들 (K-80 '같은 {서비스명}, 더 싸게'). 번들 데이터 기준이 정해지면 채운다 — 현재는 결과 조회에서 빈 배열로 내려준다.
+ * 절약 제안 카드 (화면설계서 K-80 '번들 추천 카드'). 큰 숫자 = monthlySaving(BENEFIT은 tags[1] 혜택), 막대 = savingRate, 아래 문구 = monthlyPrice.
  *
- * @param priceType FIXED(월 N원, 금액 확정) / MAX(최대 N원, 카드 할인 등)
+ * @param includes  카드 둘째 줄 포함 내용 한 줄
+ * @param tags      [태그1 제공사 · 상품군, 태그2 핵심 혜택] — 빈 태그는 뺌
+ * @param priceType FIXED(확정 절약 '월 N원') / MAX(카드 '최대 N원') / BENEFIT(통신 요금제)
  */
 public record CheckupBundleResponse(
     String name,
-    List<String> includes,
+    String includes,
     List<String> tags,
-    long monthlyPrice,
-    long monthlySaving,
-    String condition,
-    String providerType,
-    String priceType
+    BundleRecommendType priceType,
+    Long monthlySaving,
+    Integer savingRate,
+    Integer monthlyPrice
 ) {
+
+    public static CheckupBundleResponse from(BundleRecommendation recommendation) {
+        Bundle bundle = recommendation.bundle();
+        return new CheckupBundleResponse(
+            bundle.name(),
+            bundle.includesText(),
+            Stream.of(bundle.tag1(), bundle.tag2()).filter(Objects::nonNull).toList(),
+            bundle.recommendType(),
+            recommendation.saving(),
+            recommendation.rate(),
+            recommendation.price()
+        );
+    }
 }
