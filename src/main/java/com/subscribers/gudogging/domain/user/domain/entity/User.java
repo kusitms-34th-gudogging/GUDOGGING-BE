@@ -54,12 +54,12 @@ public class User extends BaseEntity {
     @Column(name = "platform", length = 10)
     private Platform platform;
 
-    @ColumnDefault("true")
+    @ColumnDefault("false")
     @Column(name = "is_check_notification_enabled", nullable = false)
-    private boolean isCheckNotificationEnabled = true;
+    private boolean isCheckNotificationEnabled = false;
 
     public static User create(SocialProvider socialProvider, String socialId, String email, String name) {
-        return new User(socialProvider, socialId, email, name, null, null, null, true);
+        return new User(socialProvider, socialId, email, name, null, null, null, false);
     }
 
     public void updateAppleRefreshToken(String appleRefreshToken) {
