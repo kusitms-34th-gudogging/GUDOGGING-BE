@@ -43,7 +43,7 @@ columns:
   - is_check_notification_enabled:
       type: BOOLEAN
       nullable: false
-      default: true
+      default: false
       description: "결제 3일 전 점검 알림(N-01, D-3) 수신 여부 = 알림 설정 API의 paymentReminderEnabled (E-05 토글, 변경 즉시 저장). 결제 1일 전 알림 · 해지 확인 알림(N-02)은 이 값과 관계없이 발송"
 
 enums:
@@ -59,7 +59,7 @@ constraints:
   - "회원 조회는 항상 deleted = false 조건 (예: findBySocialProviderAndSocialIdAndDeletedFalse)"
 
 business_logic:
-  - "create(socialProvider, socialId, email, name): 정적 팩토리 메서드. isCheckNotificationEnabled = true"
+  - "create(socialProvider, socialId, email, name): 정적 팩토리 메서드. isCheckNotificationEnabled = false"
   - "updateAppleRefreshToken(appleRefreshToken): Apple 로그인 시 교환한 refresh token으로 교체 (AUTH-003)"
   - "updatePushToken(pushToken, platform): 푸시 토큰 · 기기 종류 등록·교체 (기존 값 덮어씀, NOTIFICATION-001)"
   - "clearPushToken(): 로그아웃 시 pushToken = null, platform = null (E-06) — 로그아웃 API(Auth)에서 호출 예정"
@@ -70,4 +70,4 @@ notes:
   - "탈퇴 처리(익명화): Hard Delete 금지 규칙에 따라 Soft Delete. UNIQUE는 유지하고, 탈퇴 시 social_id를 'withdrawn_{id}'로 덮어써 같은 소셜 계정의 재가입이 새 행으로 생성되도록 함"
   - "탈퇴 시 연관 데이터(subscriptions, subscription_checks, subscription_check_cancel_reasons, notifications, gmail_connections)도 같은 트랜잭션에서 Soft Delete (ERD 8장). 외부 연동 해제(Apple revoke, Gmail token revoke)는 그 전에 실행하며, 재시도 때 이미 해제된 토큰의 revoke 실패는 무시"
   - "OS 알림 권한 상태는 저장하지 않음. push_token 유무로 발송 여부 판단"
-  - "is_check_notification_enabled는 @ColumnDefault(\"true\") — 기존 회원 행에 컬럼이 추가될 때도 true로 채워짐"
+  - "is_check_notification_enabled는 @ColumnDefault(\"false\") — 기본값 OFF (노션 알림 설정 조회, 2026-11-21). 기존 회원은 마이그레이션으로 false (docs/migration/2026-11-21_notification.sql)"

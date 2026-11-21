@@ -16,7 +16,7 @@ meta:
 
 overview:
   summary: >
-    결제 3일 전 점검 알림(D-3) 수신 여부(E-05 토글)를 조회한다. 기본값은 ON(true).
+    결제 3일 전 점검 알림(D-3) 수신 여부(E-05 토글)를 조회한다. 기본값은 OFF(false).
   user_story: >
     As a 로그인한 회원, I want to 알림 설정 화면에서 현재 설정을 보기를,
     so that 결제 전 점검 알림을 받을지 알 수 있다.
@@ -38,9 +38,9 @@ technical_spec:
         wrapper: CommonResponse<NotificationSettingResponse>
         response_code: "NotificationResponseCode.NOTIFICATION_SETTING_FOUND (200, HttpStatus.OK, \"알림 설정을 조회했습니다.\")"
         fields:
-          - "paymentReminderEnabled (boolean): 결제 3일 전 점검 알림(D-3) 수신 여부 = users.is_check_notification_enabled (기본값 true)"
+          - "paymentReminderEnabled (boolean): 결제 3일 전 점검 알림(D-3) 수신 여부 = users.is_check_notification_enabled (기본값 false)"
         mock: |
-          { "code": 200, "message": "알림 설정을 조회했습니다.", "data": { "paymentReminderEnabled": true } }
+          { "code": 200, "message": "알림 설정을 조회했습니다.", "data": { "paymentReminderEnabled": false } }
 
   setting_meaning: >
     true = D-3 점검 알림 수신, false = D-3 점검 알림을 보내지 않음.
@@ -55,14 +55,26 @@ technical_spec:
       action: "회원 확인(없으면 40201) → NotificationSettingResponse.from(user)"
       transaction: "@Transactional(readOnly = true) (클래스)"
 
+  entity_changes:
+    user:
+      - "is_check_notification_enabled 기본값 true → false (@ColumnDefault(\"false\"), 필드 초기값, create())"
+
   error_codes:
     - code: 40201
       name: USER_NOT_FOUND
+
+  migration:
+    file: "docs/migration/2026-11-21_notification.sql"
+    sql: |
+      ALTER TABLE users ALTER COLUMN is_check_notification_enabled SET DEFAULT FALSE;
+      UPDATE users SET is_check_notification_enabled = FALSE;
+    note: "기존 회원은 설정 API가 없어 모두 예전 기본값 true — 새 기본값 OFF로 맞춤 (2026-11-21 합의)"
 
 
 package_structure:
   base: "com.subscribers.gudogging"
   files:
+    - "domain/user/domain/entity/User.java (수정 — 기본값 false)"
     - "domain/notification/presentation/NotificationController.java (수정 — getNotificationSetting)"
     - "domain/notification/presentation/response/NotificationResponseCode.java (수정 — NOTIFICATION_SETTING_FOUND)"
     - "domain/notification/application/usecase/NotificationUseCase.java (수정 — getNotificationSetting)"
@@ -71,9 +83,9 @@ package_structure:
 testing_strategy:
   happy_path:
     - "getNotificationSetting: 회원의 설정값을 반환한다"
-    - "getNotificationSetting: 새로 가입한 회원은 true를 반환한다"
+    - "getNotificationSetting: 새로 가입한 회원은 false를 반환한다"
   error_cases:
     - "getNotificationSetting: 회원이 없으면 USER_NOT_FOUND"
 
 notes:
-  - "[결정] 기본값 true 유지 (ERD 그대로). 노션 설정 조회의 '기본값 OFF'는 기획 착오 — 노션 수정 필요 (2026-11-21 합의)"
+  - "[결정] 기본값 OFF(false) — 노션 알림 설정 조회 기준, 기획 확인 (2026-11-21). 기존 회원도 false로 마이그레이션"
