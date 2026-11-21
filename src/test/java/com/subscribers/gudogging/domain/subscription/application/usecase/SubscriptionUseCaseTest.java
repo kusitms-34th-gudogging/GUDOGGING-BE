@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -40,6 +41,8 @@ import com.subscribers.gudogging.domain.subscription.application.dto.request.Sub
 import com.subscribers.gudogging.domain.subscription.application.dto.request.SubscriptionSortType;
 import com.subscribers.gudogging.domain.subscription.application.dto.request.UpdateSubscriptionRequest;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.CancelGuideResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.ScreenshotAnalysisResponse;
+import com.subscribers.gudogging.domain.subscription.application.dto.response.ScreenshotCandidateResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionBillingResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCancelResponse;
 import com.subscribers.gudogging.domain.subscription.application.dto.response.SubscriptionCreationResponse;
@@ -56,6 +59,7 @@ import com.subscribers.gudogging.domain.subscription.application.dto.response.Su
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateServiceInRequestException;
 import com.subscribers.gudogging.domain.subscription.application.exception.DuplicateSubscriptionException;
 import com.subscribers.gudogging.domain.subscription.application.exception.InvalidSubscriptionSortException;
+import com.subscribers.gudogging.domain.subscription.application.exception.ScreenshotAnalysisFailedException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotActiveException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
@@ -68,6 +72,10 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationS
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotCandidate;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotImage;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotReviewField;
+import com.subscribers.gudogging.domain.subscription.domain.screenshot.SubscriptionScreenshotAnalyzer;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryCreateService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionBillingHistoryGetService;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionCreateService;
@@ -102,9 +110,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.RedisConnectionFailureException;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("SubscriptionUseCase")
@@ -139,6 +149,9 @@ class SubscriptionUseCaseTest {
 
     @Mock
     private SubscriptionDraftService subscriptionDraftService;
+
+    @Mock
+    private SubscriptionScreenshotAnalyzer subscriptionScreenshotAnalyzer;
 
     @InjectMocks
     private SubscriptionUseCase subscriptionUseCase;
@@ -1431,8 +1444,10 @@ class SubscriptionUseCaseTest {
 
         private void givenChecks(Subscription subscription, SubscriptionCheck latestCheck,
                                  List<SubscriptionCheck> recentChecks) {
-            given(subscriptionCheckGetService.findLatestCheck(subscription)).willReturn(Optional.ofNullable(latestCheck));
-            given(subscriptionCheckGetService.findChecksCreatedSince(subscription, periodFrom)).willReturn(recentChecks);
+            given(subscriptionCheckGetService.findLatestCheck(subscription)).willReturn(
+                Optional.ofNullable(latestCheck));
+            given(subscriptionCheckGetService.findChecksCreatedSince(subscription, periodFrom)).willReturn(
+                recentChecks);
         }
 
         @Test
@@ -1448,9 +1463,10 @@ class SubscriptionUseCaseTest {
             ReflectionTestUtils.setField(latest, "createdAt", checkedAt);
             latest.cancel("보고 싶던 작품을 다 봐서 해지했어요.", checkedAt.plusMinutes(1));
             givenChecks(subscription, latest, List.of());
-            given(subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(List.of(latest))).willReturn(List.of(
-                SubscriptionCheckCancelReason.create(latest, CancelReason.CUSTOM),
-                SubscriptionCheckCancelReason.create(latest, CancelReason.RARELY_USED)));
+            given(subscriptionCheckCancelReasonGetService.findCancelReasonsByChecks(List.of(latest))).willReturn(
+                List.of(
+                    SubscriptionCheckCancelReason.create(latest, CancelReason.CUSTOM),
+                    SubscriptionCheckCancelReason.create(latest, CancelReason.RARELY_USED)));
 
             // when
             SubscriptionDetailResponse response = subscriptionUseCase.getSubscription(userId,
@@ -2921,6 +2937,363 @@ class SubscriptionUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("analyzeScreenshots")
+    class AnalyzeScreenshots {
+
+        private static final byte[] PNG_HEADER = {(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+        private static final byte[] JPEG_HEADER = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0};
+        private static final byte[] GIF_HEADER = {0x47, 0x49, 0x46, 0x38, 0x39, 0x61};
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate today = LocalDate.now();
+        private final LocalDate nextBillingDate = today.plusDays(10);
+
+        private final ServiceCatalog claudePro = service("Claude Pro", Category.PRODUCTIVITY_AI,
+            "https://logo.example.com/claude.png");
+        private final ServiceCatalog spotify = service("Spotify Individual", Category.MUSIC, null);
+
+        @Captor
+        private ArgumentCaptor<List<ScreenshotImage>> imagesCaptor;
+
+        private MultipartFile png(String filename) {
+            return new MockMultipartFile("images", filename, "image/png", PNG_HEADER);
+        }
+
+        private MultipartFile jpeg(String filename) {
+            return new MockMultipartFile("images", filename, "image/jpeg", JPEG_HEADER);
+        }
+
+        private ScreenshotCandidate candidate(ServiceCatalog service, Integer amount, LocalDate date,
+                                              ScreenshotReviewField... reviewFields) {
+            return ScreenshotCandidate.of(service.getId(), amount, 1, BillingCycleUnit.MONTH, date,
+                PaymentMethod.APP_STORE, reviewFields.length > 0, List.of(reviewFields));
+        }
+
+        private void givenUser() {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+        }
+
+        private void givenCandidates(ScreenshotCandidate... candidates) {
+            given(subscriptionScreenshotAnalyzer.analyzeScreenshots(any(), any())).willReturn(List.of(candidates));
+        }
+
+        private void givenServices(ServiceCatalog... services) {
+            given(serviceCatalogGetService.findActiveServicesByIds(any())).willReturn(List.of(services));
+        }
+
+        private void givenActiveServiceIds(UUID... serviceIds) {
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of(serviceIds));
+        }
+
+        private ScreenshotAnalysisResponse analyze(MultipartFile... images) {
+            return subscriptionUseCase.analyzeScreenshots(userId, List.of(images));
+        }
+
+        private void assertErrorCode(Runnable call, SubscriptionErrorCode errorCode) {
+            assertThatThrownBy(call::run)
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(errorCode);
+        }
+
+        @Test
+        @DisplayName("OCR 후보를 응답 순서대로 반환하고 serviceName·category·logoUrl은 DB 서비스 값으로 채운다")
+        void returnsCandidatesInOcrOrderWithCatalogValues() {
+            // given
+            givenUser();
+            givenCandidates(candidate(spotify, 10900, nextBillingDate), candidate(claudePro, 33000, nextBillingDate));
+            givenServices(claudePro, spotify);
+            givenActiveServiceIds();
+
+            // when
+            ScreenshotAnalysisResponse response = analyze(png("1.png"));
+
+            // then
+            assertThat(response.candidates())
+                .extracting(ScreenshotCandidateResponse::serviceId, ScreenshotCandidateResponse::serviceName,
+                    ScreenshotCandidateResponse::category, ScreenshotCandidateResponse::logoUrl)
+                .containsExactly(
+                    tuple(spotify.getId(), "Spotify Individual", Category.MUSIC, null),
+                    tuple(claudePro.getId(), "Claude Pro", Category.PRODUCTIVITY_AI,
+                        "https://logo.example.com/claude.png"));
+        }
+
+        @Test
+        @DisplayName("업로드 순서 그대로 analyzer에 전달하고 referenceDate는 오늘이다")
+        void passesImagesInUploadOrderWithToday() {
+            // given
+            givenUser();
+            givenCandidates();
+
+            // when
+            analyze(png("first.png"), jpeg("second.jpg"), png("third.png"));
+
+            // then
+            verify(subscriptionScreenshotAnalyzer).analyzeScreenshots(imagesCaptor.capture(), eq(today));
+            assertThat(imagesCaptor.getValue())
+                .extracting(ScreenshotImage::filename, ScreenshotImage::contentType)
+                .containsExactly(
+                    tuple("first.png", "image/png"),
+                    tuple("second.jpg", "image/jpeg"),
+                    tuple("third.png", "image/png"));
+        }
+
+        @Test
+        @DisplayName("needsReview·reviewFields·amount·결제 주기·다음 결제일·paymentMethod는 OCR 값을 그대로 응답한다")
+        void returnsOcrPaymentValues() {
+            // given
+            givenUser();
+            ScreenshotCandidate yearly = ScreenshotCandidate.of(claudePro.getId(), 330000, 1, BillingCycleUnit.YEAR,
+                nextBillingDate, PaymentMethod.APP_STORE, true, List.of(ScreenshotReviewField.SERVICE));
+            givenCandidates(yearly);
+            givenServices(claudePro);
+            givenActiveServiceIds();
+
+            // when
+            ScreenshotCandidateResponse candidate = analyze(png("1.png")).candidates().getFirst();
+
+            // then
+            assertThat(candidate.amount()).isEqualTo(330000);
+            assertThat(candidate.billingCycleValue()).isEqualTo(1);
+            assertThat(candidate.billingCycleUnit()).isEqualTo(BillingCycleUnit.YEAR);
+            assertThat(candidate.nextBillingDate()).isEqualTo(nextBillingDate);
+            assertThat(candidate.paymentMethod()).isEqualTo(PaymentMethod.APP_STORE);
+            assertThat(candidate.needsReview()).isTrue();
+            assertThat(candidate.reviewFields()).containsExactly(ScreenshotReviewField.SERVICE);
+        }
+
+        @Test
+        @DisplayName("확인할 필드가 없으면 needsReview = false, reviewFields는 빈 배열로 응답한다")
+        void returnsRegistrableCandidate() {
+            // given
+            givenUser();
+            givenCandidates(candidate(claudePro, 33000, nextBillingDate));
+            givenServices(claudePro);
+            givenActiveServiceIds();
+
+            // when
+            ScreenshotCandidateResponse candidate = analyze(png("1.png")).candidates().getFirst();
+
+            // then
+            assertThat(candidate.needsReview()).isFalse();
+            assertThat(candidate.reviewFields()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("OCR 후보가 없으면 서비스를 조회하지 않고 빈 candidates를 반환한다")
+        void returnsEmptyWhenOcrFindsNothing() {
+            // given
+            givenUser();
+            givenCandidates();
+
+            // when
+            ScreenshotAnalysisResponse response = analyze(png("1.png"));
+
+            // then
+            assertThat(response.candidates()).isEmpty();
+            verifyNoInteractions(serviceCatalogGetService, subscriptionGetService);
+        }
+
+        @Test
+        @DisplayName("회원이 ACTIVE로 구독 중인 서비스 후보는 제외한다")
+        void excludesAlreadySubscribedServices() {
+            // given
+            givenUser();
+            givenCandidates(candidate(claudePro, 33000, nextBillingDate), candidate(spotify, 10900, nextBillingDate));
+            givenServices(claudePro, spotify);
+            givenActiveServiceIds(claudePro.getId());
+
+            // when
+            ScreenshotAnalysisResponse response = analyze(png("1.png"));
+
+            // then
+            assertThat(response.candidates()).extracting(ScreenshotCandidateResponse::serviceId)
+                .containsExactly(spotify.getId());
+        }
+
+        @Test
+        @DisplayName("DB에 없거나 비활성인 serviceId 후보는 예외 없이 제외한다")
+        void excludesUnknownServices() {
+            // given
+            givenUser();
+            ServiceCatalog removed = service("삭제된 서비스", Category.ETC, null);
+            givenCandidates(candidate(removed, 5000, nextBillingDate), candidate(claudePro, 33000, nextBillingDate));
+            givenServices(claudePro);
+            givenActiveServiceIds();
+
+            // when
+            ScreenshotAnalysisResponse response = analyze(png("1.png"));
+
+            // then
+            assertThat(response.candidates()).extracting(ScreenshotCandidateResponse::serviceId)
+                .containsExactly(claudePro.getId());
+        }
+
+        @Test
+        @DisplayName("모든 후보가 제외되면 빈 candidates를 반환한다")
+        void returnsEmptyWhenAllExcluded() {
+            // given
+            givenUser();
+            givenCandidates(candidate(claudePro, 33000, nextBillingDate));
+            givenServices(claudePro);
+            givenActiveServiceIds(claudePro.getId());
+
+            // when
+            ScreenshotAnalysisResponse response = analyze(png("1.png"));
+
+            // then
+            assertThat(response.candidates()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("같은 serviceId 후보가 둘이면 둘 다 반환한다")
+        void keepsDuplicateServiceCandidates() {
+            // given
+            givenUser();
+            givenCandidates(candidate(claudePro, 33000, nextBillingDate, ScreenshotReviewField.SERVICE),
+                candidate(claudePro, 33000, nextBillingDate.plusDays(3), ScreenshotReviewField.SERVICE));
+            givenServices(claudePro);
+            givenActiveServiceIds();
+
+            // when
+            ScreenshotAnalysisResponse response = analyze(png("1.png"));
+
+            // then
+            assertThat(response.candidates()).hasSize(2)
+                .allSatisfy(candidate -> assertThat(candidate.reviewFields())
+                    .containsExactly(ScreenshotReviewField.SERVICE));
+        }
+
+        @Test
+        @DisplayName("amount가 0 이하면 null로 바꾸고 AMOUNT를 넣어 needsReview = true로 반환한다")
+        void correctsNonPositiveAmount() {
+            // given
+            givenUser();
+            givenCandidates(candidate(claudePro, 0, nextBillingDate));
+            givenServices(claudePro);
+            givenActiveServiceIds();
+
+            // when
+            ScreenshotCandidateResponse candidate = analyze(png("1.png")).candidates().getFirst();
+
+            // then
+            assertThat(candidate.amount()).isNull();
+            assertThat(candidate.reviewFields()).containsExactly(ScreenshotReviewField.AMOUNT);
+            assertThat(candidate.needsReview()).isTrue();
+        }
+
+        @Test
+        @DisplayName("nextBillingDate가 오늘 이전이면 NEXT_BILLING_DATE를 넣어 needsReview = true로 반환한다")
+        void flagsPastNextBillingDate() {
+            // given
+            givenUser();
+            givenCandidates(candidate(claudePro, 33000, today.minusDays(1)), candidate(spotify, 10900, today));
+            givenServices(claudePro, spotify);
+            givenActiveServiceIds();
+
+            // when
+            List<ScreenshotCandidateResponse> candidates = analyze(png("1.png")).candidates();
+
+            // then
+            assertThat(candidates.get(0).reviewFields()).containsExactly(ScreenshotReviewField.NEXT_BILLING_DATE);
+            assertThat(candidates.get(0).needsReview()).isTrue();
+            assertThat(candidates.get(1).reviewFields()).isEmpty();
+            assertThat(candidates.get(1).needsReview()).isFalse();
+        }
+
+        @Test
+        @DisplayName("images 파트가 없으면 INVALID_SCREENSHOT_COUNT 예외를 던지고 OCR을 호출하지 않는다")
+        void rejectsMissingImages() {
+            // given
+            givenUser();
+
+            // when & then
+            assertErrorCode(() -> subscriptionUseCase.analyzeScreenshots(userId, null),
+                SubscriptionErrorCode.INVALID_SCREENSHOT_COUNT);
+            verifyNoInteractions(subscriptionScreenshotAnalyzer);
+        }
+
+        @Test
+        @DisplayName("이미지가 0장이면 INVALID_SCREENSHOT_COUNT 예외를 던지고 OCR을 호출하지 않는다")
+        void rejectsEmptyImages() {
+            // given
+            givenUser();
+
+            // when & then
+            assertErrorCode(() -> subscriptionUseCase.analyzeScreenshots(userId, List.of()),
+                SubscriptionErrorCode.INVALID_SCREENSHOT_COUNT);
+            verifyNoInteractions(subscriptionScreenshotAnalyzer);
+        }
+
+        @Test
+        @DisplayName("이미지가 6장이면 INVALID_SCREENSHOT_COUNT 예외를 던지고 OCR을 호출하지 않는다")
+        void rejectsSixImages() {
+            // given
+            givenUser();
+
+            // when & then
+            assertErrorCode(() -> analyze(png("1.png"), png("2.png"), png("3.png"), png("4.png"), png("5.png"),
+                png("6.png")), SubscriptionErrorCode.INVALID_SCREENSHOT_COUNT);
+            verifyNoInteractions(subscriptionScreenshotAnalyzer);
+        }
+
+        @Test
+        @DisplayName("10MB를 넘는 이미지가 있으면 SCREENSHOT_TOO_LARGE 예외를 던지고 OCR을 호출하지 않는다")
+        void rejectsTooLargeImage() {
+            // given
+            givenUser();
+            byte[] large = new byte[(int) ScreenshotImage.MAX_SIZE_BYTES + 1];
+            System.arraycopy(PNG_HEADER, 0, large, 0, PNG_HEADER.length);
+            MultipartFile largePng = new MockMultipartFile("images", "large.png", "image/png", large);
+
+            // when & then
+            assertErrorCode(() -> analyze(png("1.png"), largePng), SubscriptionErrorCode.SCREENSHOT_TOO_LARGE);
+            verifyNoInteractions(subscriptionScreenshotAnalyzer);
+        }
+
+        @Test
+        @DisplayName("PNG·JPEG가 아닌 이미지(GIF 시그니처)가 있으면 UNSUPPORTED_SCREENSHOT_FORMAT 예외를 던지고 OCR을 호출하지 않는다")
+        void rejectsUnsupportedFormat() {
+            // given
+            givenUser();
+            MultipartFile gifNamedPng = new MockMultipartFile("images", "fake.png", "image/png", GIF_HEADER);
+
+            // when & then
+            assertErrorCode(() -> analyze(png("1.png"), gifNamedPng),
+                SubscriptionErrorCode.UNSUPPORTED_SCREENSHOT_FORMAT);
+            verifyNoInteractions(subscriptionScreenshotAnalyzer);
+        }
+
+        @Test
+        @DisplayName("analyzer가 ScreenshotAnalysisFailedException을 던지면 그대로 전파한다")
+        void propagatesAnalysisFailure() {
+            // given
+            givenUser();
+            given(subscriptionScreenshotAnalyzer.analyzeScreenshots(any(), any()))
+                .willThrow(new ScreenshotAnalysisFailedException());
+
+            // when & then
+            assertErrorCode(() -> analyze(png("1.png")), SubscriptionErrorCode.SCREENSHOT_ANALYSIS_FAILED);
+            verifyNoInteractions(serviceCatalogGetService, subscriptionGetService);
+        }
+
+        @Test
+        @DisplayName("회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 OCR을 호출하지 않는다")
+        void throwsWhenUserNotFound() {
+            // given
+            given(userGetService.findUserById(userId)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> analyze(png("1.png")))
+                .isInstanceOf(ApplicationException.class)
+                .extracting(e -> ((ApplicationException) e).getErrorCode())
+                .isEqualTo(UserErrorCode.USER_NOT_FOUND);
+            verifyNoInteractions(subscriptionScreenshotAnalyzer);
         }
     }
 }

@@ -16,6 +16,11 @@ server:
 
 server-uri: ${SERVER_URI}
 
+# 스크린샷 구독 분석 OCR 서버: 운영은 기본값 없이 필수 (누락 시 배포 전 check-env.sh에서 실패)
+ocr:
+  base-url: ${OCR_BASE_URL}
+  api-key: ${OCR_API_KEY}
+
 # Swagger는 운영에서 기본 비활성 (필요 시 SWAGGER_ENABLED=true)
 swagger:
   enabled: ${SWAGGER_ENABLED:false}
