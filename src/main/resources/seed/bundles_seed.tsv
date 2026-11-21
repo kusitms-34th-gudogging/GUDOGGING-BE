@@ -1,0 +1,261 @@
+name	recommend_type	provider_type	monthly_price	condition	tag1	tag2	fixed_services	choice_a_services	choice_b_services	applied_prices	discounts
+네이버플러스 멤버십	FIXED	PLATFORM	4900	넷플릭스 · 스포티파이 · 네이버웹툰 쿠키 중 택1	네이버플러스		요기요 요기패스X|컬리멤버스	Netflix 광고형 스탠다드|Spotify Basic			
+쿠팡 와우 멤버십	FIXED	PLATFORM	7890	프리미엄 패스 · 스포츠패스는 멤버십과 별도 결제	쿠팡	무료배송				쿠팡플레이 프리미엄 패스 (웹)=3900|쿠팡플레이 스포츠패스(와우회원)=12400	
+카카오멤버십	FIXED	PLATFORM	4900	멜론 스트리밍 라이트는 할인가로 별도 결제, 톡클라우드 130GB는 서비스 목록에 없음	카카오			이모티콘 플러스			
+배민클럽 x 유튜브 프리미엄	FIXED	PLATFORM	15990		배달의민족	유튜브 포함	배달의민족 배민클럽|YouTube Premium				
+토스프라임	EXCLUDED	PLATFORM	5900	비교할 구독 서비스 없음 (적립형)	토스	적립					
+쓱세븐클럽 기본형	EXCLUDED	PLATFORM	2900	비교할 구독 서비스 없음 (적립형)	SSG닷컴	적립					
+쓱세븐클럽 티빙형	FIXED	PLATFORM	3900		SSG닷컴	티빙 포함	티빙 광고형 스탠다드				
+G마켓 꼭 멤버십	EXCLUDED	PLATFORM	2900	비교할 구독 서비스 없음 (적립형)	G마켓	적립					
+T우주 멜론 모바일 스트리밍 + 유튜브 프리미엄 라이트	FIXED	TELECOM	12900	SKT T우주	SKT T우주	결합 상품	멜론 모바일 스트리밍 클럽|YouTube Premium Lite				
+T우주 멜론 스트리밍 + 유튜브 프리미엄 라이트	FIXED	TELECOM	13900	SKT T우주	SKT T우주	결합 상품	멜론 스트리밍 클럽|YouTube Premium Lite				
+우주패스 쇼핑 (유튜브 프리미엄)	FIXED	TELECOM	15900	SKT T우주	SKT T우주	11번가 혜택	YouTube Premium				
+디즈니+ x 티빙 번들	FIXED	PLATFORM	18000		디즈니+	결합 상품	Disney+ 스탠다드|티빙 스탠다드				
+디즈니+ x 티빙 x 웨이브 번들	FIXED	PLATFORM	21500		디즈니+	결합 상품	Disney+ 스탠다드|티빙 스탠다드|웨이브 스탠다드				
+티빙 x 웨이브 더블 광고형 스탠다드	FIXED	PLATFORM	7000		티빙 · 웨이브	결합 상품	티빙 광고형 스탠다드|웨이브 광고형 스탠다드				
+티빙 x 웨이브 더블 베이직	FIXED	PLATFORM	13500		티빙 · 웨이브	결합 상품	티빙 베이직|웨이브 베이직				
+티빙 x 웨이브 더블 스탠다드	FIXED	PLATFORM	15000		티빙 · 웨이브	결합 상품	티빙 스탠다드|웨이브 스탠다드				
+티빙 x 웨이브 더블 프리미엄	FIXED	PLATFORM	19500		티빙 · 웨이브	결합 상품	티빙 프리미엄|웨이브 프리미엄				
+웨이브 x 멜론 플레이 패스	FIXED	PLATFORM	9000		웨이브	결합 상품	웨이브 광고형 스탠다드|멜론 모바일 스트리밍 클럽				
+카드의정석2 ROUTINE	MAX	CARD			우리카드	30% 할인	YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|ChatGPT Go|ChatGPT Plus|쿠팡 와우 멤버십|네이버플러스 멤버십|배달의민족 배민클럽				ALL=30%
+카카오뱅크 착붙 신한카드	MAX	CARD			신한카드	멤버십 50% 할인	ChatGPT Go|ChatGPT Plus|Claude Pro|Claude Max 5x|Claude Max 20x|네이버플러스 멤버십|쿠팡 와우 멤버십				PRODUCTIVITY_AI=10%|SHOPPING_DELIVERY=50%
+신한카드 국민행복	MAX	CARD			신한카드	50% 할인		Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|YouTube Premium	네이버플러스 멤버십|쿠팡 와우 멤버십		A=50%|B=3000
+zgm.streaming카드	MAX	CARD			NH농협카드	50% 할인		Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|YouTube Premium|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄|멜론 스트리밍 클럽	쿠팡 와우 멤버십|네이버플러스 멤버십|컬리멤버스|요기요 요기패스X		A=50%|B=7000
+별다줄카드	MAX	CARD			NH농협카드	5% 할인		쿠팡 와우 멤버십|네이버플러스 멤버십			ALL=5%
+KB국민 WE:SH ALL 카드	MAX	CARD			KB국민카드	멤버십 50% 할인	Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|YouTube Premium|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄	네이버플러스 멤버십|쿠팡 와우 멤버십			FIXED=10%|A=50%
+쿠팡 와우카드	MAX	CARD			쿠팡 와우카드	2% 할인	쿠팡플레이 프리미엄 패스 (웹)				ALL=2%
+하나 MOVING카드 (ONLINE 모드)	MAX	CARD			하나카드	AI 50% 할인		ChatGPT Go|ChatGPT Plus|Claude Pro|Perplexity Pro			ALL=50%
+삼성 iD GLOBAL 카드	MAX	CARD			삼성카드	50% 할인		네이버플러스 멤버십|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄			ALL=50%
+Triple in LOCA	MAX	CARD			롯데카드	10,000원 할인		YouTube Premium|멜론 스트리밍 클럽|배달의민족 배민클럽			ALL=10000
+the Orange	MAX	CARD			현대카드	10% 할인	ChatGPT Go|ChatGPT Plus|Perplexity Pro|Google One Basic 100GB				ALL=10%
+Apple One 개인	FIXED	PLATFORM	14900		Apple One	결합 상품	Apple Music 개인|Apple TV+|Apple Arcade|iCloud+ 50GB				
+Apple One 가족	FIXED	PLATFORM	20900	가족 최대 5명 공유	Apple One	가족 공유	Apple Music 가족|Apple TV+|Apple Arcade|iCloud+ 200GB				
+YouTube Premium 개인	FIXED	PLATFORM	14900		YouTube	뮤직 포함	YouTube Premium|YouTube Music Premium				
+베스트 Max(Google AI)	BENEFIT	TELECOM	129000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	구글 AI + OTT 할인	Google AI Pro|Google AI Plus|YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 Pro(Google AI)	BENEFIT	TELECOM	119000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	구글 AI + OTT 할인	Google AI Plus|YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 Max(유튜브 프리미엄)	BENEFIT	TELECOM	129000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	유튜브 + OTT 할인	YouTube Premium|YouTube Premium Lite|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 Pro(유튜브 프리미엄)	BENEFIT	TELECOM	119000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	유튜브 + OTT 할인	YouTube Premium|YouTube Premium Lite|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 109(유튜브 프리미엄)	BENEFIT	TELECOM	109000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	유튜브 월 1,000원	YouTube Premium|YouTube Premium Lite|배달의민족 배민클럽				
+베스트 Max(넷플릭스)	BENEFIT	TELECOM	129000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 + OTT 할인	Netflix 프리미엄|Netflix 스탠다드|Netflix 광고형 스탠다드|YouTube Premium|Disney+ 스탠다드|Disney+ 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 Pro(넷플릭스)	BENEFIT	TELECOM	119000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 + OTT 할인	Netflix 스탠다드|YouTube Premium|Disney+ 스탠다드|Disney+ 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 109(넷플릭스)	BENEFIT	TELECOM	109000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 월 1,000원	Netflix 스탠다드				
+베스트 99(넷플릭스)	BENEFIT	TELECOM	99000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 월 1,000원	Netflix 광고형 스탠다드				
+베스트 89(넷플릭스)	BENEFIT	TELECOM	89000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 월 3,500원	Netflix 광고형 스탠다드				
+베스트 Max(디즈니+)	BENEFIT	TELECOM	129000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	디즈니+ + OTT 할인	Disney+ 프리미엄|Disney+ 스탠다드|YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 Pro(디즈니+)	BENEFIT	TELECOM	119000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	디즈니+ + OTT 할인	Disney+ 프리미엄|Disney+ 스탠다드|YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄				
+베스트 109(디즈니+)	BENEFIT	TELECOM	109000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	디즈니+ 월 1,000원	Disney+ 프리미엄				
+베스트 99(디즈니+)	BENEFIT	TELECOM	99000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	디즈니+ 월 1,000원	Disney+ 스탠다드				
+베스트 89(디즈니+)	BENEFIT	TELECOM	89000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	디즈니+ 월 4,950원	Disney+ 스탠다드				
+베스트 Max(티빙&웨이브)	BENEFIT	TELECOM	129000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	티빙·웨이브 + OTT 할인	티빙 프리미엄|티빙 스탠다드|티빙 광고형 스탠다드|웨이브 프리미엄|웨이브 스탠다드|웨이브 광고형 스탠다드|YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄				
+베스트 Pro(티빙&웨이브)	BENEFIT	TELECOM	119000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	티빙·웨이브 + OTT 할인	티빙 스탠다드|티빙 광고형 스탠다드|웨이브 스탠다드|웨이브 광고형 스탠다드|YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄				
+베스트 109(티빙&웨이브)	BENEFIT	TELECOM	109000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	티빙 월 1,000원	티빙 스탠다드|웨이브 스탠다드				
+베스트 99(티빙&웨이브)	BENEFIT	TELECOM	99000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	티빙 월 1,000원	티빙 광고형 스탠다드|웨이브 광고형 스탠다드				
+베스트 89(티빙&웨이브)	BENEFIT	TELECOM	89000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	티빙 월 3,250원	티빙 광고형 스탠다드|웨이브 광고형 스탠다드				
+베스트 Max(T 우주)	BENEFIT	TELECOM	129000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	T 우주 25,900원 할인					
+베스트 Pro(T 우주)	BENEFIT	TELECOM	119000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	T 우주 20,900원 할인					
+베스트 109(T 우주)	BENEFIT	TELECOM	109000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	T 우주 16,900원 할인					
+베스트 99(T 우주)	BENEFIT	TELECOM	99000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	T 우주 9,900원 할인					
+베스트 89(T 우주)	BENEFIT	TELECOM	89000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	T 우주 4,950원 할인					
+T 우주 Big 3	EXCLUDED	TELECOM	9900	비교할 구독 서비스 없음 (제휴처 할인)	SKT T우주	제휴 할인					
+T 우주패스 편의점&카페	EXCLUDED	TELECOM	9900	비교할 구독 서비스 없음 (제휴처 할인)	SKT T우주	편의점·카페					
+T 우주패스 편의점&카페 + 유튜브 프리미엄	FIXED	TELECOM	14900	SKT T우주	SKT T우주	편의점·카페	YouTube Premium				
+T 우주패스 쇼핑 11번가	FIXED	TELECOM	9900	SKT T우주	SKT T우주	11번가 혜택	Google One Basic 100GB				
+T 우주패스 쇼핑 11번가 + 유튜브 프리미엄	FIXED	TELECOM	15900	SKT T우주	SKT T우주	11번가 혜택	YouTube Premium|Google One Basic 100GB				
+T 우주패스 올리브영&스타벅스&이마트24	EXCLUDED	TELECOM	9900	비교할 구독 서비스 없음 (제휴처 할인)	SKT T우주	제휴 할인					
+T 우주패스 with 밀리의서재(유튜브 프리미엄 선택)	FIXED	TELECOM	14900	SKT T우주, 밀리의 서재는 1개월 이용권	SKT T우주	1개월권	밀리의 서재 전자책|YouTube Premium				
+T 우주패스 with 밀리의서재(웨이브 선택)	FIXED	TELECOM	19900	SKT T우주, 밀리의 서재는 1개월 이용권	SKT T우주	1개월권	밀리의 서재 전자책|웨이브 광고형 스탠다드				
+우주패스 넷플릭스(광고형 스탠다드+웨이브)	FIXED	TELECOM	13500	SKT T우주, 웨이브 콘텐츠 팩은 서비스 목록에 없음	SKT T우주		Netflix 광고형 스탠다드				
+T 우주 유튜브 프리미엄 라이트	FIXED	TELECOM	7900	SKT T우주	SKT T우주		YouTube Premium Lite				
+T 우주 구글 AI 프로	FIXED	TELECOM	26900	SKT T우주	SKT T우주		Google AI Pro				
+T 우주 구글 AI 플러스(2TB)	FIXED	TELECOM	10900	SKT T우주, Google One 2TB	SKT T우주		Google AI Plus				
+T 우주 구글 AI 플러스(400GB)	FIXED	TELECOM	6900	SKT T우주, Google One 400GB (용량이 다름)	SKT T우주		Google AI Plus				
+T 멤버십 VIP 우주패스 쇼핑 할인쿠폰	EXCLUDED	TELECOM		T 멤버십 VIP 전용 쿠폰	T 멤버십	VIP 전용					
+다이렉트5G 76(유튜브 프리미엄)	BENEFIT	TELECOM	76000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	유튜브 13,900원 할인	YouTube Premium				
+0 청년 다이렉트 69(넷플릭스)	BENEFIT	TELECOM	69000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 포함	Netflix 광고형 스탠다드				
+0 청년 다이렉트 62(넷플릭스)	BENEFIT	TELECOM	62000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	넷플릭스 5,000원 할인	Netflix 광고형 스탠다드|플로 모바일 무제한 듣기				
+다이렉트5G 76(T 우주)	BENEFIT	TELECOM	76000	SKT 통신 요금제 가입 필요 (요금제 전체 가격)	SKT 요금제	T 우주 9,900원 할인					
+B tv+ max	BENEFIT	TELECOM	25300	SK브로드밴드 B tv 요금제 가입 필요	SK브로드밴드 B tv	유튜브 2,000원 할인	YouTube Premium				
+플러스플랜130	BENEFIT	TELECOM	130000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	유튜브 10,900원 할인	YouTube Premium|Disney+ 스탠다드|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+플러스플랜115	BENEFIT	TELECOM	115000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	유튜브 10,900원 할인	YouTube Premium|Disney+ 스탠다드|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+플러스플랜105	BENEFIT	TELECOM	105000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	유튜브 8,500원 할인	YouTube Premium|Disney+ 스탠다드|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+플러스플랜95	BENEFIT	TELECOM	95000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	미디어 혜택 무료	Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+너겟69	BENEFIT	TELECOM	69000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	넷플릭스 17,000원 할인	Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|티빙 베이직|Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+너겟65	BENEFIT	TELECOM	65000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	넷플릭스 13,500원 할인	Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Disney+ 스탠다드|티빙 베이직|Google One Basic 100GB				
+너겟59	BENEFIT	TELECOM	59000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	넷플릭스 7,000원 할인	Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|Google One Basic 100GB				
+너겟75	BENEFIT	TELECOM	75000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	미디어 혜택 무료	Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+디즈니+티빙 너겟69	BENEFIT	TELECOM	69000	LG U+ 통신 요금제 가입 필요 (요금제 전체 가격)	LG U+ 요금제	디즈니+·티빙 포함	Disney+ 스탠다드|티빙 베이직|Google One Basic 100GB|지니뮤직 음악감상|밀리의 서재 전자책				
+유독 더블 스트리밍 연간권(넷플릭스 + 유튜브 프리미엄)	FIXED	TELECOM	18900	12개월 연간권	LG U+ 유독	연간권	YouTube Premium|Netflix 광고형 스탠다드				
+유튜브 프리미엄 (U+요금제 전용)	FIXED	TELECOM	4450	LG U+ 요금제 가입자 전용	LG U+ 유독	U+ 고객 전용	YouTube Premium				
+유독 유튜브 프리미엄 + 구글 AI Pro	FIXED	TELECOM	29000		LG U+ 유독	결합 상품	YouTube Premium|Google AI Pro				
+유독 유튜브 프리미엄 + 추가쿠폰(유튜브 프리미엄 Pick)	FIXED	TELECOM	13900		LG U+ 유독	라이프 쿠폰	YouTube Premium				
+유독 유튜브 프리미엄 + 추가AI	FIXED	TELECOM	16900	키네마스터 · 플랭은 서비스 목록에 없어 계산 제외	LG U+ 유독	AI 이용권	YouTube Premium				
+유독 유튜브 프리미엄 + 라이너	FIXED	TELECOM	23900	라이너는 서비스 목록에 없어 계산 제외	LG U+ 유독	라이너 포함	YouTube Premium				
+유독 유튜브 라이트 + 메가커피	FIXED	TELECOM	8500		LG U+ 유독	메가커피 1잔	YouTube Premium Lite				
+유독 유튜브 프리미엄 라이트 + 추가쿠폰	FIXED	TELECOM	9900		LG U+ 유독	라이프 쿠폰	YouTube Premium Lite				
+유독 유튜브 프리미엄 라이트 + 추가AI	FIXED	TELECOM	12900	키네마스터 · 플랭은 서비스 목록에 없어 계산 제외	LG U+ 유독	AI 이용권	YouTube Premium Lite				
+유독 유튜브 프리미엄 라이트 + 지니뮤직	FIXED	TELECOM	13900		LG U+ 유독	결합 상품	YouTube Premium Lite|지니뮤직 음악감상				
+유독 넷플릭스	FIXED	TELECOM	6500		LG U+ 유독	500원 할인	Netflix 광고형 스탠다드				
+유독 티빙	FIXED	TELECOM	4950		LG U+ 유독	10% 할인	티빙 광고형 스탠다드				
+유독 디즈니+	FIXED	TELECOM	9405		LG U+ 유독	5% 할인	Disney+ 스탠다드				
+유독 디즈니플러스 + 추가AI	FIXED	TELECOM	12900	키네마스터 · 플랭은 서비스 목록에 없어 계산 제외	LG U+ 유독	AI 이용권	Disney+ 스탠다드				
+유독 디즈니플러스 + 추가쿠폰	FIXED	TELECOM	9900		LG U+ 유독	라이프 쿠폰	Disney+ 스탠다드				
+유독 구글 AI Pro + 추가쿠폰	FIXED	TELECOM	21900		LG U+ 유독	라이프 쿠폰	Google AI Pro				
+유독 구글AI Pro + 추가AI	FIXED	TELECOM	32000	키네마스터 · 플랭은 서비스 목록에 없어 계산 제외	LG U+ 유독	AI 이용권	Google AI Pro				
+유독 구글 AI Pro + 도미노피자	FIXED	TELECOM	19800		LG U+ 유독	도미노피자 할인	Google AI Pro				
+유독 스노우 VIP 이용권	FIXED	TELECOM	5900		LG U+ 유독	50% 할인	스노우 VIP				
+유독 리디셀렉트	FIXED	TELECOM	3900		LG U+ 유독	20% 할인	리디셀렉트				
+유독 요기요 할인쿠폰팩	EXCLUDED	TELECOM	6000	비교할 구독 서비스 없음 (쿠폰팩)	LG U+ 유독	쿠폰팩					
+유독 V컬러링	FIXED	TELECOM	3135		LG U+ 유독	5% 할인	V컬러링				
+유독 지니뮤직	FIXED	TELECOM	7900		LG U+ 유독		지니뮤직 음악감상				
+유독 교보eBook + 모아진	EXCLUDED	TELECOM	9900	교보문고 sam · 모아진은 서비스 목록에 없음	LG U+ 유독	결합 상품					
+유독 매거진 영화팩	EXCLUDED	TELECOM	9900	모아진은 서비스 목록에 없음	LG U+ 유독	영화 쿠폰					
+유독 매거진 라이프팩	EXCLUDED	TELECOM	9900	모아진은 서비스 목록에 없음	LG U+ 유독	라이프 쿠폰					
+유독 매거진 커피팩	EXCLUDED	TELECOM	9900	모아진은 서비스 목록에 없음	LG U+ 유독	메가커피 5잔					
+유독 독서 영화팩	EXCLUDED	TELECOM	9900	교보문고 sam은 서비스 목록에 없음	LG U+ 유독	영화 쿠폰					
+유독 독서 커피팩	EXCLUDED	TELECOM	9900	교보문고 sam은 서비스 목록에 없음	LG U+ 유독	메가커피 5잔					
+유독 독서 라이프팩	EXCLUDED	TELECOM	9900	교보문고 sam은 서비스 목록에 없음	LG U+ 유독	라이프 쿠폰					
+유독 수학대왕 + 과학동아	EXCLUDED	TELECOM	19800	서비스 목록에 없음	LG U+ 유독	결합 상품					
+유독 러니 + 플랭	EXCLUDED	TELECOM	19800	서비스 목록에 없음	LG U+ 유독	결합 상품					
+유독 GS칼텍스 주유·정비 서비스	EXCLUDED	TELECOM	5900	비교할 구독 서비스 없음 (주유 할인)	LG U+ 유독	주유 할인					
+U+ VIP/VVIP 유독 추가 할인(VIP콕/구독톡)	EXCLUDED	TELECOM		LG U+ VIP · VVIP 전용 추가 할인	LG U+ 멤버십	VIP 전용		YouTube Premium|Netflix 광고형 스탠다드			
+모두다 맘껏 7GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	16300	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 10GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	19000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 5G 110GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	41500	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 7GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	18500	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 15GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	21500	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 100GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	38300	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 11GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	33100	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 10GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	21200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 100GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	40500	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 5G 200GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	47700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 5G 70GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	39100	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 10GB+(지니뮤직 FREE)	BENEFIT	TELECOM	21700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 5G 110GB+(지니뮤직 FREE)	BENEFIT	TELECOM	44200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 11GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	35300	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 15GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	23700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 7GB+(지니뮤직 FREE)	BENEFIT	TELECOM	19000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 100GB+(지니뮤직 FREE)	BENEFIT	TELECOM	41700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 15GB+(지니뮤직 FREE)	BENEFIT	TELECOM	24200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 5G 90GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	40300	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+모두다 맘껏 5G 200GB+(지니뮤직 FREE)	BENEFIT	TELECOM	50400	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 11GB+(멜론 FREE)	BENEFIT	TELECOM	36300	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	멜론 무료	멜론 스트리밍 클럽				
+모두다 맘껏 11GB+(지니뮤직 FREE)	BENEFIT	TELECOM	36000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+모두다 맘껏 11GB+(배달의 민족 5000P)	BENEFIT	TELECOM	35600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	배민 5,000P					
+모두다 맘껏 11GB+(웨이브 광고형)	BENEFIT	TELECOM	35200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+모두다 맘껏 100GB+(웨이브 베이직)	BENEFIT	TELECOM	41700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 베이직				
+모두다 맘껏 15GB+(웨이브 광고형)	BENEFIT	TELECOM	23200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+모두다 맘껏 100GB+(웨이브 광고형)	BENEFIT	TELECOM	40400	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+모두다 맘껏 100GB+(왓챠 베이직)	BENEFIT	TELECOM	41000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 베이직				
+모두다 맘껏 5G 70GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	40900	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 5G 110GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	43700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 7GB+(웨이브 광고형)	BENEFIT	TELECOM	18000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+모두다 맘껏 10GB+(웨이브 광고형)	BENEFIT	TELECOM	20700	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+모두다 맘껏 100GB+(왓챠 프리미엄)	BENEFIT	TELECOM	46000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 프리미엄				
+모두다 맘껏 5G 90GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	41900	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 5G 200GB+(쿠팡캐시 5000원)	BENEFIT	TELECOM	49900	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	쿠팡캐시 5,000원					
+모두다 맘껏 11GB+(웨이브 베이직)	BENEFIT	TELECOM	36600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 베이직				
+모두다 맘껏 11GB+(왓챠 베이직)	BENEFIT	TELECOM	36000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 베이직				
+모두다 맘껏 일5GB+(왓챠 베이직)	BENEFIT	TELECOM	41000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 베이직				
+모두다 맘껏 일5GB+(왓챠 프리미엄)	BENEFIT	TELECOM	46000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 프리미엄				
+모두다 맘껏 11GB+(왓챠 프리미엄)	BENEFIT	TELECOM	41000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 프리미엄				
+모두다 맘껏 5G 110GB+(웨이브 광고형)	BENEFIT	TELECOM	43600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+모두다 맘껏 5G 200GB+(웨이브 광고형)	BENEFIT	TELECOM	49800	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+KT 초이스130	BENEFIT	TELECOM	130000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	OTT 택1 무료	Netflix 스탠다드|Disney+ 스탠다드|티빙 스탠다드|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+KT 초이스110	BENEFIT	TELECOM	110000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	OTT 택1 무료	Netflix 광고형 스탠다드|Disney+ 스탠다드|티빙 스탠다드|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+KT 초이스90	BENEFIT	TELECOM	90000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	OTT 택1 무료	Netflix 광고형 스탠다드|Disney+ 스탠다드|티빙 베이직|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+초이스 더블 유튜브 프리미엄+넷플릭스	BENEFIT	TELECOM	120000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	유튜브·넷플릭스 포함	YouTube Premium|Netflix 스탠다드|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+초이스 더블 유튜브 프리미엄+Google AI Plus	BENEFIT	TELECOM	120000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	유튜브·구글 AI 포함	YouTube Premium|Google AI Plus|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+초이스 더블 유튜브 프리미엄+디바이스	BENEFIT	TELECOM	120000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	유튜브 포함	YouTube Premium|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+초이스 더블 디바이스	BENEFIT	TELECOM	120000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	디바이스 12,000원 할인	지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+초이스 더블 디즈니플러스+폰케어	BENEFIT	TELECOM	120000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	디즈니+ 포함	Disney+ 스탠다드|지니뮤직 스마트 음악감상(모바일)|밀리의 서재 전자책				
+요고 69	BENEFIT	TELECOM	69000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	OTT 택1 무료	티빙 베이직|YouTube Premium Lite|Disney+ 스탠다드|지니뮤직 음악감상|밀리의 서재 전자책				
+요고 61	BENEFIT	TELECOM	61000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	OTT 택1 무료	티빙 베이직|YouTube Premium Lite|Disney+ 스탠다드|지니뮤직 음악감상|밀리의 서재 전자책				
+요고 55	BENEFIT	TELECOM	55000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	티빙 포함	티빙 광고형 스탠다드|지니뮤직 음악감상|밀리의 서재 전자책				
+요고 49	BENEFIT	TELECOM	49000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 46	BENEFIT	TELECOM	46000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 44	BENEFIT	TELECOM	44000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 42	BENEFIT	TELECOM	42000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 40	BENEFIT	TELECOM	40000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 38	BENEFIT	TELECOM	38000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 36	BENEFIT	TELECOM	36000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 34	BENEFIT	TELECOM	34000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 32	BENEFIT	TELECOM	32000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+요고 30	BENEFIT	TELECOM	30000	KT 통신 요금제 가입 필요 (요금제 전체 가격)	KT 요금제	지니·밀리 50% 할인	지니뮤직 음악감상|밀리의 서재 전자책				
+유튜브 프리미엄 (KT 구독)	FIXED	TELECOM	8000	KT 고객 전용	KT 구독			YouTube Premium Lite|YouTube Premium		YouTube Premium Lite=8000|YouTube Premium=13900	
+넷플릭스 (KT 구독)	FIXED	TELECOM	6500	KT 고객 전용	KT 구독			Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄		Netflix 광고형 스탠다드=6500|Netflix 스탠다드=12500|Netflix 프리미엄=16000	
+티빙 (KT 구독)	FIXED	TELECOM	5000	KT 고객 전용	KT 구독			티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄		티빙 광고형 스탠다드=5000|티빙 베이직=8500|티빙 스탠다드=12500|티빙 프리미엄=16000	
+디즈니+ (KT 구독)	FIXED	TELECOM	8900	KT 고객 전용	KT 구독			Disney+ 스탠다드|Disney+ 프리미엄		Disney+ 스탠다드=8900|Disney+ 프리미엄=12900	
+지니 스마트 음악감상 (KT 구독)	FIXED	TELECOM	6140	KT 고객 전용	KT 구독		지니뮤직 스마트 음악감상(모바일)				
+Google AI (KT 구독)	FIXED	TELECOM	7000	KT 고객 전용, Plus는 400GB 기준	KT 구독			Google AI Plus|Google AI Pro		Google AI Plus=7000|Google AI Pro=27000	
+티빙 프리미엄+스타벅스	FIXED	TELECOM	17000	KT 고객 전용	KT 구독	스타벅스 1잔	티빙 프리미엄				
+티빙 스탠다드+스타벅스	FIXED	TELECOM	13500	KT 고객 전용	KT 구독	스타벅스 1잔	티빙 스탠다드				
+티빙 베이직+스타벅스	FIXED	TELECOM	9500	KT 고객 전용	KT 구독	스타벅스 1잔	티빙 베이직				
+유튜브 프리미엄+스타벅스	FIXED	TELECOM	14900	KT 고객 전용	KT 구독	스타벅스 1잔	YouTube Premium				
+디즈니플러스 스탠다드+스타벅스	FIXED	TELECOM	9900	KT 고객 전용	KT 구독	스타벅스 1잔	Disney+ 스탠다드				
+디즈니플러스 프리미엄+스타벅스	FIXED	TELECOM	13900	KT 고객 전용	KT 구독	스타벅스 1잔	Disney+ 프리미엄				
+티빙 프리미엄+메가MGC커피	FIXED	TELECOM	17000	KT 고객 전용	KT 구독	메가커피 3잔	티빙 프리미엄				
+티빙 스탠다드+메가MGC커피	FIXED	TELECOM	13500	KT 고객 전용	KT 구독	메가커피	티빙 스탠다드				
+티빙 베이직+메가MGC커피	FIXED	TELECOM	9500	KT 고객 전용	KT 구독	메가커피	티빙 베이직				
+티빙 광고형 스탠다드+메가MGC커피	FIXED	TELECOM	5500	KT 고객 전용	KT 구독	메가커피 1잔	티빙 광고형 스탠다드				
+디즈니플러스 스탠다드+메가MGC커피	FIXED	TELECOM	9900	KT 고객 전용	KT 구독	메가커피 3잔	Disney+ 스탠다드				
+디즈니플러스 프리미엄+메가MGC커피	FIXED	TELECOM	13900	KT 고객 전용	KT 구독	메가커피 3잔	Disney+ 프리미엄				
+유튜브 프리미엄 라이트+메가MGC커피	FIXED	TELECOM	8500	KT 고객 전용	KT 구독	메가커피 1잔	YouTube Premium Lite				
+유튜브 프리미엄+메가MGC커피	FIXED	TELECOM	14900	KT 고객 전용	KT 구독	메가커피 3잔	YouTube Premium				
+Google AI Plus(400GB)+메가MGC커피	FIXED	TELECOM	7500	KT 고객 전용, 400GB	KT 구독	메가커피 1잔	Google AI Plus				
+Google AI Plus(2TB)+메가MGC커피	FIXED	TELECOM	11900	KT 고객 전용, 2TB	KT 구독	메가커피 1잔	Google AI Plus				
+Google AI Pro(5TB)+메가MGC커피	FIXED	TELECOM	29000	KT 고객 전용	KT 구독	메가커피	Google AI Pro				
+Google AI Pro(5TB)+스타벅스	FIXED	TELECOM	29000	KT 고객 전용	KT 구독	스타벅스 1잔	Google AI Pro				
+유튜브 프리미엄 생활구독팩	FIXED	TELECOM	14900	KT 고객 전용, 생활쿠폰 택1(다이소 · GS25 · 올리브영 쿠폰 포함)	KT 구독	생활쿠폰	YouTube Premium	이모티콘 플러스|스노우 VIP			
+디즈니+ 스탠다드 생활구독팩	FIXED	TELECOM	9900	KT 고객 전용, 생활쿠폰 택1	KT 구독	생활쿠폰	Disney+ 스탠다드	이모티콘 플러스|스노우 VIP			
+디즈니+ 프리미엄 생활구독팩	FIXED	TELECOM	13900	KT 고객 전용, 생활쿠폰 택1	KT 구독	생활쿠폰	Disney+ 프리미엄	이모티콘 플러스|스노우 VIP			
+티빙 프리미엄 생활구독팩	FIXED	TELECOM	17000	KT 고객 전용, 생활쿠폰 택1	KT 구독	생활쿠폰	티빙 프리미엄	이모티콘 플러스|스노우 VIP			
+티빙 스탠다드 생활구독팩	FIXED	TELECOM	13500	KT 고객 전용, 생활쿠폰 택1	KT 구독	생활쿠폰	티빙 스탠다드	이모티콘 플러스|스노우 VIP			
+티빙 베이직 생활구독팩	FIXED	TELECOM	9500	KT 고객 전용, 생활쿠폰 택1	KT 구독	생활쿠폰	티빙 베이직	이모티콘 플러스|스노우 VIP			
+Google AI Pro(5TB) 생활구독팩	FIXED	TELECOM	29000	KT 고객 전용, 생활쿠폰 택1	KT 구독	생활쿠폰	Google AI Pro	이모티콘 플러스|스노우 VIP			
+지니 TV 넷플릭스 초이스 UHD	BENEFIT	TELECOM	31300	KT 지니 TV 요금제 가입 필요	KT 지니 TV	넷플릭스 포함	Netflix 프리미엄				
+지니 TV 티빙 초이스 프리미엄	BENEFIT	TELECOM	31300	KT 지니 TV 요금제 가입 필요	KT 지니 TV	티빙 포함	티빙 프리미엄				
+지니 TV 유튜브 프리미엄 초이스	BENEFIT	TELECOM	29000	KT 지니 TV 요금제 가입 필요	KT 지니 TV	유튜브 포함	YouTube Premium				
+지니 TV 디즈니+ 초이스 프리미엄	BENEFIT	TELECOM	28300	KT 지니 TV 요금제 가입 필요	KT 지니 TV	디즈니+ 포함	Disney+ 프리미엄				
+지니 TV 넷플릭스 초이스HD	BENEFIT	TELECOM	27800	KT 지니 TV 요금제 가입 필요	KT 지니 TV	넷플릭스 포함	Netflix 스탠다드				
+지니 TV 티빙 초이스 스탠다드	BENEFIT	TELECOM	27800	KT 지니 TV 요금제 가입 필요	KT 지니 TV	티빙 포함	티빙 스탠다드				
+지니 TV 디즈니+ 초이스 스탠다드	BENEFIT	TELECOM	25300	KT 지니 TV 요금제 가입 필요	KT 지니 TV	디즈니+ 포함	Disney+ 스탠다드				
+지니 TV 디즈니+ 모든G	BENEFIT	TELECOM	21500	KT 지니 TV 요금제 가입 필요	KT 지니 TV	디즈니+ 포함	Disney+ 스탠다드				
+지니 TV 뮤즈 초이스	BENEFIT	TELECOM	20900	KT 지니 TV 요금제 가입 필요	KT 지니 TV	지니뮤직 포함	지니뮤직 음악감상				
+KT 멤버십 VVIP 초이스	EXCLUDED	TELECOM		KT 멤버십 VVIP 전용 (무료 이용권)	KT 멤버십	밀리 3개월 무료		밀리의 서재 전자책|스노우 VIP			
+KT 멤버십 VIP 초이스	EXCLUDED	TELECOM		KT 멤버십 VIP 전용 (무료 이용권)	KT 멤버십	밀리 1개월 무료		밀리의 서재 전자책|스노우 VIP			
+KT 다이렉트샵 iPhone Duo iCloud+ 200GB 12개월 무료	EXCLUDED	TELECOM		KT 다이렉트샵 아이폰 구매 시 12개월 무료	KT 다이렉트샵	iCloud+ 12개월 무료	iCloud+ 200GB				
+밀리의서재 모두다 맘껏 7GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	35200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 모두다 맘껏 10GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	39600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 모두다 맘껏 15GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	48400	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 모두다 맘껏 11GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	51000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 모두다 맘껏 100GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 NEW 5G 모두다 맘껏 70GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	64000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 NEW 5G 모두다 맘껏 90GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 NEW 5G 모두다 맘껏 110GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	69000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리의서재 NEW 5G 모두다 맘껏 200GB+(밀리의 서재 FREE)	BENEFIT	TELECOM	77000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리의 서재 무료	밀리의 서재 전자책				
+밀리+후후 NEW 더블팩 7GB	BENEFIT	TELECOM	35200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리·후후 무료	밀리의 서재 전자책				
+밀리+후후 NEW 더블팩 10GB	BENEFIT	TELECOM	39600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리·후후 무료	밀리의 서재 전자책				
+밀리+후후 NEW 더블팩 15GB	BENEFIT	TELECOM	48400	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	밀리·후후 무료	밀리의 서재 전자책				
+지니뮤직 모두다 맘껏 7GB+(지니뮤직 FREE)	BENEFIT	TELECOM	35200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+지니뮤직 NEW 모두다 맘껏 10GB+(지니뮤직 FREE)	BENEFIT	TELECOM	39600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+지니뮤직 NEW 모두다 맘껏 15GB+(지니뮤직 FREE)	BENEFIT	TELECOM	48400	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+지니뮤직 모두다 맘껏 11GB+(지니뮤직 FREE)	BENEFIT	TELECOM	51000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+지니뮤직 NEW 모두다 맘껏 100GB+(지니뮤직 FREE)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+지니뮤직 5G 모두다 맘껏 110GB+(지니뮤직 FREE)	BENEFIT	TELECOM	57000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+지니뮤직 5G 모두다 맘껏 200GB+(지니뮤직 FREE)	BENEFIT	TELECOM	79000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	지니뮤직 무료	지니뮤직 음악감상				
+멜론 모두다 맘껏 11GB+(멜론 FREE)	BENEFIT	TELECOM	51000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	멜론 무료	멜론 스트리밍 클럽				
+왓챠 모두다 맘껏 11GB+(왓챠 베이직)	BENEFIT	TELECOM	55000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 베이직				
+왓챠 모두다 맘껏 11GB+(왓챠 프리미엄)	BENEFIT	TELECOM	60000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 프리미엄				
+왓챠 모두다 맘껏 100GB+(왓챠 베이직)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 베이직				
+왓챠 모두다 맘껏 100GB+(왓챠 프리미엄)	BENEFIT	TELECOM	69000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 프리미엄				
+왓챠 모두다 맘껏 일5GB+(왓챠 베이직)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 베이직				
+왓챠 모두다 맘껏 일5GB+(왓챠 프리미엄)	BENEFIT	TELECOM	69000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	왓챠 무료	왓챠 프리미엄				
+웨이브 NEW 모두다 맘껏 7GB+(웨이브 광고형)	BENEFIT	TELECOM	35200	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+웨이브 NEW 모두다 맘껏 10GB+(웨이브 광고형)	BENEFIT	TELECOM	39600	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+웨이브 NEW 모두다 맘껏 15GB+(웨이브 광고형)	BENEFIT	TELECOM	48400	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+웨이브 NEW 모두다 맘껏 11GB+(웨이브 광고형)	BENEFIT	TELECOM	51000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+웨이브 NEW 모두다 맘껏 11GB+(웨이브 베이직)	BENEFIT	TELECOM	51000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 베이직				
+웨이브 NEW 모두다 맘껏 100GB+(웨이브 광고형)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+웨이브 NEW 모두다 맘껏 100GB+(웨이브 베이직)	BENEFIT	TELECOM	66000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 베이직				
+웨이브 NEW 5G 모두다 맘껏 110GB+(웨이브 광고형)	BENEFIT	TELECOM	69000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				
+웨이브 NEW 5G 모두다 맘껏 200GB+(웨이브 광고형)	BENEFIT	TELECOM	77000	KT M모바일 요금제 가입 필요 (요금제 전체 가격)	KT M모바일	웨이브 무료	웨이브 광고형 스탠다드				

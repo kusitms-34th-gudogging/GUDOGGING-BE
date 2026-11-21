@@ -1,5 +1,6 @@
 package com.subscribers.gudogging.domain.check.application.usecase;
 
+import com.subscribers.gudogging.domain.catalog.domain.service.BundleGetService;
 import com.subscribers.gudogging.domain.check.application.dto.request.CheckupAnswerRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.DecideCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
@@ -10,6 +11,8 @@ import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSu
 import com.subscribers.gudogging.domain.check.application.exception.CheckSubscriptionNotActiveException;
 import com.subscribers.gudogging.domain.check.application.exception.CheckupNotFoundException;
 import com.subscribers.gudogging.domain.check.application.exception.InvalidCheckupAnswersException;
+import com.subscribers.gudogging.domain.check.domain.bundle.BundleRecommendation;
+import com.subscribers.gudogging.domain.check.domain.bundle.BundleRecommender;
 import com.subscribers.gudogging.domain.check.domain.entity.CancelReason;
 import com.subscribers.gudogging.domain.check.domain.entity.CheckDecision;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
@@ -48,6 +51,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CheckUseCase {
 
     private final UserGetService userGetService;
+    private final BundleGetService bundleGetService;
     private final SubscriptionGetService subscriptionGetService;
     private final SubscriptionCheckGetService subscriptionCheckGetService;
     private final SubscriptionCheckCreateService subscriptionCheckCreateService;
@@ -96,7 +100,23 @@ public class CheckUseCase {
             .orElseThrow(CheckupNotFoundException::new);
 
         List<Subscription> subscriptions = subscriptionGetService.findSubscriptions(user);
-        return CheckupResultResponse.of(check, subscriptions, LocalDate.now());
+        return CheckupResultResponse.of(check, subscriptions, recommendBundles(check.getSubscription(), subscriptions),
+            LocalDate.now());
+    }
+
+    /**
+     * 절약 제안 — 점검한 구독이 서비스 목록 요금제일 때 그 요금제가 포함된 번들을 계산한다. 금액은 구독 중 구독 + 점검한 구독(구독 종료여도) 기준.
+     */
+    private List<BundleRecommendation> recommendBundles(Subscription checked, List<Subscription> subscriptions) {
+        if (checked.getServiceCatalog() == null) {
+            return List.of();
+        }
+        List<Subscription> paying = subscriptions.stream()
+            .filter(subscription -> subscription.getStatus() == SubscriptionStatus.ACTIVE
+                || subscription.getId().equals(checked.getId()))
+            .toList();
+        return BundleRecommender.recommend(bundleGetService.findBundlesIncluding(checked.getServiceCatalog().getName()),
+            paying);
     }
 
     /**

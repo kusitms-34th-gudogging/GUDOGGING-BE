@@ -1,93 +1,196 @@
-﻿name,category,logo_url,cancel_url,sort_order
-Netflix,VIDEO_OTT,https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.png,https://www.netflix.com/cancelplan,1
-YouTube Premium,VIDEO_OTT,https://www.youtube.com/s/desktop/dc0b62b0/img/favicon_144x144.png,https://www.youtube.com/paid_memberships,2
-쿠팡플레이,VIDEO_OTT,https://assets.coupangplay.com/images/logo_coupangplay_without_text.png,https://loyalty.coupang.com/loyalty/management/home,3
-티빙,VIDEO_OTT,https://image.tving.com/ntgs/operation/logo/2023/09/18/1695032536_1.svg,https://www.tving.com/account/membership,4
-Disney+,VIDEO_OTT,https://static-assets.bamgrid.com/product/disneyplus/favicons/disPlus-favicon-180x180.7d56f648dc95f591721935193bc827cb.png,https://www.disneyplus.com/account/subscription,5
-웨이브,VIDEO_OTT,https://www.wavve.com/static/ci-wavve-112-x-24-19271ad2.svg,https://www.wavve.com/voucher/?voucher-type=wavve,6
-라프텔,VIDEO_OTT,https://static.laftel.net/favicon-152.png,https://laftel.net/membership/landing,7
-왓챠,VIDEO_OTT,,,8
-스포티비 나우,VIDEO_OTT,https://cdn.spotvnow.co.kr/dist/asset/img/logo-app-card.svg,,9
-Apple TV+,VIDEO_OTT,,,10
-Prime Video,VIDEO_OTT,https://m.media-amazon.com/images/G/01/digital/video/DVUI/favicons/apple-touch-icon-152x152.png,https://www.primevideo.com/settings,11
-YouTube Music,MUSIC,https://www.gstatic.com/youtube/img/promos/growth/5e406513d09fdb2c60dac1f642b4f28b26a3c26f691d5a29c5f8bd26a1908afd_489x93.png,https://www.youtube.com/paid_memberships,12
-Spotify,MUSIC,https://wwwmarketing.scdn.co/img/apple-touch-icon-180x180.png,https://www.spotify.com/account/subscription/,13
-멜론,MUSIC,https://www.melon.com/favicon.ico,,14
-지니뮤직,MUSIC,https://www.genie.co.kr/resources/favicon_32.ico,,15
-플로,MUSIC,https://www.music-flo.com/og_flo.jpg,,16
-벅스,MUSIC,https://file.bugsm.co.kr/bdesign/sns/1200x630_bugs.png,,17
-Apple Music,MUSIC,,,18
-V컬러링,MUSIC,,,19
-쿠팡,SHOPPING_DELIVERY,https://image.coupangcdn.com/image/coupang/home/icons/web/kr/wow.png,https://loyalty.coupang.com/loyalty/management/home,20
-네이버플러스,SHOPPING_DELIVERY,,https://nid.naver.com/membership/my,21
-배달의민족,SHOPPING_DELIVERY,https://www.baemin.com/_next/static/media/favicon-180x180.7697ba01.png,,22
-컬리,SHOPPING_DELIVERY,https://res.kurly.com/icons/favicon-192x192.png,,23
-신세계 유니버스 클럽,SHOPPING_DELIVERY,,,24
-요기요,SHOPPING_DELIVERY,https://www.yogiyo.co.kr/mobile/image/app_144x144.png,,25
-T 우주,SHOPPING_DELIVERY,,,26
-스타벅스,SHOPPING_DELIVERY,https://image.istarbucks.co.kr/common/img/kakaotalk.png,,27
-쏘카,SHOPPING_DELIVERY,https://www.socar.kr/assets/favicons/favicon_196x196.png,,28
-Duolingo,EDUCATION,https://d35aaqx5ub95lt.cloudfront.net/images/duolingo-touch-icon2.png,,29
-스픽,EDUCATION,https://www.speak.com/cdn.prod.website-files.com/61a88c135006e8345b005efd/686a5c29b8678b5802ceb837_WebIcon.png,,30
-말해보카,EDUCATION,,,31
-밀리의 서재,EDUCATION,https://www.millie.co.kr/favicon/ios-icon.png,,32
-윌라,EDUCATION,https://static.welaaa.co.kr/welaaa-web/static/rc/images/favicon/ic_welaaa_144x144.png,,33
-클래스101,EDUCATION,https://class101.net/images/favicon/favicon-white-512x512.png,,34
-콴다,EDUCATION,https://qanda.ai/favicon.ico,,35
-링글,EDUCATION,https://framerusercontent.com/images/4YWi2NXMFhXrYJe4v6e89arXDw.png,,36
-케이크,EDUCATION,https://static-mycake.pstatic.net/pc/static/images/og_cake_link_image.jpg,,37
-Cambly,EDUCATION,,,38
-롱블랙,EDUCATION,https://longblack.co/apple-touch-icon.png,,39
-열품타,EDUCATION,https://www.yeolpumta.com/static/img/favicon/ypt_favicon_180.png,,40
-ChatGPT,PRODUCTIVITY_AI,https://chatgpt.com/unauth-mweb/apple-touch-icon.png,https://chatgpt.com/#settings/Account,41
-Gemini,PRODUCTIVITY_AI,https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png,https://one.google.com/settings,42
-Canva,PRODUCTIVITY_AI,https://static.canva.com/domain-assets/canva/static/images/apple-touch-180x180-1.png,https://www.canva.com/settings/billing-and-plans,43
-Notion,PRODUCTIVITY_AI,https://www.notion.com/front-static/logo-ios.png,,44
-Microsoft 365,PRODUCTIVITY_AI,,https://account.microsoft.com/services,45
-미리캔버스,PRODUCTIVITY_AI,https://resource.miricanvas.com/2_0/image/favicon/android-chrome-192x192.png,,46
-Perplexity,PRODUCTIVITY_AI,https://www.perplexity.ai/apple-touch-icon.png,https://www.perplexity.ai/settings/account,47
-Claude,PRODUCTIVITY_AI,https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/c129d018a-0ZbJsTbu.png,https://claude.ai/settings/billing,48
-Adobe Creative Cloud,PRODUCTIVITY_AI,,https://account.adobe.com/plans,49
-Grammarly,PRODUCTIVITY_AI,https://static-web.grammarly.com/cms/master/public/favicon-32x32.png,https://account.grammarly.com/subscription,50
-DeepL,PRODUCTIVITY_AI,https://www.deepl.com/apple-icon,,51
-Midjourney,PRODUCTIVITY_AI,https://www.midjourney.com/public/apple-touch-icon.png,https://www.midjourney.com/account,52
-Cursor,PRODUCTIVITY_AI,https://cursor.com/marketing-static/apple-touch-icon-light.png,https://cursor.com/dashboard,53
-GitHub Copilot,PRODUCTIVITY_AI,https://github.com/fluidicon.png,https://github.com/settings/copilot,54
-Figma,PRODUCTIVITY_AI,https://static.figma.com/app/icon/1/touch-180.png,,55
-Zoom,PRODUCTIVITY_AI,,https://zoom.us/billing,56
-Slack,PRODUCTIVITY_AI,https://a.slack-edge.com/9cc0056/img/icons/favicon-32.png,,57
-Goodnotes,PRODUCTIVITY_AI,https://cdn.prod.website-files.com/6978a92a56d24460cdf7442e/69ddf4810777de072d94b23f_68dff59f6dde021933bb00b3_Goodnotes-icon-256.png,,58
-Gamma,PRODUCTIVITY_AI,https://static.gamma.app/favicons/apple-touch-icon.png,,59
-CapCut,PRODUCTIVITY_AI,,,60
-Grok,PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,61
-Genspark,PRODUCTIVITY_AI,https://www.genspark.ai/apple-touch-icon.png,,62
-VLLO,PRODUCTIVITY_AI,https://static.wixstatic.com/media/c835e4_266e1478180140818881e2ca990d32d2%7Emv2.png/v1/fill/w_192%2Ch_192%2Clg_1%2Cusm_0.66_1.00_0.01/c835e4_266e1478180140818881e2ca990d32d2%7Emv2.png,,63
-위버스,ENTERTAINMENT,https://cdn-v2pstatic.weverse.io/weverse3/3_18_5/logo512.png,,64
-버블,ENTERTAINMENT,,,65
-Xbox Game Pass,ENTERTAINMENT,https://cms-assets.xboxservices.com/assets/dc/a1/dca12e01-f367-4d86-a2c8-1ef23bfd593a.png,https://account.microsoft.com/services,66
-PlayStation Plus,ENTERTAINMENT,https://gmedia.playstation.com/is/image/SIEPDC/ps-plus-black-badge-01-22sep20,,67
-Nintendo Switch Online,ENTERTAINMENT,https://www.nintendo.com/kr/assets/img/header/hardware/NS1_logo_pc.svg,,68
-리디,ENTERTAINMENT,https://static.ridicdn.net/books-frontend/p/5076ef/_next/static/media/favicon-512x512.1cyy_bycddyab.png,,69
-치지직,ENTERTAINMENT,,,70
-SOOP,ENTERTAINMENT,https://res.sooplive.com/images/mobile/afreeca_mobile.png,,71
-Discord,ENTERTAINMENT,https://cdn.prod.website-files.com/6257adef93867e50d84d30e2/62fddf0fde45a8baedcc7ee5_847541504914fd33810e70a0ea73177e%20(2)-1.png,,72
-Apple Arcade,ENTERTAINMENT,,,73
-Google Play Pass,ENTERTAINMENT,https://www.gstatic.com/android/market_images/web/play_pass_signup_page_logo.png,,74
-노벨피아,ENTERTAINMENT,https://images.novelpia.com/img/favicon/2025-apple-icon-180x180.png,,75
-포스타입,ENTERTAINMENT,https://www.postype.com/apple-icon.png,,76
-제타,ENTERTAINMENT,https://image.zeta-ai.io/favicon/symbol.png,,77
-Google One,ETC,https://one.google.com/about/public/favicon-32x32.png,https://one.google.com/settings,78
-iCloud+,ETC,,,79
-Apple One,ETC,,,80
-네이버 MYBOX,ETC,,,81
-톡클라우드,ETC,,,82
-이모티콘 플러스,ETC,https://e.kakao.com/apple-touch-icon.png,,83
-Dropbox,ETC,,https://www.dropbox.com/account/plan,84
-Tinder,ETC,,,85
-LinkedIn,ETC,https://static.licdn.com/aero-v1/sc/h/akt4ae504epesldzj74dzred8,,86
-Calm,ETC,https://www.calm.com/apple-icon.png,,87
-마보,ETC,https://www.mabopractice.com/og_ver3.png,,88
-Noom,ETC,https://cdn.imweb.me/thumbnail/20221202/c0c6e1392cf32.png,,89
-스노우,ETC,https://www.snow.me/statics/snow/home/img/favicon.png,,90
-에픽,ETC,,,91
-콰트,ETC,,,92
+﻿name,category,logo_url,cancel_url,default_amount,sort_order
+Netflix 광고형 스탠다드,VIDEO_OTT,https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.png,https://www.netflix.com/cancelplan,7000,1
+Netflix 스탠다드,VIDEO_OTT,https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.png,https://www.netflix.com/cancelplan,13500,2
+Netflix 프리미엄,VIDEO_OTT,https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2016.png,https://www.netflix.com/cancelplan,17000,3
+YouTube Premium,VIDEO_OTT,https://www.youtube.com/s/desktop/dc0b62b0/img/favicon_144x144.png,https://www.youtube.com/paid_memberships,14900,4
+YouTube Premium Lite,VIDEO_OTT,https://www.youtube.com/s/desktop/dc0b62b0/img/favicon_144x144.png,https://www.youtube.com/paid_memberships,8500,5
+쿠팡플레이 스포츠패스(와우회원),VIDEO_OTT,https://assets.coupangplay.com/images/logo_coupangplay_without_text.png,https://loyalty.coupang.com/loyalty/management/home,12400,6
+쿠팡플레이 스포츠패스(일반),VIDEO_OTT,https://assets.coupangplay.com/images/logo_coupangplay_without_text.png,https://loyalty.coupang.com/loyalty/management/home,19300,7
+쿠팡플레이 프리미엄 패스 (웹),VIDEO_OTT,https://assets.coupangplay.com/images/logo_coupangplay_without_text.png,https://loyalty.coupang.com/loyalty/management/home,3900,8
+쿠팡플레이 프리미엄 패스 (앱),VIDEO_OTT,https://assets.coupangplay.com/images/logo_coupangplay_without_text.png,https://loyalty.coupang.com/loyalty/management/home,4500,9
+티빙 광고형 스탠다드,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/50/99/80/509980f1-028c-b3e6-0de9-8f5ce78f5d0a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,https://www.tving.com/account/membership,5500,10
+티빙 베이직,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/50/99/80/509980f1-028c-b3e6-0de9-8f5ce78f5d0a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,https://www.tving.com/account/membership,9500,11
+티빙 스탠다드,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/50/99/80/509980f1-028c-b3e6-0de9-8f5ce78f5d0a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,https://www.tving.com/account/membership,13500,12
+티빙 프리미엄,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/50/99/80/509980f1-028c-b3e6-0de9-8f5ce78f5d0a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,https://www.tving.com/account/membership,17000,13
+Disney+ 스탠다드,VIDEO_OTT,https://static-assets.bamgrid.com/product/disneyplus/favicons/disPlus-favicon-180x180.7d56f648dc95f591721935193bc827cb.png,https://www.disneyplus.com/account/subscription,9900,14
+Disney+ 프리미엄,VIDEO_OTT,https://static-assets.bamgrid.com/product/disneyplus/favicons/disPlus-favicon-180x180.7d56f648dc95f591721935193bc827cb.png,https://www.disneyplus.com/account/subscription,13900,15
+웨이브 광고형 스탠다드,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ea/52/0a/ea520a1f-9983-ef49-2179-9b19493ab126/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,https://www.wavve.com/voucher/?voucher-type=wavve,5500,16
+웨이브 베이직,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ea/52/0a/ea520a1f-9983-ef49-2179-9b19493ab126/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,https://www.wavve.com/voucher/?voucher-type=wavve,7900,17
+웨이브 스탠다드,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ea/52/0a/ea520a1f-9983-ef49-2179-9b19493ab126/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,https://www.wavve.com/voucher/?voucher-type=wavve,10900,18
+웨이브 프리미엄,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/ea/52/0a/ea520a1f-9983-ef49-2179-9b19493ab126/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,https://www.wavve.com/voucher/?voucher-type=wavve,13900,19
+라프텔 베이직,VIDEO_OTT,https://static.laftel.net/favicon-152.png,https://laftel.net/membership/landing,9900,20
+라프텔 프리미엄,VIDEO_OTT,https://static.laftel.net/favicon-152.png,https://laftel.net/membership/landing,14900,21
+왓챠 베이직,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9f/70/2a/9f702a61-dce6-ed03-36c1-30aa4ffa5ee3/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,7900,22
+왓챠 프리미엄,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/9f/70/2a/9f702a61-dce6-ed03-36c1-30aa4ffa5ee3/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,12900,23
+스포티비 나우 베이직,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/93/7f/61/937f615a-7adf-85cc-0026-98b933a06f1d/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,9900,24
+스포티비 나우 프리미엄,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/93/7f/61/937f615a-7adf-85cc-0026-98b933a06f1d/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,19900,25
+스포티비 나우 KBO 월간권,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/93/7f/61/937f615a-7adf-85cc-0026-98b933a06f1d/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,14900,26
+Apple TV+,VIDEO_OTT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/a2/74/61/a274610a-1537-0429-df1b-afacfad5a478/tvCalistoga-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,https://apps.apple.com/account/subscriptions,6500,27
+Prime Video,VIDEO_OTT,https://m.media-amazon.com/images/G/01/digital/video/DVUI/favicons/apple-touch-icon-152x152.png,https://www.primevideo.com/settings,,28
+YouTube Music Premium,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/07/d7/d9/07d7d96b-66e4-3e57-5a8c-158204e8fe21/logo_youtube_music_2024_q4_color-0-0-1x_U007emarketing-0-0-0-7-0-0-0-85-220.png/512x512bb.jpg,https://www.youtube.com/paid_memberships,11990,29
+Spotify Individual,MUSIC,https://wwwmarketing.scdn.co/img/apple-touch-icon-180x180.png,https://www.spotify.com/account/subscription/,11990,30
+Spotify Basic,MUSIC,https://wwwmarketing.scdn.co/img/apple-touch-icon-180x180.png,https://www.spotify.com/account/subscription/,8690,31
+Spotify Student,MUSIC,https://wwwmarketing.scdn.co/img/apple-touch-icon-180x180.png,https://www.spotify.com/account/subscription/,6600,32
+Spotify Duo,MUSIC,https://wwwmarketing.scdn.co/img/apple-touch-icon-180x180.png,https://www.spotify.com/account/subscription/,17985,33
+멜론 스트리밍 클럽,MUSIC,https://www.melon.com/favicon.ico,,8690,34
+멜론 모바일 스트리밍 클럽,MUSIC,https://www.melon.com/favicon.ico,,7590,35
+멜론 스트리밍 플러스,MUSIC,https://www.melon.com/favicon.ico,,11990,36
+멜론 Hi-Fi 스트리밍 클럽,MUSIC,https://www.melon.com/favicon.ico,,13200,37
+멜론 MP3 10 플러스,MUSIC,https://www.melon.com/favicon.ico,,15950,38
+멜론 MP3 30 플러스,MUSIC,https://www.melon.com/favicon.ico,,28490,39
+지니뮤직 음악감상,MUSIC,https://www.genie.co.kr/resources/favicon_32.ico,,9240,40
+지니뮤직 스마트 음악감상(모바일),MUSIC,https://www.genie.co.kr/resources/favicon_32.ico,,8140,41
+지니뮤직 초고음질 무제한 음악감상,MUSIC,https://www.genie.co.kr/resources/favicon_32.ico,,15400,42
+플로 모바일 무제한 듣기,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d9/07/e8/d907e8db-e319-e1eb-babb-ebf033c66acd/AppIcon-0-0-1x_U007epad-0-1-85-220.jpeg/512x512bb.jpg,,6900,43
+플로 무제한 듣기,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d9/07/e8/d907e8db-e319-e1eb-babb-ebf033c66acd/AppIcon-0-0-1x_U007epad-0-1-85-220.jpeg/512x512bb.jpg,,7900,44
+플로 무제한 듣기+오프라인,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d9/07/e8/d907e8db-e319-e1eb-babb-ebf033c66acd/AppIcon-0-0-1x_U007epad-0-1-85-220.jpeg/512x512bb.jpg,,10900,45
+벅스 무제한 듣기,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4a/49/f2/4a49f213-74df-4c27-4c0c-86bfdd8681db/bugs_icon3-0-0-1x_U007epad-0-1-0-0-sRGB-GLES2_U002c0-85-220.png/512x512bb.jpg,,8690,46
+벅스 모바일 무제한 듣기,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4a/49/f2/4a49f213-74df-4c27-4c0c-86bfdd8681db/bugs_icon3-0-0-1x_U007epad-0-1-0-0-sRGB-GLES2_U002c0-85-220.png/512x512bb.jpg,,7590,47
+벅스 무제한 듣기+오프라인,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/4a/49/f2/4a49f213-74df-4c27-4c0c-86bfdd8681db/bugs_icon3-0-0-1x_U007epad-0-1-0-0-sRGB-GLES2_U002c0-85-220.png/512x512bb.jpg,,11990,48
+Apple Music 개인,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d5/45/38/d5453893-7719-0067-ed45-1de44d0d8eb9/musicValkyrie-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,https://apps.apple.com/account/subscriptions,8900,49
+Apple Music 가족,MUSIC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d5/45/38/d5453893-7719-0067-ed45-1de44d0d8eb9/musicValkyrie-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,https://apps.apple.com/account/subscriptions,13500,50
+V컬러링,MUSIC,,,3300,51
+V컬러링플러스,MUSIC,,,4400,52
+쿠팡 와우 멤버십,SHOPPING_DELIVERY,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/f1/fe/47/f1fe4706-9f5f-27fc-ca5f-05e8a5d102c5/AppIcon-0-0-1x_U007emarketing-0-11-0-sRGB-85-220.png/512x512bb.jpg,https://loyalty.coupang.com/loyalty/management/home,7890,53
+네이버플러스 멤버십,SHOPPING_DELIVERY,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/57/9c/e3/579ce362-5059-7959-2e8c-58d5ba6a7902/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-0-85-220.png/512x512bb.jpg,https://nid.naver.com/membership/my,4900,54
+배달의민족 배민클럽,SHOPPING_DELIVERY,https://www.baemin.com/_next/static/media/favicon-180x180.7697ba01.png,,3990,55
+컬리멤버스,SHOPPING_DELIVERY,https://res.kurly.com/icons/favicon-192x192.png,,1900,56
+신세계 유니버스 클럽,SHOPPING_DELIVERY,,,,57
+요기요 요기패스X,SHOPPING_DELIVERY,https://www.yogiyo.co.kr/mobile/image/app_144x144.png,,2900,58
+T 우주 우주패스 all,SHOPPING_DELIVERY,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/70/e7/0b/70e70b79-ad98-7efb-7a4a-d8fb954f9272/AppIcon-0-0-1x_U007ephone-0-6-0-85-220.png/512x512bb.jpg,,9900,59
+T 우주 우주패스 mini,SHOPPING_DELIVERY,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/70/e7/0b/70e70b79-ad98-7efb-7a4a-d8fb954f9272/AppIcon-0-0-1x_U007ephone-0-6-0-85-220.png/512x512bb.jpg,,4900,60
+T 우주 우주패스 life,SHOPPING_DELIVERY,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/70/e7/0b/70e70b79-ad98-7efb-7a4a-d8fb954f9272/AppIcon-0-0-1x_U007ephone-0-6-0-85-220.png/512x512bb.jpg,,9900,61
+스타벅스 버디 패스,SHOPPING_DELIVERY,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b5/3e/bb/b53ebb88-401d-417b-bcda-d4ed51252bcc/AppIcon-0-0-1x_U007emarketing-0-7-0-85-220.png/512x512bb.jpg,,7900,62
+쏘카 패스포트,SHOPPING_DELIVERY,https://www.socar.kr/assets/favicons/favicon_196x196.png,,,63
+Super Duolingo,EDUCATION,https://d35aaqx5ub95lt.cloudfront.net/images/duolingo-touch-icon2.png,,,64
+스픽 프리미엄,EDUCATION,https://www.speak.com/cdn.prod.website-files.com/61a88c135006e8345b005efd/686a5c29b8678b5802ceb837_WebIcon.png,,29000,65
+스픽 프리미엄 플러스,EDUCATION,https://www.speak.com/cdn.prod.website-files.com/61a88c135006e8345b005efd/686a5c29b8678b5802ceb837_WebIcon.png,,69000,66
+말해보카 1인 멤버십,EDUCATION,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/7a/c0/6e/7ac06e6b-866e-c825-7da6-fab530e2ea4c/AppIcon-0-0-1x_U007epad-0-0-0-1-0-85-220.png/512x512bb.jpg,,19500,67
+밀리의 서재 전자책,EDUCATION,https://www.millie.co.kr/favicon/ios-icon.png,,9900,68
+밀리의 서재 종이책 포함,EDUCATION,https://www.millie.co.kr/favicon/ios-icon.png,,19800,69
+윌라 베이직,EDUCATION,https://static.welaaa.co.kr/welaaa-web/static/rc/images/favicon/ic_welaaa_144x144.png,,12500,70
+윌라 패밀리,EDUCATION,https://static.welaaa.co.kr/welaaa-web/static/rc/images/favicon/ic_welaaa_144x144.png,,16900,71
+클래스101+,EDUCATION,https://class101.net/images/favicon/favicon-white-512x512.png,,19900,72
+콴다 프리미엄,EDUCATION,https://qanda.ai/favicon.ico,,18500,73
+링글 베이직,EDUCATION,https://framerusercontent.com/images/4YWi2NXMFhXrYJe4v6e89arXDw.png,,29000,74
+링글 프리미엄 플러스,EDUCATION,https://framerusercontent.com/images/4YWi2NXMFhXrYJe4v6e89arXDw.png,,69000,75
+링글 올인원,EDUCATION,https://framerusercontent.com/images/4YWi2NXMFhXrYJe4v6e89arXDw.png,,79000,76
+링글 AI 전화,EDUCATION,https://framerusercontent.com/images/4YWi2NXMFhXrYJe4v6e89arXDw.png,,29000,77
+케이크 플러스,EDUCATION,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/08/2a/ab/082aab9d-16bf-01dc-2c1d-89ffd94f5075/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,16000,78
+Cambly 매일 15분,EDUCATION,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cf/ee/9e/cfee9e6a-eb59-ec00-3a45-ab5e54bf66e6/CamblyAppIcon-0-0-1x_U007epad-0-1-0-0-sRGB-85-220.png/512x512bb.jpg,,,79
+Cambly 매일 30분,EDUCATION,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/cf/ee/9e/cfee9e6a-eb59-ec00-3a45-ab5e54bf66e6/CamblyAppIcon-0-0-1x_U007epad-0-1-0-0-sRGB-85-220.png/512x512bb.jpg,,,80
+롱블랙 멤버십,EDUCATION,https://longblack.co/apple-touch-icon.png,,5900,81
+열품타 프리미엄,EDUCATION,https://www.yeolpumta.com/static/img/favicon/ypt_favicon_180.png,,5900,82
+ChatGPT Go,PRODUCTIVITY_AI,https://chatgpt.com/unauth-mweb/apple-touch-icon.png,https://chatgpt.com/#settings/Account,13000,83
+ChatGPT Plus,PRODUCTIVITY_AI,https://chatgpt.com/unauth-mweb/apple-touch-icon.png,https://chatgpt.com/#settings/Account,29000,84
+ChatGPT Pro 100,PRODUCTIVITY_AI,https://chatgpt.com/unauth-mweb/apple-touch-icon.png,https://chatgpt.com/#settings/Account,159000,85
+ChatGPT Pro 200,PRODUCTIVITY_AI,https://chatgpt.com/unauth-mweb/apple-touch-icon.png,https://chatgpt.com/#settings/Account,,86
+ChatGPT Pro 500,PRODUCTIVITY_AI,https://chatgpt.com/unauth-mweb/apple-touch-icon.png,https://chatgpt.com/#settings/Account,,87
+Google AI Plus,PRODUCTIVITY_AI,https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png,https://one.google.com/settings,11900,88
+Google AI Pro,PRODUCTIVITY_AI,https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png,https://one.google.com/settings,29000,89
+Google AI Ultra(한도 5배),PRODUCTIVITY_AI,https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png,https://one.google.com/settings,119000,90
+Google AI Ultra(한도 20배),PRODUCTIVITY_AI,https://www.gstatic.com/lamda/images/gemini_sparkle_4g_512_lt_f94943af3be039176192d.png,https://one.google.com/settings,300000,91
+Canva Pro,PRODUCTIVITY_AI,https://static.canva.com/domain-assets/canva/static/images/apple-touch-180x180-1.png,https://www.canva.com/settings/billing-and-plans,,92
+Notion Plus,PRODUCTIVITY_AI,https://www.notion.com/front-static/logo-ios.png,,14000,93
+Notion Business,PRODUCTIVITY_AI,https://www.notion.com/front-static/logo-ios.png,,30000,94
+Microsoft 365 Personal,PRODUCTIVITY_AI,,https://account.microsoft.com/services,12500,95
+Microsoft 365 Family,PRODUCTIVITY_AI,,https://account.microsoft.com/services,15500,96
+Microsoft 365 Premium,PRODUCTIVITY_AI,,https://account.microsoft.com/services,29000,97
+미리캔버스 Pro,PRODUCTIVITY_AI,https://resource.miricanvas.com/2_0/image/favicon/android-chrome-192x192.png,,14900,98
+Perplexity Pro,PRODUCTIVITY_AI,https://www.perplexity.ai/apple-touch-icon.png,https://www.perplexity.ai/settings/account,,99
+Perplexity Max,PRODUCTIVITY_AI,https://www.perplexity.ai/apple-touch-icon.png,https://www.perplexity.ai/settings/account,,100
+Claude Pro,PRODUCTIVITY_AI,https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/c129d018a-0ZbJsTbu.png,https://claude.ai/settings/billing,,101
+Claude Max 5x,PRODUCTIVITY_AI,https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/c129d018a-0ZbJsTbu.png,https://claude.ai/settings/billing,,102
+Claude Max 20x,PRODUCTIVITY_AI,https://assets-proxy.anthropic.com/claude-ai/v2/assets/v1/c129d018a-0ZbJsTbu.png,https://claude.ai/settings/billing,,103
+Adobe Creative Cloud CC Pro(모든 앱),PRODUCTIVITY_AI,,https://account.adobe.com/plans,87900,104
+Adobe Creative Cloud 포토그래피(1TB),PRODUCTIVITY_AI,,https://account.adobe.com/plans,30300,105
+Adobe Creative Cloud Lightroom(1TB),PRODUCTIVITY_AI,,https://account.adobe.com/plans,15200,106
+Grammarly Pro,PRODUCTIVITY_AI,https://static-web.grammarly.com/cms/master/public/favicon-32x32.png,https://account.grammarly.com/subscription,,107
+DeepL Individual,PRODUCTIVITY_AI,https://www.deepl.com/apple-icon,,,108
+Midjourney Basic,PRODUCTIVITY_AI,https://www.midjourney.com/public/apple-touch-icon.png,https://www.midjourney.com/account,,109
+Midjourney Standard,PRODUCTIVITY_AI,https://www.midjourney.com/public/apple-touch-icon.png,https://www.midjourney.com/account,,110
+Midjourney Pro,PRODUCTIVITY_AI,https://www.midjourney.com/public/apple-touch-icon.png,https://www.midjourney.com/account,,111
+Midjourney Mega,PRODUCTIVITY_AI,https://www.midjourney.com/public/apple-touch-icon.png,https://www.midjourney.com/account,,112
+Cursor Plus,PRODUCTIVITY_AI,https://cursor.com/marketing-static/apple-touch-icon-light.png,https://cursor.com/dashboard,,113
+Cursor Premium,PRODUCTIVITY_AI,https://cursor.com/marketing-static/apple-touch-icon-light.png,https://cursor.com/dashboard,,114
+Cursor Super,PRODUCTIVITY_AI,https://cursor.com/marketing-static/apple-touch-icon-light.png,https://cursor.com/dashboard,,115
+Cursor Ultra,PRODUCTIVITY_AI,https://cursor.com/marketing-static/apple-touch-icon-light.png,https://cursor.com/dashboard,,116
+GitHub Copilot Pro,PRODUCTIVITY_AI,https://github.com/fluidicon.png,https://github.com/settings/copilot,,117
+GitHub Copilot Pro+,PRODUCTIVITY_AI,https://github.com/fluidicon.png,https://github.com/settings/copilot,,118
+Figma Professional Full,PRODUCTIVITY_AI,https://static.figma.com/app/icon/1/touch-180.png,,,119
+Figma Professional Dev,PRODUCTIVITY_AI,https://static.figma.com/app/icon/1/touch-180.png,,,120
+Figma Professional Collab,PRODUCTIVITY_AI,https://static.figma.com/app/icon/1/touch-180.png,,,121
+Zoom Pro,PRODUCTIVITY_AI,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/fc/d0/96/fcd09664-56c3-f856-4311-da9dcbae1fd2/AppIcon-0-0-1x_U007epad-0-1-0-0-85-220.png/512x512bb.jpg,https://zoom.us/billing,,122
+Zoom Business,PRODUCTIVITY_AI,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/fc/d0/96/fcd09664-56c3-f856-4311-da9dcbae1fd2/AppIcon-0-0-1x_U007epad-0-1-0-0-85-220.png/512x512bb.jpg,https://zoom.us/billing,,123
+Slack Pro,PRODUCTIVITY_AI,https://a.slack-edge.com/9cc0056/img/icons/favicon-32.png,,,124
+Slack Business+,PRODUCTIVITY_AI,https://a.slack-edge.com/9cc0056/img/icons/favicon-32.png,,,125
+Goodnotes 베이직,PRODUCTIVITY_AI,https://cdn.prod.website-files.com/6978a92a56d24460cdf7442e/69ddf4810777de072d94b23f_68dff59f6dde021933bb00b3_Goodnotes-icon-256.png,,2200,126
+Gamma Plus,PRODUCTIVITY_AI,https://static.gamma.app/favicons/apple-touch-icon.png,,,127
+Gamma Pro,PRODUCTIVITY_AI,https://static.gamma.app/favicons/apple-touch-icon.png,,,128
+Gamma Ultra,PRODUCTIVITY_AI,https://static.gamma.app/favicons/apple-touch-icon.png,,,129
+CapCut Pro(웹),PRODUCTIVITY_AI,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/eb/ab/efebab85-a422-d5da-1fab-23de4f2845ea/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,25000,130
+CapCut Ultra(웹),PRODUCTIVITY_AI,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/eb/ab/efebab85-a422-d5da-1fab-23de4f2845ea/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,112000,131
+CapCut Standard(앱),PRODUCTIVITY_AI,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/eb/ab/efebab85-a422-d5da-1fab-23de4f2845ea/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,9900,132
+CapCut Pro(앱),PRODUCTIVITY_AI,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/ef/eb/ab/efebab85-a422-d5da-1fab-23de4f2845ea/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,,19800,133
+Grok X Plus,PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,,134
+Grok X Premium,PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,,135
+Grok X Super,PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,,136
+Grok X Ultra,PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,,137
+SuperGrok(기존),PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,,138
+SuperGrok Heavy(기존),PRODUCTIVITY_AI,https://grok.com/images/android-chrome-512x512.png,,,139
+Genspark Plus,PRODUCTIVITY_AI,https://www.genspark.ai/apple-touch-icon.png,,,140
+Genspark Pro,PRODUCTIVITY_AI,https://www.genspark.ai/apple-touch-icon.png,,,141
+VLLO 프리미엄,PRODUCTIVITY_AI,https://static.wixstatic.com/media/c835e4_266e1478180140818881e2ca990d32d2%7Emv2.png/v1/fill/w_192%2Ch_192%2Clg_1%2Cusm_0.66_1.00_0.01/c835e4_266e1478180140818881e2ca990d32d2%7Emv2.png,,4900,142
+VLLO Premium PLUS,PRODUCTIVITY_AI,https://static.wixstatic.com/media/c835e4_266e1478180140818881e2ca990d32d2%7Emv2.png/v1/fill/w_192%2Ch_192%2Clg_1%2Cusm_0.66_1.00_0.01/c835e4_266e1478180140818881e2ca990d32d2%7Emv2.png,,6900,143
+투두메이트 프리미엄,PRODUCTIVITY_AI,,,2500,144
+위버스 DM(아티스트 1인),ENTERTAINMENT,https://cdn-v2pstatic.weverse.io/weverse3/3_18_5/logo512.png,,4500,145
+버블 1인권,ENTERTAINMENT,,,5000,146
+버블 2인권,ENTERTAINMENT,,,9800,147
+버블 3인권,ENTERTAINMENT,,,14500,148
+버블 4인권,ENTERTAINMENT,,,19300,149
+Xbox Game Pass Essential,ENTERTAINMENT,https://cms-assets.xboxservices.com/assets/dc/a1/dca12e01-f367-4d86-a2c8-1ef23bfd593a.png,https://account.microsoft.com/services,10800,150
+Xbox Game Pass Premium,ENTERTAINMENT,https://cms-assets.xboxservices.com/assets/dc/a1/dca12e01-f367-4d86-a2c8-1ef23bfd593a.png,https://account.microsoft.com/services,14900,151
+Xbox Game Pass Ultimate,ENTERTAINMENT,https://cms-assets.xboxservices.com/assets/dc/a1/dca12e01-f367-4d86-a2c8-1ef23bfd593a.png,https://account.microsoft.com/services,19000,152
+PC Game Pass,ENTERTAINMENT,https://cms-assets.xboxservices.com/assets/dc/a1/dca12e01-f367-4d86-a2c8-1ef23bfd593a.png,https://account.microsoft.com/services,15500,153
+PlayStation Plus 에센셜,ENTERTAINMENT,https://gmedia.playstation.com/is/image/SIEPDC/ps-plus-black-badge-01-22sep20,,10800,154
+PlayStation Plus 스페셜,ENTERTAINMENT,https://gmedia.playstation.com/is/image/SIEPDC/ps-plus-black-badge-01-22sep20,,16200,155
+PlayStation Plus 디럭스,ENTERTAINMENT,https://gmedia.playstation.com/is/image/SIEPDC/ps-plus-black-badge-01-22sep20,,19000,156
+Nintendo Switch Online 개인,ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/4b/4d/5a/4b4d5acf-d4a2-7a46-d694-def2e56e3e57/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,,5900,157
+리디셀렉트,ENTERTAINMENT,https://static.ridicdn.net/books-frontend/p/5076ef/_next/static/media/favicon-512x512.1cyy_bycddyab.png,,4900,158
+치지직 티어1(팬),ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/93/b5/6f/93b56fe8-10ca-22d1-e03a-48ad97240655/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,,4900,159
+치지직 티어2(형광팬),ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/93/b5/6f/93b56fe8-10ca-22d1-e03a-48ad97240655/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,,14900,160
+SOOP 베이직,ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/54/1a/09/541a09ee-b7ab-f9fa-88fd-29a903da5d3a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,4500,161
+SOOP 구독 플러스 Lv1,ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/54/1a/09/541a09ee-b7ab-f9fa-88fd-29a903da5d3a/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,9500,162
+Discord Nitro Basic,ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/08/c2/e9/08c2e9b8-5a7a-aad2-fbd5-f58e7810ff0b/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,3500,163
+Discord Nitro,ENTERTAINMENT,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/08/c2/e9/08c2e9b8-5a7a-aad2-fbd5-f58e7810ff0b/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,9800,164
+Apple Arcade,ENTERTAINMENT,,https://apps.apple.com/account/subscriptions,6500,165
+Google Play Pass,ENTERTAINMENT,https://www.gstatic.com/android/market_images/web/play_pass_signup_page_logo.png,https://play.google.com/store/account/subscriptions,6500,166
+노벨피아 PLUS 멤버십,ENTERTAINMENT,https://images.novelpia.com/img/favicon/2025-apple-icon-180x180.png,,14900,167
+제타패스,ENTERTAINMENT,https://image.zeta-ai.io/favicon/symbol.png,,14900,168
+Google One Basic 100GB,ETC,https://one.google.com/about/public/favicon-32x32.png,https://one.google.com/settings,2400,169
+iCloud+ 50GB,ETC,,https://apps.apple.com/account/subscriptions,1100,170
+iCloud+ 200GB,ETC,,https://apps.apple.com/account/subscriptions,4400,171
+iCloud+ 2TB,ETC,,https://apps.apple.com/account/subscriptions,14000,172
+iCloud+ 6TB,ETC,,https://apps.apple.com/account/subscriptions,44000,173
+iCloud+ 12TB,ETC,,https://apps.apple.com/account/subscriptions,88000,174
+Apple One 개인,ETC,,https://apps.apple.com/account/subscriptions,14900,175
+Apple One 가족,ETC,,https://apps.apple.com/account/subscriptions,20900,176
+네이버 MYBOX 80GB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/35/d4/dd/35d4dd23-df49-972e-33b0-a9d90307ed2b/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,1650,177
+네이버 MYBOX 180GB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/35/d4/dd/35d4dd23-df49-972e-33b0-a9d90307ed2b/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,3300,178
+네이버 MYBOX 330GB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/35/d4/dd/35d4dd23-df49-972e-33b0-a9d90307ed2b/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,5500,179
+네이버 MYBOX 2TB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/35/d4/dd/35d4dd23-df49-972e-33b0-a9d90307ed2b/AppIcon-0-0-1x_U007epad-0-1-0-85-220.png/512x512bb.jpg,,11000,180
+톡클라우드 30GB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d5/ee/f4/d5eef492-91fa-22d7-6c4d-c73ff7fa657d/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/512x512bb.jpg,,2100,181
+톡클라우드 50GB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d5/ee/f4/d5eef492-91fa-22d7-6c4d-c73ff7fa657d/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/512x512bb.jpg,,3100,182
+톡클라우드 200GB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d5/ee/f4/d5eef492-91fa-22d7-6c4d-c73ff7fa657d/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/512x512bb.jpg,,5100,183
+톡클라우드 2TB,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/d5/ee/f4/d5eef492-91fa-22d7-6c4d-c73ff7fa657d/AppIcon-0-0-1x_U007epad-0-0-0-1-0-0-sRGB-85-220.png/512x512bb.jpg,,12000,184
+이모티콘 플러스,ETC,https://e.kakao.com/apple-touch-icon.png,,3900,185
+Dropbox Plus,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b0/6d/a3/b06da39b-fab4-1def-e328-369da6f3af9f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,https://www.dropbox.com/account/plan,,186
+Dropbox Standard,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b0/6d/a3/b06da39b-fab4-1def-e328-369da6f3af9f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,https://www.dropbox.com/account/plan,,187
+Dropbox Advanced,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/b0/6d/a3/b06da39b-fab4-1def-e328-369da6f3af9f/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg,https://www.dropbox.com/account/plan,,188
+LinkedIn Premium Career,ETC,https://static.licdn.com/aero-v1/sc/h/akt4ae504epesldzj74dzred8,,,189
+LinkedIn Premium Business,ETC,https://static.licdn.com/aero-v1/sc/h/akt4ae504epesldzj74dzred8,,,190
+Calm Premium,ETC,https://www.calm.com/apple-icon.png,,,191
+마보,ETC,https://www.mabopractice.com/og_ver3.png,,5900,192
+스노우 VIP,ETC,https://www.snow.me/statics/snow/home/img/favicon.png,,11900,193
+에픽 PRO,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/0b/fa/9c/0bfa9cd3-258c-dcb4-e3ae-13f9f53cbb09/AppIcon-0-0-1x_U007emarketing-0-0-0-8-0-0-85-220.png/512x512bb.jpg,,10900,194
+콰트,ETC,https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/2f/53/0e/2f530e40-dfee-ddff-53e3-46500c84fd0d/AppIcon-0-0-1x_U007epad-0-1-0-sRGB-85-220.png/512x512bb.jpg,,39000,195

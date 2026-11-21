@@ -23,9 +23,9 @@ import org.springframework.stereotype.Component;
 public class ServiceCatalogSeedRunner implements ApplicationRunner {
 
     private static final String SEED_FILE = "seed/services_seed.csv";
-    private static final String HEADER = "name,category,logo_url,cancel_url,sort_order";
+    private static final String HEADER = "name,category,logo_url,cancel_url,default_amount,sort_order";
     private static final String BOM = "﻿";
-    private static final int COLUMN_COUNT = 5;
+    private static final int COLUMN_COUNT = 6;
 
     private final CatalogUseCase catalogUseCase;
 
@@ -66,7 +66,8 @@ public class ServiceCatalogSeedRunner implements ApplicationRunner {
                 Category.valueOf(columns[1]),
                 emptyToNull(columns[2]),
                 emptyToNull(columns[3]),
-                Integer.parseInt(columns[4])
+                columns[4].isEmpty() ? null : Integer.valueOf(columns[4]),
+                Integer.parseInt(columns[5])
             );
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("서비스 시드 CSV " + lineNumber + "행을 해석할 수 없습니다: " + line, e);
