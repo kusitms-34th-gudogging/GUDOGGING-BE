@@ -60,11 +60,24 @@ public class ServiceCatalog extends BaseEntity {
      * 시드 CSV 값으로 갱신한다. CSV에 있는 컬럼(category, logo_url, cancel_url, sort_order)만 바꾸고 나머지(name_en, search_keywords,
      * object_particle, is_active)는 건드리지 않는다.
      */
-    public void updateFromSeed(Category category, String logoUrl, String cancelUrl, int sortOrder) {
+    /**
+     * 시드 CSV 동기화 — CSV 컬럼(카테고리 · 로고 · 해지 링크 · 기본 금액 · 순서)을 갱신하고, CSV에 있으므로 활성화한다.
+     */
+    public void updateFromSeed(Category category, String logoUrl, String cancelUrl, Integer defaultAmount,
+                               int sortOrder) {
         this.category = category;
         this.logoUrl = logoUrl;
         this.cancelUrl = cancelUrl;
+        this.defaultAmount = defaultAmount;
         this.sortOrder = sortOrder;
+        this.isActive = true;
+    }
+
+    /**
+     * 시드 CSV에서 빠진 서비스 — 목록 · 검색에서 숨긴다. 기존 구독이 가리킬 수 있으므로 행은 지우지 않는다.
+     */
+    public void deactivate() {
+        this.isActive = false;
     }
 
     public static ServiceCatalog create(

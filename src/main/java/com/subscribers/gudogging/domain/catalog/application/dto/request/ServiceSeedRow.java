@@ -10,6 +10,7 @@ public record ServiceSeedRow(
     Category category,
     String logoUrl,
     String cancelUrl,
+    Integer defaultAmount,
     int sortOrder
 ) {
 }
