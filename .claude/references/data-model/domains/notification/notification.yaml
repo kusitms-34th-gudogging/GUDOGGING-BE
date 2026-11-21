@@ -85,6 +85,6 @@ notes:
   - "'오늘' / '이전 알림' 구분은 sent_at 기준으로 클라이언트에서 처리"
   - "발송 배치 (NOTIFICATION-006, 매일 09:00 Asia/Seoul): 대상 = push_token 있는 회원(탈퇴 제외)의 구독 중 구독. D-3 = users.is_check_notification_enabled = true 회원의 '꾸준히 쓰는 구독 아님 · 이번 주기 미점검' 구독 중 결제 3일 전 구독이 있으면, 내일 ~ 7일 뒤 결제될 대상 구독을 묶어 회원별 1건 (대표 = 현재 금액이 가장 큰 구독, 합계 = 기간 내 결제 횟수 × 금액). D-1 = 내일 결제인 모든 구독 · 알림 설정 무관, 서비스마다 1건 (이번 주기 최근 점검이 CANCEL이면 CANCEL_CONFIRM)"
   - "중복 발송 방지: D-3은 같은 (대표 구독, CHECK_REMINDER, 결제일) 알림이 있으면 그 회원은 그날 건너뜀, D-1은 같은 구독 · 결제일에 BILLING_REMINDER · CANCEL_CONFIRM이 있으면 건너뜀. UNIQUE가 삭제 행도 포함하므로 삭제된 알림도 확인"
-  - "발송: 저장(saveAll) 후 PushSender.send — payload data = type, subscriptionId, notificationId. 한 건 실패해도 나머지 계속. 지금은 LoggingPushSender(로그만), Firebase 키를 받으면 Firebase Admin SDK 구현으로 교체 (없는 토큰 정리 포함)"
+  - "발송: 저장(saveAll) 후 PushSender.send — payload data = type, subscriptionId, notificationId. 한 건 실패해도 나머지 계속. FIREBASE_CREDENTIALS(서비스 계정 JSON Base64)가 있으면 FirebasePushSender(FCM), 없으면 LoggingPushSender(로그만) — PushSenderConfig에서 선택 (NOTIFICATION-007). FCM이 없는 토큰(UNREGISTERED · INVALID_ARGUMENT)이라고 하면 회원 push_token · platform을 비우고 같은 회원의 다음 알림은 보내지 않음"
   - "문구 — D-3 여러 건: '{서비스명} 외 N건, {합계}원 결제 예정' / 1건: '{서비스명} {금액}원 결제 예정', 본문 '7일 안에 빠져나갈 구독료를 확인하세요.' · BILLING_REMINDER: '내일 {서비스명} {금액}원이 결제돼요' / '해지 안 했다면 오늘이 마지막 해지 기회예요.' · CANCEL_CONFIRM: '{서비스명}, 해지하셨나요?' / '아직이라면 내일 {금액}원이 결제돼요. 오늘 해지하세요.'"
   - "종류 태그 문구는 응답하지 않음 — type은 탭 시 이동 분기에만 사용 (노션 명세)"
