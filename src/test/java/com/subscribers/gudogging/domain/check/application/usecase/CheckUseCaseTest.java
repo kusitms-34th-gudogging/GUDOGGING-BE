@@ -8,19 +8,26 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.subscribers.gudogging.domain.catalog.domain.bundle.Bundle;
+import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleDiscount;
+import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleDiscountTarget;
+import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleProviderType;
+import com.subscribers.gudogging.domain.catalog.domain.bundle.BundleRecommendType;
 import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
 import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
+import com.subscribers.gudogging.domain.catalog.domain.service.BundleGetService;
 import com.subscribers.gudogging.domain.check.application.dto.request.CheckupAnswerRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.DecideCheckupRequest;
 import com.subscribers.gudogging.domain.check.application.dto.request.SubmitCheckupRequest;
-import com.subscribers.gudogging.domain.check.application.dto.response.CheckupDecisionResponse;
-import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
-import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
-import com.subscribers.gudogging.domain.check.application.dto.response.CheckupOptionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CategorySpendingItemResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CategorySpendingResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupBundleResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupDecisionResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupFormResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupOptionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupQuestionResponse;
 import com.subscribers.gudogging.domain.check.application.dto.response.CheckupResultResponse;
+import com.subscribers.gudogging.domain.check.application.dto.response.CheckupSubmissionResponse;
 import com.subscribers.gudogging.domain.check.application.exception.CheckErrorCode;
 import com.subscribers.gudogging.domain.check.domain.entity.CancelReason;
 import com.subscribers.gudogging.domain.check.domain.entity.CheckDecision;
@@ -46,6 +53,7 @@ import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.exception.ApplicationException;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -67,6 +75,9 @@ class CheckUseCaseTest {
 
     @Mock
     private UserGetService userGetService;
+
+    @Mock
+    private BundleGetService bundleGetService;
 
     @Mock
     private SubscriptionGetService subscriptionGetService;
@@ -743,8 +754,8 @@ class CheckUseCaseTest {
         }
 
         @Test
-        @DisplayName("절약 제안은 빈 배열, 최대 월 절약 금액은 0이다")
-        void returnsEmptyBundles() {
+        @DisplayName("점검한 요금제가 포함된 번들이 없으면 절약 제안은 빈 배열이다")
+        void returnsEmptyBundlesWithoutCandidates() {
             // given
             Subscription netflix = video("넷플릭스", 13500);
 
@@ -753,7 +764,6 @@ class CheckUseCaseTest {
 
             // then
             assertThat(result.bundles()).isEmpty();
-            assertThat(result.maxMonthlySaving()).isZero();
         }
 
         @ParameterizedTest(name = "이용도 {0} · 만족도 {1} · 계획 {2} → {3}")
@@ -1137,6 +1147,247 @@ class CheckUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionCheckGetService, subscriptionCheckCancelReasonGetService);
+        }
+    }
+
+    @Nested
+    @DisplayName("getCheckupResult — 절약 제안(bundles)")
+    class GetCheckupResultBundles {
+
+        private final UUID userId = UUID.randomUUID();
+        private final User user = User.create(SocialProvider.GOOGLE, "social-sub-123", "user@example.com", "홍길동");
+        private final LocalDate today = LocalDate.now();
+
+        private Subscription plan(String serviceName, Category category, int amount) {
+            ServiceCatalog service = ServiceCatalog.create(serviceName, null, null, category, null, amount, 1);
+            ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
+            Subscription subscription = Subscription.createFromCatalog(user, service, category, amount, 1,
+                BillingCycleUnit.MONTH, today.plusDays(10), PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
+            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(subscription, "createdAt", today.minusMonths(2).atStartOfDay());
+            ReflectionTestUtils.setField(subscription, "startedOn", today.minusMonths(2));
+            return subscription;
+        }
+
+        private Bundle bundle(String name, BundleRecommendType type, BundleProviderType provider, Integer price,
+                              List<String> fixed, List<String> choiceA, List<String> choiceB,
+                              Map<String, Integer> appliedPrices, List<BundleDiscount> discounts) {
+            return new Bundle(name, type, provider, price, name + " 포함 내용", null, name + " 태그1", name + " 태그2",
+                fixed, choiceA, choiceB, appliedPrices, discounts);
+        }
+
+        private Bundle fixed(String name, BundleProviderType provider, int price, List<String> fixed) {
+            return bundle(name, BundleRecommendType.FIXED, provider, price, fixed, List.of(), List.of(), Map.of(),
+                List.of());
+        }
+
+        private Bundle card(String name, List<String> fixed, List<String> choiceA, List<String> choiceB,
+                            List<BundleDiscount> discounts) {
+            return bundle(name, BundleRecommendType.MAX, BundleProviderType.CARD, null, fixed, choiceA, choiceB,
+                Map.of(), discounts);
+        }
+
+        private Bundle benefit(String name, int price, List<String> fixed) {
+            return bundle(name, BundleRecommendType.BENEFIT, BundleProviderType.TELECOM, price, fixed, List.of(),
+                List.of(), Map.of(), List.of());
+        }
+
+        private BundleDiscount percent(BundleDiscountTarget target, int percent) {
+            return new BundleDiscount(target, null, percent, null);
+        }
+
+        private List<CheckupBundleResponse> bundlesOf(Subscription checked, List<Bundle> candidates,
+                                                      Subscription... subscriptions) {
+            SubscriptionCheck check = SubscriptionCheck.create(checked, today.plusDays(10), checked.getCategory(),
+                2, 2, 2, CheckScore.percentOf(2, 2, 2), CheckResultStage.of(CheckScore.percentOf(2, 2, 2)), null);
+            ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionCheckGetService.findCheck(user, check.getId())).willReturn(Optional.of(check));
+            given(subscriptionGetService.findSubscriptions(user)).willReturn(List.of(subscriptions));
+            if (checked.getServiceCatalog() != null) {
+                given(bundleGetService.findBundlesIncluding(checked.getServiceCatalog().getName()))
+                    .willReturn(candidates);
+            }
+            return checkUseCase.getCheckupResult(userId, check.getId()).bundles();
+        }
+
+        @Test
+        @DisplayName("확정 절약: 구독 중인 포함 서비스 합 − 상품 가격을 월 절약액으로, 절약액 ÷ 지금 내는 금액을 막대로 반환한다")
+        void returnsFixedSaving() {
+            // given — 넷플릭스 13,500 + 유튜브 14,900 = 28,400 vs 18,900 → 9,500 · 33%
+            Subscription netflix = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            Subscription youtube = plan("YouTube Premium", Category.VIDEO_OTT, 14900);
+            Bundle bundle = fixed("유독 더블 스트리밍", BundleProviderType.TELECOM, 18900,
+                List.of("Netflix 스탠다드", "YouTube Premium"));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflix, List.of(bundle), netflix, youtube);
+
+            // then
+            assertThat(bundles).singleElement().satisfies(response -> {
+                assertThat(response.name()).isEqualTo("유독 더블 스트리밍");
+                assertThat(response.includes()).isEqualTo("유독 더블 스트리밍 포함 내용");
+                assertThat(response.tags()).containsExactly("유독 더블 스트리밍 태그1", "유독 더블 스트리밍 태그2");
+                assertThat(response.priceType()).isEqualTo(BundleRecommendType.FIXED);
+                assertThat(response.monthlySaving()).isEqualTo(9500);
+                assertThat(response.savingRate()).isEqualTo(33);
+                assertThat(response.monthlyPrice()).isEqualTo(18900);
+            });
+        }
+
+        @Test
+        @DisplayName("확정 절약: 포함 서비스 일부만 구독 중이면 구독 중인 것만 더하고, 절약액이 0원 이하면 추천하지 않는다")
+        void excludesWhenNotSaving() {
+            // given — 유튜브만 구독 14,900 < 상품 15,990
+            Subscription youtube = plan("YouTube Premium", Category.VIDEO_OTT, 14900);
+            Bundle bundle = fixed("배민클럽 x 유튜브", BundleProviderType.PLATFORM, 15990,
+                List.of("배달의민족 배민클럽", "YouTube Premium"));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(youtube, List.of(bundle), youtube);
+
+            // then
+            assertThat(bundles).isEmpty();
+        }
+
+        @Test
+        @DisplayName("확정 절약: 택1은 구독 중인 것 중 가장 비싼 1개만 더하고 고정 포함 서비스는 함께 더한다")
+        void addsMostExpensiveChoiceAndFixed() {
+            // given — 고정 컬리 1,900 + 택1(넷플릭스 광고형 7,000 · 스포티파이 10,900 중 10,900) = 12,800 − 4,900 = 7,900
+            Subscription kurly = plan("컬리멤버스", Category.SHOPPING_DELIVERY, 1900);
+            Subscription netflixAd = plan("Netflix 광고형 스탠다드", Category.VIDEO_OTT, 7000);
+            Subscription spotify = plan("Spotify Basic", Category.MUSIC, 10900);
+            Bundle bundle = bundle("네이버플러스 멤버십", BundleRecommendType.FIXED, BundleProviderType.PLATFORM, 4900,
+                List.of("컬리멤버스"), List.of("Netflix 광고형 스탠다드", "Spotify Basic"), List.of(), Map.of(), List.of());
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflixAd, List.of(bundle), kurly, netflixAd, spotify);
+
+            // then
+            assertThat(bundles).singleElement()
+                .extracting(CheckupBundleResponse::monthlySaving)
+                .isEqualTo(7900L);
+        }
+
+        @Test
+        @DisplayName("확정 절약: 서비스별 적용가가 있으면 고른 요금제의 적용가를 상품 가격으로 쓴다")
+        void usesAppliedPrice() {
+            // given — 넷플릭스 스탠다드 13,500 vs KT 적용가 12,500 → 1,000
+            Subscription netflix = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            Bundle bundle = bundle("넷플릭스 (KT 구독)", BundleRecommendType.FIXED, BundleProviderType.TELECOM, 6500,
+                List.of(), List.of("Netflix 광고형 스탠다드", "Netflix 스탠다드"), List.of(),
+                Map.of("Netflix 광고형 스탠다드", 6500, "Netflix 스탠다드", 12500), List.of());
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflix, List.of(bundle), netflix);
+
+            // then
+            assertThat(bundles).singleElement().satisfies(response -> {
+                assertThat(response.monthlySaving()).isEqualTo(1000);
+                assertThat(response.monthlyPrice()).isEqualTo(12500);
+            });
+        }
+
+        @Test
+        @DisplayName("카드: 구독 중인 포함 서비스 금액 × 할인율을 최대 절약액으로, 할인율을 막대로 반환한다")
+        void returnsCardSaving() {
+            // given — 넷플릭스 13,500 × 50% = 6,750
+            Subscription netflix = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            Bundle bundle = card("하나 카드", List.of("Netflix 스탠다드"), List.of(), List.of(),
+                List.of(percent(BundleDiscountTarget.ALL, 50)));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflix, List.of(bundle), netflix);
+
+            // then
+            assertThat(bundles).singleElement().satisfies(response -> {
+                assertThat(response.priceType()).isEqualTo(BundleRecommendType.MAX);
+                assertThat(response.monthlySaving()).isEqualTo(6750);
+                assertThat(response.savingRate()).isEqualTo(50);
+                assertThat(response.monthlyPrice()).isNull();
+            });
+        }
+
+        @Test
+        @DisplayName("카드: 택1 그룹은 가장 비싼 1개에만 할인하고, 그룹별 할인(A 50% / B 3,000원)을 각각 적용한다")
+        void appliesDiscountPerChoiceGroup() {
+            // given — A: 유튜브 14,900(가장 비쌈) × 50% = 7,450 / B: 쿠팡 7,890 → 3,000 → 10,450, 막대 = 10,450 ÷ 22,790
+            Subscription netflixAd = plan("Netflix 광고형 스탠다드", Category.VIDEO_OTT, 7000);
+            Subscription youtube = plan("YouTube Premium", Category.VIDEO_OTT, 14900);
+            Subscription coupang = plan("쿠팡 와우 멤버십", Category.SHOPPING_DELIVERY, 7890);
+            Bundle bundle = card("신한카드 국민행복", List.of(), List.of("Netflix 광고형 스탠다드", "YouTube Premium"),
+                List.of("쿠팡 와우 멤버십"),
+                List.of(percent(BundleDiscountTarget.A, 50), new BundleDiscount(BundleDiscountTarget.B, null, null,
+                    3000)));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(youtube, List.of(bundle), netflixAd, youtube, coupang);
+
+            // then
+            assertThat(bundles).singleElement().satisfies(response -> {
+                assertThat(response.monthlySaving()).isEqualTo(10450);
+                assertThat(response.savingRate()).isEqualTo(45);
+            });
+        }
+
+        @Test
+        @DisplayName("통신 요금제: 계산 없이 monthlySaving · savingRate는 null, monthlyPrice는 요금제 가격이다")
+        void returnsBenefitWithoutCalculation() {
+            // given
+            Subscription netflix = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            Bundle bundle = benefit("베스트 109(넷플릭스)", 109000, List.of("Netflix 스탠다드"));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflix, List.of(bundle), netflix);
+
+            // then
+            assertThat(bundles).singleElement().satisfies(response -> {
+                assertThat(response.priceType()).isEqualTo(BundleRecommendType.BENEFIT);
+                assertThat(response.monthlySaving()).isNull();
+                assertThat(response.savingRate()).isNull();
+                assertThat(response.monthlyPrice()).isEqualTo(109000);
+            });
+        }
+
+        @Test
+        @DisplayName("확정 절약(큰 순) → 카드 → 통신 요금제 순으로, 같은 제공사 유형은 2개까지 · 전체 4개까지 반환한다")
+        void ordersAndLimits() {
+            // given
+            Subscription netflix = plan("Netflix 스탠다드", Category.VIDEO_OTT, 13500);
+            List<String> includesNetflix = List.of("Netflix 스탠다드");
+            List<Bundle> candidates = List.of(
+                benefit("요금제1", 100000, includesNetflix),
+                fixed("통신 결합 3,500", BundleProviderType.TELECOM, 10000, includesNetflix),
+                fixed("통신 결합 1,000", BundleProviderType.TELECOM, 12500, includesNetflix),
+                fixed("통신 결합 5,000", BundleProviderType.TELECOM, 8500, includesNetflix),
+                card("카드 10%", includesNetflix, List.of(), List.of(), List.of(percent(BundleDiscountTarget.ALL, 10))),
+                fixed("플랫폼 결합 500", BundleProviderType.PLATFORM, 13000, includesNetflix)
+            );
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(netflix, candidates, netflix);
+
+            // then — 통신사 3개 중 큰 2개, 플랫폼, 카드 → 4개에서 끝 (요금제는 통신사 2개 제한 · 4개 제한으로 빠짐)
+            assertThat(bundles).extracting(CheckupBundleResponse::name)
+                .containsExactly("통신 결합 5,000", "통신 결합 3,500", "플랫폼 결합 500", "카드 10%");
+        }
+
+        @Test
+        @DisplayName("직접 입력 구독의 점검이면 절약 제안은 빈 배열이다")
+        void returnsEmptyForCustomSubscription() {
+            // given
+            Subscription custom = Subscription.createCustom(user, "헬스장", Category.ETC, 50000, 1,
+                BillingCycleUnit.MONTH, today.plusDays(10), PaymentMethod.WEB_DIRECT, RegistrationSource.MANUAL);
+            ReflectionTestUtils.setField(custom, "id", UUID.randomUUID());
+            ReflectionTestUtils.setField(custom, "createdAt", today.minusMonths(2).atStartOfDay());
+            ReflectionTestUtils.setField(custom, "startedOn", today.minusMonths(2));
+
+            // when
+            List<CheckupBundleResponse> bundles = bundlesOf(custom, List.of(), custom);
+
+            // then
+            assertThat(bundles).isEmpty();
+            verifyNoInteractions(bundleGetService);
         }
     }
 }
