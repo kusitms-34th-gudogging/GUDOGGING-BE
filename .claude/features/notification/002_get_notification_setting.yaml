@@ -1,0 +1,79 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-21
+
+meta:
+  id: NOTIFICATION-002
+  title: 알림 설정 조회
+  type: Feature
+  author: parkdo0918
+  issue: "#43"
+  depends_on:
+    - NOTIFICATION-001   # NotificationController, NotificationUseCase
+  sources:
+    - "노션 API 명세서 Notification — 알림 설정 조회 (2026-11-21 확인)"
+    - "화면설계서 E-05 알림 설정"
+
+overview:
+  summary: >
+    결제 3일 전 점검 알림(D-3) 수신 여부(E-05 토글)를 조회한다. 기본값은 ON(true).
+  user_story: >
+    As a 로그인한 회원, I want to 알림 설정 화면에서 현재 설정을 보기를,
+    so that 결제 전 점검 알림을 받을지 알 수 있다.
+  goals:
+    - users.is_check_notification_enabled를 paymentReminderEnabled로 반환
+
+technical_spec:
+  api:
+    - method: GET
+      path: /api/v1/notifications/settings
+      summary: 알림 설정 조회
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        user_id: "@CurrentUserId UUID userId"
+        params: "없음"
+      response:
+        http_status: 200 OK
+        dto: NotificationSettingResponse (record + from(User))
+        wrapper: CommonResponse<NotificationSettingResponse>
+        response_code: "NotificationResponseCode.NOTIFICATION_SETTING_FOUND (200, HttpStatus.OK, \"알림 설정을 조회했습니다.\")"
+        fields:
+          - "paymentReminderEnabled (boolean): 결제 3일 전 점검 알림(D-3) 수신 여부 = users.is_check_notification_enabled (기본값 true)"
+        mock: |
+          { "code": 200, "message": "알림 설정을 조회했습니다.", "data": { "paymentReminderEnabled": true } }
+
+  setting_meaning: >
+    true = D-3 점검 알림 수신, false = D-3 점검 알림을 보내지 않음.
+    D-1 · 해지 확인 알림은 이 값과 관계없이 항상 발송. 꾸준히 쓰는 구독은 설정과 관계없이 D-3 대상에서 제외 (이슈 #43 최신화, 2026-11-21)
+
+  data_flow:
+    - step: 1
+      layer: Presentation (NotificationController)
+      action: "@CurrentUserId userId → NotificationUseCase.getNotificationSetting(userId) → CommonResponse.success(NOTIFICATION_SETTING_FOUND, response)"
+    - step: 2
+      layer: UseCase (NotificationUseCase)
+      action: "회원 확인(없으면 40201) → NotificationSettingResponse.from(user)"
+      transaction: "@Transactional(readOnly = true) (클래스)"
+
+  error_codes:
+    - code: 40201
+      name: USER_NOT_FOUND
+
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/notification/presentation/NotificationController.java (수정 — getNotificationSetting)"
+    - "domain/notification/presentation/response/NotificationResponseCode.java (수정 — NOTIFICATION_SETTING_FOUND)"
+    - "domain/notification/application/usecase/NotificationUseCase.java (수정 — getNotificationSetting)"
+    - "domain/notification/application/dto/response/NotificationSettingResponse.java (신규)"
+
+testing_strategy:
+  happy_path:
+    - "getNotificationSetting: 회원의 설정값을 반환한다"
+    - "getNotificationSetting: 새로 가입한 회원은 true를 반환한다"
+  error_cases:
+    - "getNotificationSetting: 회원이 없으면 USER_NOT_FOUND"
+
+notes:
+  - "[결정] 기본값 true 유지 (ERD 그대로). 노션 설정 조회의 '기본값 OFF'는 기획 착오 — 노션 수정 필요 (2026-11-21 합의)"

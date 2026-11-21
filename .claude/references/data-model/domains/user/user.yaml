@@ -1,5 +1,5 @@
 # User Entity
-# Last Updated: 2026-11-16
+# Last Updated: 2026-11-21 (NOTIFICATION-001 platform 컬럼)
 # Source: docs/ERD.md v1.1 §4.1 users
 
 entity: USER
@@ -35,16 +35,24 @@ columns:
       type: VARCHAR(255)
       nullable: true
       description: "FCM 등록 토큰. 회원당 1개 (마지막으로 등록한 기기). OS 알림 권한을 허용하면 클라이언트가 등록. 로그아웃·탈퇴 시 NULL"
+  - platform:
+      type: VARCHAR(10)
+      nullable: true
+      enum: Platform
+      description: "푸시 토큰을 등록한 기기 종류. @Enumerated(EnumType.STRING). 토큰 등록 때 함께 저장, 로그아웃·탈퇴 시 토큰과 함께 NULL (NOTIFICATION-001)"
   - is_check_notification_enabled:
       type: BOOLEAN
       nullable: false
       default: true
-      description: "회원 전체 결제 3일 전 점검 알림(N-01) 수신 여부 (E-05 토글, 변경 즉시 저장). 결제 1일 전 알림(N-02)은 이 값과 관계없이 발송"
+      description: "결제 3일 전 점검 알림(N-01, D-3) 수신 여부 = 알림 설정 API의 paymentReminderEnabled (E-05 토글, 변경 즉시 저장). 결제 1일 전 알림 · 해지 확인 알림(N-02)은 이 값과 관계없이 발송"
 
 enums:
   SocialProvider:
     - APPLE
     - GOOGLE
+  Platform:
+    - IOS
+    - ANDROID
 
 constraints:
   - "UNIQUE (social_provider, social_id) — uk_users_social_provider_social_id"
@@ -53,10 +61,10 @@ constraints:
 business_logic:
   - "create(socialProvider, socialId, email, name): 정적 팩토리 메서드. isCheckNotificationEnabled = true"
   - "updateAppleRefreshToken(appleRefreshToken): Apple 로그인 시 교환한 refresh token으로 교체 (AUTH-003)"
-  - "updatePushToken(pushToken): 푸시 토큰 등록·교체 (기존 토큰 덮어씀)"
-  - "clearPushToken(): 로그아웃 시 pushToken = null (E-06)"
+  - "updatePushToken(pushToken, platform): 푸시 토큰 · 기기 종류 등록·교체 (기존 값 덮어씀, NOTIFICATION-001)"
+  - "clearPushToken(): 로그아웃 시 pushToken = null, platform = null (E-06) — 로그아웃 API(Auth)에서 호출 예정"
   - "changeCheckNotification(enabled): D-3 점검 알림 설정 변경 (E-05)"
-  - "withdraw(): 회원 탈퇴 (E-08, USER-001). softDelete() 호출 + socialId = 'withdrawn_{id}', email = null, name = null, appleRefreshToken = null, pushToken = null"
+  - "withdraw(): 회원 탈퇴 (E-08, USER-001). softDelete() 호출 + socialId = 'withdrawn_{id}', email = null, name = null, appleRefreshToken = null, pushToken = null, platform = null"
 
 notes:
   - "탈퇴 처리(익명화): Hard Delete 금지 규칙에 따라 Soft Delete. UNIQUE는 유지하고, 탈퇴 시 social_id를 'withdrawn_{id}'로 덮어써 같은 소셜 계정의 재가입이 새 행으로 생성되도록 함"
