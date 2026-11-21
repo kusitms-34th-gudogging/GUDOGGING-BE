@@ -152,18 +152,18 @@ class NotificationUseCaseTest {
         void returnsSetting() {
             // given
             User user = givenUser();
-            user.changeCheckNotification(false);
+            user.changeCheckNotification(true);
 
             // when
             NotificationSettingResponse response = notificationUseCase.getNotificationSetting(userId);
 
             // then
-            assertThat(response.paymentReminderEnabled()).isFalse();
+            assertThat(response.paymentReminderEnabled()).isTrue();
         }
 
         @Test
-        @DisplayName("새로 가입한 회원은 true를 반환한다")
-        void returnsTrueByDefault() {
+        @DisplayName("새로 가입한 회원은 false를 반환한다")
+        void returnsFalseByDefault() {
             // given
             givenUser();
 
@@ -171,7 +171,7 @@ class NotificationUseCaseTest {
             NotificationSettingResponse response = notificationUseCase.getNotificationSetting(userId);
 
             // then
-            assertThat(response.paymentReminderEnabled()).isTrue();
+            assertThat(response.paymentReminderEnabled()).isFalse();
         }
 
         @Test
@@ -195,6 +195,7 @@ class NotificationUseCaseTest {
         void turnsOff() {
             // given
             User user = givenUser();
+            user.changeCheckNotification(true);
 
             // when
             NotificationSettingResponse response = notificationUseCase.updateNotificationSetting(userId,
@@ -210,7 +211,6 @@ class NotificationUseCaseTest {
         void turnsOn() {
             // given
             User user = givenUser();
-            user.changeCheckNotification(false);
 
             // when
             NotificationSettingResponse response = notificationUseCase.updateNotificationSetting(userId,
