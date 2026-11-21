@@ -1,0 +1,348 @@
+# Feature Specification
+# Status: Draft
+# Last Updated: 2026-11-21
+
+meta:
+  id: SUBSCRIPTION-013
+  title: 스크린샷 구독 분석 (OCR)
+  type: Feature
+  author: 1winhyun
+  source: >
+    Figma 디자인 작업소 › 구독 등록(스크린샷, Gmail) › SUB-005 (A-07 이미지 확인·업로드 조건·오류 토스트),
+    SUB-006 (A-08 AI 추출 중, A-09 불러온 구독 확인, A-15 구독 정보 수정), SUB-008 (A-08e 분석 실패)
+    / Notion API 명세서 '스크린샷 구독 분석 (OCR)' / AI_SERVER_GUIDE.md (OCR v2), BACKEND_GUIDE.md (OCR v1)
+  depends_on:
+    - AUTH-001          # JWT 인증 필터, @CurrentUserId
+    - USER-001          # UserGetService.findUserById, USER_NOT_FOUND
+    - CATALOG-001       # SubscriptionGetService.findActiveServiceIds
+    - SUBSCRIPTION-001  # 분석 후 저장은 POST /api/v1/subscriptions (source = SCREENSHOT), ServiceCatalogGetService.findActiveServicesByIds
+
+overview:
+  summary: >
+    iOS 구독 화면 스크린샷 1~5장을 받아 OCR 서버(POST /v2/ocr)로 분석하고, 사전 등록 서비스(services)에 매칭된
+    결제 예정 구독 후보 목록을 A-09 '불러온 구독 확인' 화면용으로 반환한다. 저장하지 않는다.
+    사용자가 확인·수정한 뒤 SUBSCRIPTION-001(source = SCREENSHOT)로 등록한다.
+  user_story: >
+    As a 로그인한 회원, I want to iPhone 구독 화면 스크린샷을 올려 구독 정보를 자동으로 채우기를,
+    so that 구독을 하나씩 직접 입력하지 않고 빠르게 등록할 수 있다.
+  goals:
+    - 스크린샷 1~5장 업로드 검증 (PNG·JPG, 장당 10MB) — 위반 유형별 오류 코드 (A-07 토스트)
+    - OCR 서버 v2 호출 → 서비스 ID·금액·결제 주기·다음 결제일이 채워진 후보 수신
+    - 이미 구독 중(ACTIVE)인 서비스 제외, DB에 없는·비활성 서비스 제외
+    - 후보마다 needsReview(A-09 확인 필요 / 등록 가능) + reviewFields(A-15 필드별 오류 문구) 제공
+    - 후보가 없으면 200 + 빈 목록 (A-08e)
+    - 이미지 저장·로그 금지
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/subscriptions/screenshots/analyses
+      summary: 스크린샷 구독 분석 (OCR)
+      auth: Required (Authorization Bearer Access Token)
+      request:
+        content_type: multipart/form-data
+        fields:
+          - name: images
+            type: List<MultipartFile>
+            required: true
+            validation: >
+              @RequestPart(value = "images", required = false) — 파트가 없어도 Spring 기본 오류 대신 40408로 응답. 1~5장, 장당 10MB 이하, PNG·JPG(JPEG)만.
+              업로드 순서 = 스크롤 순서 → 순서를 바꾸지 않고 OCR 서버에 그대로 전달 (BACKEND_GUIDE 4-2)
+        note: "촬영일(capturedDate)은 받지 않음 — OCR ref_date는 서버 오늘 날짜 (결정 2026-11-21)"
+      response:
+        dto: ScreenshotAnalysisResponse
+        http_status: 200 OK
+        response_code: "SubscriptionResponseCode.SCREENSHOTS_ANALYZED (200, HttpStatus.OK, \"스크린샷을 분석했습니다.\")"
+        wrapper: CommonResponse<ScreenshotAnalysisResponse>
+        fields:
+          - name: candidates
+            type: List<ScreenshotCandidateResponse>
+            description: "구독 후보 목록. 화면 순서(이미지 순서, 위→아래) 유지. 없으면 빈 배열 → 클라이언트가 A-08e로 이동"
+        item_dto: ScreenshotCandidateResponse
+        item_fields:
+          - name: serviceId
+            type: UUID
+            description: "매칭된 사전 등록 서비스 ID. 항상 있음 (DB에 없는 서비스는 후보에서 제외)"
+          - name: serviceName
+            type: String
+            description: "services.name (요금제 단위, 예: 'Claude Pro')"
+          - name: logoUrl
+            type: String (nullable)
+            description: "services.logo_url. 없으면 null → 클라이언트 기본 이미지"
+          - name: category
+            type: Category
+            description: "services.category"
+          - name: amount
+            type: Integer (nullable)
+            description: "화면에서 읽은 실제 결제 금액(원). 읽지 못하면 null — 이때 reviewFields에 AMOUNT 포함"
+          - name: billingCycleValue
+            type: Integer
+            description: "결제 주기 숫자 (1~31). OCR이 추정, 못 정하면 1 + reviewFields에 BILLING_CYCLE"
+          - name: billingCycleUnit
+            type: BillingCycleUnit
+            description: "DAY / WEEK / MONTH / YEAR. 못 정하면 MONTH + reviewFields에 BILLING_CYCLE"
+          - name: nextBillingDate
+            type: LocalDate (nullable)
+            description: "다음 결제일 yyyy-MM-dd. 읽지 못하면 null — 이때 reviewFields에 NEXT_BILLING_DATE 포함"
+          - name: paymentMethod
+            type: PaymentMethod
+            description: "항상 APP_STORE (iOS 구독 화면)"
+          - name: needsReview
+            type: Boolean
+            description: "true → A-09 '확인 필요 N'(결제 정보 입력 필요), false → '등록 가능 N'(기본 선택)"
+          - name: reviewFields
+            type: List<ScreenshotReviewField>
+            description: >
+              A-15에서 오류 문구를 띄울 필드. SERVICE(서비스명) / AMOUNT(결제 금액) / BILLING_CYCLE(결제 주기) /
+              NEXT_BILLING_DATE(다음 결제일). 없으면 빈 배열. needsReview = true인데 빈 배열일 수 있음
+              (활성/비활성 섹션 추정 등 항목 전체 확인 — 특정 필드 오류 문구 없음)
+        factory: >
+          ScreenshotAnalysisResponse.from(List<ScreenshotCandidate>, Map<UUID, ServiceCatalog>)
+          → 항목은 ScreenshotCandidateResponse.from(ScreenshotCandidate, ServiceCatalog)
+        example: |
+          {
+            "code": 200,
+            "message": "스크린샷을 분석했습니다.",
+            "data": {
+              "candidates": [
+                { "serviceId": "7c9e6679-7425-40de-944b-e07fc1f90ae7", "serviceName": "Claude Pro",
+                  "logoUrl": null, "category": "PRODUCTIVITY_AI", "amount": 33000,
+                  "billingCycleValue": 1, "billingCycleUnit": "MONTH", "nextBillingDate": "2026-12-11",
+                  "paymentMethod": "APP_STORE", "needsReview": false, "reviewFields": [] },
+                { "serviceId": "0f8fad5b-d9cb-469f-a165-70867728950e", "serviceName": "Spotify Individual",
+                  "logoUrl": null, "category": "MUSIC", "amount": null,
+                  "billingCycleValue": 1, "billingCycleUnit": "MONTH", "nextBillingDate": "2026-12-03",
+                  "paymentMethod": "APP_STORE", "needsReview": true, "reviewFields": ["AMOUNT"] }
+              ]
+            }
+          }
+        display_note: >
+          A-09 두 묶음 분리·개수, '11.12 결제 · 매월 · App Store' 문구, A-15 오류 문구
+          ('[필드 타이틀]을 정확히 읽지 못했어요. 실제 [필드 타이틀]을 확인해 주세요.')는 클라이언트가 조합
+
+  data_flow:
+    - step: 1
+      layer: Presentation (SubscriptionController)
+      action: >
+        @CurrentUserId UUID userId, @RequestPart(value = "images", required = false) List<MultipartFile> images
+        → SubscriptionUseCase.analyzeScreenshots(userId, images)
+        → CommonResponse.success(SubscriptionResponseCode.SCREENSHOTS_ANALYZED, ScreenshotAnalysisResponse)
+        (consumes = multipart/form-data)
+    - step: 2
+      layer: UseCase (SubscriptionUseCase.analyzeScreenshots)
+      action: >
+        회원 조회 → 이미지 검증·변환 → OCR 분석 → 서비스 조회 → 이미 구독 중 제외 → 응답 변환.
+        쓰기 없음 (클래스 레벨 @Transactional(readOnly = true))
+    - step: 3
+      layer: Domain Service (UserGetService)
+      action: "findUserById(userId) — 없으면 UserNotFoundException"
+    - step: 4
+      layer: Domain (ScreenshotImage)
+      action: >
+        ScreenshotImage.validateCount(images) → MultipartFile → ScreenshotImage.of(filename, bytes) 목록 (순서 유지, contentType은 파일 시그니처로 결정).
+        장수 1~5 아니면 InvalidScreenshotCountException, 10MB 초과면 ScreenshotTooLargeException,
+        PNG/JPEG 시그니처가 아니면 UnsupportedScreenshotFormatException (확장자·Content-Type만 믿지 않음)
+    - step: 5
+      layer: Domain Port (SubscriptionScreenshotAnalyzer) ← External (OcrScreenshotAnalyzerAdapter)
+      action: >
+        analyzeScreenshots(List<ScreenshotImage>, LocalDate referenceDate = LocalDate.now()) → List<ScreenshotCandidate>.
+        POST {ocr.base-url}/v2/ocr (multipart: 이미지 파트 + ref_date, 헤더 X-API-Key).
+        응답 subscriptions[] → ScreenshotCandidate (아래 ocr_server.response_mapping).
+        images[].error / warning은 매핑하지 않음 (해당 이미지 항목은 OCR이 이미 제외·확인 필요 처리)
+    - step: 6
+      layer: Domain Service (ServiceCatalogGetService)
+      action: >
+        후보 serviceId가 1개 이상일 때만 findActiveServicesByIds(Collection<UUID>) (SUBSCRIPTION-001 재사용).
+        조회되지 않은 serviceId 후보는 예외 없이 제외 + log.warn(serviceIds) — OCR 서비스 목록 파일과 DB 불일치. catalogVersion·modelVersion은 어댑터가 분석 완료 로그에 남김
+    - step: 7
+      layer: Domain Service (SubscriptionGetService)
+      action: "findActiveServiceIds(user) (CATALOG-001 재사용) — 포함된 serviceId 후보는 제외"
+    - step: 8
+      layer: Domain (ScreenshotCandidate)
+      action: >
+        서버 보정 (ScreenshotCandidate.correct(today)): amount ≤ 0 → null + AMOUNT, nextBillingDate < 오늘 → NEXT_BILLING_DATE 추가. amount·nextBillingDate가 null이면 OCR이 빠뜨려도 AMOUNT·NEXT_BILLING_DATE를 넣음 (응답 필드 설명 보장)
+        (등록 API @Positive / @FutureOrPresent에서 막히지 않도록 미리 확인 필요로 표시). needsReview는 OCR 값 OR reviewFields 비어 있지 않음
+    - step: 9
+      layer: UseCase
+      action: "ScreenshotAnalysisResponse.from(candidates, serviceMap) — serviceName·category·logoUrl은 DB(ServiceCatalog) 값, 순서는 OCR 응답 순서"
+
+  ocr_server:
+    reference: "AI_SERVER_GUIDE.md (v2 요청·응답·매칭 규칙), BACKEND_GUIDE.md (v1 연동 방식·오류·성능)"
+    endpoint: "POST {ocr.base-url}/v2/ocr"
+    auth: "X-API-Key: {ocr.api-key}"
+    request:
+      - "이미지 파트: 업로드 순서 그대로 (파트명은 OCR API.md 기준 — 구현 시 확인)"
+      - "ref_date: referenceDate (yyyy-MM-dd)"
+    response_mapping:
+      - "subscriptions[].service_id → ScreenshotCandidate.serviceId (UUID 파싱 실패 항목은 제외 + log.warn)"
+      - "amount → amount (null 가능)"
+      - "billing_cycle_value / billing_cycle_unit → billingCycleValue / BillingCycleUnit (알 수 없는 값이면 1 / MONTH + BILLING_CYCLE)"
+      - "next_billing_date → nextBillingDate (null 가능)"
+      - "payment_method → PaymentMethod (알 수 없으면 APP_STORE)"
+      - "needs_review → needsReview"
+      - "review_fields → ScreenshotReviewField (service → SERVICE, amount → AMOUNT, billing_cycle → BILLING_CYCLE, next_billing_date → NEXT_BILLING_DATE, 그 외(status 등) → 무시)"
+      - "service_name, category, match, source → 사용하지 않음 (이름·카테고리는 DB 값 사용)"
+      - "catalog_version, model_version → 로그용 (후보 제외·문의 대응)"
+    error_mapping:
+      - "413 → SCREENSHOT_TOO_LARGE (40410)"
+      - "422 → UNSUPPORTED_SCREENSHOT_FORMAT (40409) — 서버 사전 검증을 통과했지만 OCR이 이미지를 열지 못함"
+      - "401 (API 키 오류) → SCREENSHOT_ANALYSIS_FAILED (40411) + log.error (서버 설정 오류)"
+      - "5xx · 연결 실패 · 타임아웃 → 1회 재시도 후 SCREENSHOT_ANALYSIS_FAILED (40411)"
+      - "응답 본문 없음·JSON 해석 실패 → SCREENSHOT_ANALYSIS_FAILED (40411)"
+    http_client: "Spring RestClient (추가 의존성 없음, AppleAuthClientAdapter와 같은 방식). connect 2초 / read 15초"
+    privacy: "이미지·인식 결과(서비스명·금액)를 로그에 남기지 않음. 로그는 장수·후보 수·제외 수·버전·소요 시간만"
+
+  database:
+    entities:
+      - name: User
+        action: Read
+        table: users
+      - name: ServiceCatalog
+        action: Read
+        table: services
+      - name: Subscription
+        action: Read
+        table: subscriptions
+        fields: "회원의 ACTIVE 구독 service_id (제외용)"
+    note: "저장 없음. 이미지·분석 결과는 응답으로만 전달 (ERD 9장)"
+
+  error_codes:
+    domain_range:
+      subscription: "404xx"
+    codes:
+      - code: 40408
+        enum: SubscriptionErrorCode.INVALID_SCREENSHOT_COUNT
+        status: 400 Bad Request
+        message: "스크린샷은 1장부터 5장까지 올릴 수 있습니다."
+        trigger: "images가 없거나 0장, 6장 이상"
+      - code: 40409
+        enum: SubscriptionErrorCode.UNSUPPORTED_SCREENSHOT_FORMAT
+        status: 400 Bad Request
+        message: "PNG, JPG 이미지만 올릴 수 있습니다."
+        trigger: "PNG/JPEG 시그니처가 아닌 파일 (HEIC·GIF·깨진 파일 포함), OCR 422"
+      - code: 40410
+        enum: SubscriptionErrorCode.SCREENSHOT_TOO_LARGE
+        status: 413 Payload Too Large
+        message: "이미지 1장당 최대 10MB까지 업로드할 수 있습니다."
+        trigger: "한 장이 10MB 초과 (Spring MaxUploadSizeExceededException 포함), OCR 413"
+      - code: 40411
+        enum: SubscriptionErrorCode.SCREENSHOT_ANALYSIS_FAILED
+        status: 502 Bad Gateway
+        message: "스크린샷을 분석하지 못했습니다. 잠시 후 다시 시도해주세요."
+        trigger: "OCR 서버 5xx·401·연결 실패·타임아웃(재시도 후)·응답 해석 실패"
+    reused:
+      - "40201 UserErrorCode.USER_NOT_FOUND (404)"
+      - "40005 / 40103 / 40104 — 인증 실패 (AUTH-001)"
+    exceptions:
+      - "subscription/application/exception/InvalidScreenshotCountException (신규)"
+      - "subscription/application/exception/UnsupportedScreenshotFormatException (신규)"
+      - "subscription/application/exception/ScreenshotTooLargeException (신규)"
+      - "subscription/application/exception/ScreenshotAnalysisFailedException (신규)"
+    client_display: "40408~40411은 A-07 오류 토스트로 표시하고 추가한 스크린샷 유지 (Figma SUB-005 '스크린샷 업로드 오류 토스트')"
+
+  changes_to_existing_code:
+    - target: "SubscriptionErrorCode"
+      change: "40408~40411 추가"
+    - target: "SubscriptionResponseCode"
+      change: "SCREENSHOTS_ANALYZED(200, OK, \"스크린샷을 분석했습니다.\") 추가"
+    - target: "SubscriptionController / SubscriptionUseCase"
+      change: "POST /screenshots/analyses, analyzeScreenshots(userId, images) 추가"
+    - target: "GlobalExceptionHandler"
+      change: >
+        MaxUploadSizeExceededException → SCREENSHOT_TOO_LARGE (40410, 413) 처리 추가.
+        현재 이 프로젝트의 업로드 API는 이것뿐이라 전역 처리로 충분
+    - target: "references/conventions/coding-style.yaml"
+      change: "subscription 에러코드 목록에 40408~40411 추가 (구현 시)"
+
+  security_config:
+    note: "변경 없음 — anyRequest().authenticated()로 보호됨"
+
+  configuration:
+    dependencies_add: "없음 (RestClient, multipart 모두 기존 의존성)"
+    property_binding: "OcrScreenshotAnalyzerAdapter 생성자에서 @Value(\"${ocr.*}\")로 받음 — AppleAuthClientAdapter와 같은 방식 (별도 Properties 클래스 없음)"
+    properties: |
+      spring:
+        servlet:
+          multipart:
+            max-file-size: 10MB      # 한 장 상한 (Figma A-07, OCR 서버와 동일)
+            max-request-size: 55MB   # 5장 × 10MB + 여유 (기본 10MB면 여러 장 업로드 실패)
+      ocr:
+        base-url: ${OCR_BASE_URL:http://localhost:8000}
+        api-key: ${OCR_API_KEY:}     # OCR 담당자에게 별도 전달받음. 커밋 금지
+        connect-timeout: 2s
+        read-timeout: 15s
+    ocr_server_side: "OCR 서버는 백엔드가 서비스 DB에서 뽑아 전달한 서비스 목록 파일(service_catalog.json)을 읽음 — 환경마다 그 DB에서 뽑은 파일 필요 (AI_SERVER_GUIDE 3-3)"
+
+  validation_rules:
+    - "본인 기준으로만 분석 — userId는 Access Token에서만 받는다"
+    - "images 1~5장, 장당 10MB 이하, PNG·JPG만 (파일 시그니처로 확인)"
+    - "업로드 순서를 바꾸지 않고 OCR 서버에 전달"
+    - "후보는 사용 중인 사전 등록 서비스(is_active = true, deleted = false)만 — serviceId는 항상 non-null"
+    - "회원이 ACTIVE로 구독 중인 서비스는 후보에서 제외 (결정 2026-11-21)"
+    - "같은 serviceId 후보가 둘 이상이면 모두 남김 — OCR이 SERVICE 확인 필요로 표시, 사용자가 A-09에서 하나 해제 (등록 API는 중복 거절)"
+    - "amount ≤ 0이면 null + AMOUNT, nextBillingDate가 오늘 이전이면 NEXT_BILLING_DATE 추가"
+    - "후보가 없으면 200 + 빈 candidates (결정 2026-11-21)"
+    - "이 API는 저장하지 않는다. 등록은 SUBSCRIPTION-001 (source = SCREENSHOT)"
+    - "이미지·인식 결과는 저장·로그하지 않는다"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  subscription:
+    - "domain/subscription/presentation/SubscriptionController.java (수정 — POST /screenshots/analyses)"
+    - "domain/subscription/presentation/response/SubscriptionResponseCode.java (수정)"
+    - "domain/subscription/application/usecase/SubscriptionUseCase.java (수정 — analyzeScreenshots)"
+    - "domain/subscription/application/dto/response/ScreenshotAnalysisResponse.java (신규, record + from())"
+    - "domain/subscription/application/dto/response/ScreenshotCandidateResponse.java (신규, record + from())"
+    - "domain/subscription/application/exception/SubscriptionErrorCode.java (수정 — 40408~40411)"
+    - "domain/subscription/application/exception/InvalidScreenshotCountException.java (신규)"
+    - "domain/subscription/application/exception/UnsupportedScreenshotFormatException.java (신규)"
+    - "domain/subscription/application/exception/ScreenshotTooLargeException.java (신규)"
+    - "domain/subscription/application/exception/ScreenshotAnalysisFailedException.java (신규)"
+    - "domain/subscription/domain/screenshot/ScreenshotImage.java (신규, record — 장수·용량·형식 검증 포함)"
+    - "domain/subscription/domain/screenshot/ScreenshotCandidate.java (신규, record — 서버 보정 로직)"
+    - "domain/subscription/domain/screenshot/ScreenshotReviewField.java (신규, enum: SERVICE / AMOUNT / BILLING_CYCLE / NEXT_BILLING_DATE)"
+    - "domain/subscription/domain/screenshot/SubscriptionScreenshotAnalyzer.java (신규, interface — Port)"
+    - "domain/subscription/external/OcrScreenshotAnalyzerAdapter.java (신규 — RestClient, 재시도, 오류 변환)"
+  global:
+    - "global/common/exception/GlobalExceptionHandler.java (수정 — MaxUploadSizeExceededException)"
+  resources:
+    - "application.yaml (수정 — spring.servlet.multipart, ocr.*)"
+
+testing_strategy:
+  # SubscriptionUseCaseTest only (JUnit5 + Mockito)
+  # Mock: UserGetService, SubscriptionScreenshotAnalyzer, ServiceCatalogGetService, SubscriptionGetService
+  # MultipartFile은 MockMultipartFile (PNG/JPEG 시그니처 바이트), ServiceCatalog는 ReflectionTestUtils 픽스처
+  happy_path:
+    - "analyzeScreenshots: OCR 후보를 응답 순서대로 반환하고 serviceName·category·logoUrl은 DB 서비스 값으로 채운다"
+    - "analyzeScreenshots: 업로드 순서 그대로 analyzer에 전달하고 referenceDate는 오늘이다"
+    - "analyzeScreenshots: needsReview·reviewFields·amount·결제 주기·다음 결제일·paymentMethod는 OCR 값을 그대로 응답한다"
+    - "analyzeScreenshots: OCR 후보가 없으면 빈 candidates를 반환한다"
+  edge_cases:
+    - "analyzeScreenshots: 회원이 ACTIVE로 구독 중인 서비스 후보는 제외한다"
+    - "analyzeScreenshots: DB에 없거나 비활성인 serviceId 후보는 예외 없이 제외한다"
+    - "analyzeScreenshots: 모든 후보가 제외되면 빈 candidates를 반환한다"
+    - "analyzeScreenshots: 같은 serviceId 후보가 둘이면 둘 다 반환한다"
+    - "analyzeScreenshots: amount가 0 이하면 null로 바꾸고 AMOUNT를 넣어 needsReview = true로 반환한다"
+    - "analyzeScreenshots: nextBillingDate가 오늘 이전이면 NEXT_BILLING_DATE를 넣어 needsReview = true로 반환한다"
+    - "analyzeScreenshots: 이미지가 0장이거나 6장이면 INVALID_SCREENSHOT_COUNT 예외를 던지고 OCR을 호출하지 않는다"
+    - "analyzeScreenshots: 10MB를 넘는 이미지가 있으면 SCREENSHOT_TOO_LARGE 예외를 던지고 OCR을 호출하지 않는다"
+    - "analyzeScreenshots: PNG·JPEG가 아닌 이미지(예: GIF 시그니처)가 있으면 UNSUPPORTED_SCREENSHOT_FORMAT 예외를 던지고 OCR을 호출하지 않는다"
+    - "analyzeScreenshots: analyzer가 ScreenshotAnalysisFailedException을 던지면 그대로 전파한다"
+    - "analyzeScreenshots: 회원이 없거나 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 OCR을 호출하지 않는다"
+  test_files:
+    - "test/.../domain/subscription/application/usecase/SubscriptionUseCaseTest.java (수정)"
+
+notes:
+  - "결정 (2026-11-21): 이미 ACTIVE로 구독 중인 서비스는 후보에서 제외 — Figma에 해당 케이스 없음. 등록 시 DUPLICATE_SUBSCRIPTION(40401) 방지"
+  - "결정 (2026-11-21): 후보 없음은 200 + 빈 candidates (Notion 명세와 동일). 클라이언트가 A-08e로 이동"
+  - "결정 (2026-11-21): 촬영일(capturedDate)은 받지 않음. ref_date = 서버 오늘 날짜. 연도가 틀리면 OCR이 NEXT_BILLING_DATE 확인 필요로 표시하고, 서버도 오늘 이전 날짜를 확인 필요로 보정"
+  - "결정 (2026-11-21): OCR 서버가 서비스 매칭까지 수행 (AI_SERVER_GUIDE.md v2). OCR은 DB에 연결하지 않고 백엔드가 전달한 서비스 목록 파일(ID 포함)을 사용"
+  - "Notion 명세와 다른 점 (Figma·결정 우선): serviceId 항상 non-null(DB에 없는 서비스 제외), paymentMethod 항상 APP_STORE, billingCycle은 null 대신 기본값 + BILLING_CYCLE, reviewFields 추가(Figma A-15 '[필드 타이틀]을 정확히 읽지 못했어요' 필드별 표시). 구현 후 Notion 명세 갱신 필요"
+  - "[가정] needsReview = true인데 reviewFields가 빈 배열이면 A-15에서 필드 오류 문구 없이 '확인 필요'로만 표시 (섹션 추정·이미지 가장자리 등 항목 전체 확인)"
+  - "[가정] '오늘'은 서버 JVM 기본 타임존 (SUBSCRIPTION-001과 동일 가정). 배포 환경 Asia/Seoul 고정 필요"
+  - "[고려] OCR 호출(5장 약 1.6초, 최대 15초 + 재시도)이 readOnly 트랜잭션 안에서 실행되면 그동안 DB 커넥션을 잡음. 구현 시 OCR 호출을 DB 조회보다 먼저 두고, 커넥션 점유가 문제면 analyzeScreenshots만 트랜잭션 밖에서 실행하는 방안 검토"
+  - "[고려] 동시 OCR 호출 제한(Bulkhead)·서킷브레이커는 트래픽이 늘면 검토 (BACKEND_GUIDE 8장). MVP 범위 외"
+  - "미결 (AI_SERVER_GUIDE 12장 #3): Figma A-15 서비스명은 수정 불가 → reviewFields에 SERVICE가 있어도 사용자가 요금제를 바꿀 방법 없음. 기획·디자인 확정 후 후보 목록(candidates) 추가 여부 결정"
+  - "A-08 '분석 중 뒤로가기 시 분석 작업 중단'은 클라이언트가 요청을 취소. 서버는 별도 처리 없음 (저장하지 않으므로 부작용 없음)"
+  - "A-09 '구독 추가하기'(A-02)로 직접 추가한 항목도 SUBSCRIPTION-001 요청에 함께 담김 (source = SCREENSHOT)"
+  - "범위 외: Gmail 불러오기(A-11~A-13), 등록(SUBSCRIPTION-001 재사용), A-10 등록 완료"
