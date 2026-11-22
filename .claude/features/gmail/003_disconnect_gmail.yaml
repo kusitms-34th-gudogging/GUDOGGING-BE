@@ -1,0 +1,80 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-22
+
+meta:
+  id: GMAIL-003
+  title: Gmail 연동 해제
+  type: Feature
+  author: parkdo0918
+  issue: "#48"
+  depends_on:
+    - GMAIL-001   # GmailOAuthClient.revokeToken, GmailErrorCode
+  sources:
+    - "화면설계서 MYP-002 E-03b 'Gmail 연결 해제 확인 팝업' 설명 4-1 · 5, E-03 설명 4 (토스트 S-6) (최우선 기준)"
+    - "노션 API 명세서 'Gmail 연동 해제' (DELETE /api/v1/gmail/connection)"
+
+overview:
+  summary: >
+    E-03b 팝업에서 '연결 해제하기'를 누르면 Google에 refresh token을 revoke하고 연결을 soft delete한다.
+    해제에 실패하면 기존 연결을 그대로 둔다 (E-03b 5).
+  goals:
+    - Google 토큰 revoke → 연결 soft delete
+    - revoke 실패 시 연결 유지 + 오류
+
+technical_spec:
+  api:
+    method: DELETE
+    path: /api/v1/gmail/connection
+    auth: "Bearer access token (@CurrentUserId)"
+    request: "없음"
+    response: |
+      CommonResponse<Void> — 200 GMAIL_DISCONNECTED "Gmail 연동을 해제했습니다." (data null)
+      앱은 토스트 'Gmail 연결을 해제했어요'(S-6) 후 E-02로 이동
+
+  google_revoke:
+    request: "POST https://oauth2.googleapis.com/revoke (form token=refresh_token)"
+    already_invalid: "Google 400 invalid_token(사용자가 이미 구글 계정 설정에서 권한을 끊음 등)은 성공으로 보고 연결 삭제"
+    failure: "그 밖의 Google 오류 · 타임아웃 → GOOGLE_OAUTH_SERVER_ERROR, 연결 유지"
+
+  business_rules:
+    not_connected: "활성 연결이 없으면 GMAIL_CONNECTION_NOT_FOUND (404)"
+    order: "revoke 성공 후 softDelete (변경 감지). revoke 후 DB 단계가 실패해도, 다시 요청하면 이미 무효 토큰이라 성공 처리되어 안전"
+
+  data_flow:
+    - step: 1
+      layer: Controller (GmailController)
+      action: "DELETE /api/v1/gmail/connection — @CurrentUserId"
+    - step: 2
+      layer: UseCase (GmailUseCase.disconnectGmail)
+      action: >
+        UserGetService.findUserById → GmailConnectionGetService.findGmailConnection(user) 없으면 GMAIL_CONNECTION_NOT_FOUND
+        → GmailOAuthClient.revokeToken(refreshToken) → connection.softDelete()
+      transaction: "@Transactional"
+
+  error_codes:
+    - "40803 GMAIL_CONNECTION_NOT_FOUND (404) — 연동된 Gmail이 없음"
+    - "40804 GOOGLE_OAUTH_SERVER_ERROR (502) — Google 서버 오류 · 타임아웃 (연결 유지)"
+    - "40201 USER_NOT_FOUND (404) — 기존"
+
+testing_strategy:
+  # GmailUseCaseTest @Nested DisconnectGmail
+  happy_path:
+    - "Google 토큰을 revoke하고 연결을 삭제한다"
+  error_cases:
+    - "연결이 없으면 GMAIL_CONNECTION_NOT_FOUND를 던진다"
+    - "revoke가 실패하면 GOOGLE_OAUTH_SERVER_ERROR를 던지고 연결을 삭제하지 않는다"
+    - "회원이 없으면 USER_NOT_FOUND를 던진다"
+
+notes:
+  - "[결정] 회원 탈퇴(USER-001) 때 Gmail도 같이 정리 — 이 PR에 포함 (2026-11-22, 아래 withdraw_integration)"
+
+withdraw_integration:
+  target: "UserUseCase.withdrawUser (USER-001, 1winhyun 작성 — PR 리뷰 요청)"
+  rule: >
+    Apple revoke 다음, user.withdraw() 전에 GmailConnectionGetService.findGmailConnection(user)가 있으면
+    GmailOAuthClient.revokeToken(refreshToken) (실패해도 로그만 남기고 계속 — Gmail 때문에 탈퇴가 막히면 안 됨) → connection.softDelete()
+  spec_sync: ".claude/features/user/001_withdraw_user.yaml data_flow · testing_strategy에 같은 내용 추가"
+  tests:
+    - "UserUseCaseTest: Gmail 연결이 있으면 토큰을 revoke하고 연결을 삭제한다"
+    - "UserUseCaseTest: Gmail revoke가 실패해도 연결을 삭제하고 탈퇴를 진행한다"
