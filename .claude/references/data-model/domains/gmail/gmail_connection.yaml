@@ -1,5 +1,5 @@
 # GmailConnection Entity
-# Last Updated: 2026-11-21
+# Last Updated: 2026-11-22
 # Source: docs/ERD.md v1.1 §4.2 gmail_connections
 
 entity: GMAIL_CONNECTION
@@ -50,10 +50,13 @@ constraints:
 business_logic:
   - "create(user, googleSub, gmailAddress, refreshToken): 정적 팩토리"
   - "updateRefreshToken(refreshToken): 새 refresh token으로 교체"
-  - "markSynced(): lastSyncedAt = now() — 결제 메일 조회 완료 시"
+  - "markSynced(): lastSyncedAt = now() — 결제 메일 조회 완료 시 (GMAIL-004 analyzeGmailPayments)"
   - "조회: GmailConnectionGetService.findGmailConnection(User) → Optional<GmailConnection> — 활성 연결. 내 정보 조회(USER-002, E-01 gmailLinked · E-03 gmailEmail)에서 사용"
-  - "softDelete(): Gmail 연결 해제 (E-03b) → BaseEntity 위임. Google token revoke는 UseCase에서 먼저 실행"
+  - "생성: GmailConnectionCreateService.saveGmailConnection — Gmail 연동(GMAIL-001). 이미 활성 연결이 있으면 기존 토큰 revoke(실패 무시) · softDelete 후 새 행"
+  - "softDelete(): Gmail 연결 해제 (E-03b, GMAIL-003) → BaseEntity 위임. Google token revoke 성공 후 실행 (실패 시 연결 유지)"
+  - "상태: GmailConnectionStatus(NOT_CONNECTED / CONNECTED) — 활성 연결 유무로 판단, 컬럼 없음 (노션 FAILED 제외, 2026-11-22)"
+  - "Google 연동: GmailOAuthClient(domain 인터페이스) / GoogleGmailOAuthClientAdapter(external) — 인증 코드 교환 · revoke"
 
 notes:
   - "Google 로그인 인증과 Gmail 접근 권한은 별도 절차. 로그인 계정과 다른 Google 계정을 연결할 수 있음"
-  - "회원 탈퇴 시 Gmail token revoke 후 함께 Soft Delete (ERD 8장)"
+  - "회원 탈퇴 시 Gmail token revoke(실패해도 계속) 후 함께 Soft Delete (ERD 8장, USER-001 반영 2026-11-22)"

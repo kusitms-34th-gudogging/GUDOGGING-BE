@@ -1,0 +1,138 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-22
+
+meta:
+  id: GMAIL-001
+  title: Gmail 연동
+  type: Feature
+  author: parkdo0918
+  issue: "#48"
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, @CurrentUserId
+    - USER-001   # UserGetService.findUserById, USER_NOT_FOUND
+  sources:
+    - "화면설계서 SUB-007 A-11 'Gmail에서 불러오기' 설명 5-1 · 5-2 (최우선 기준)"
+    - "화면설계서 MYP-001 E-02 'Gmail 연동 - 미연동 상태' 설명 4-1 · 4-2, MYP-002 E-04 'Gmail 연동 실패'"
+    - "노션 API 명세서 'Gmail 연동' (POST /api/v1/gmail/connection)"
+  priority: "화면설계서 기준 — 화면에 없는 응답 값은 빼고, 필요한 값은 추가"
+
+overview:
+  summary: >
+    앱이 Google 계정 선택 · Gmail 읽기 권한 동의 후 받은 인증 코드(authCode)를 보내면,
+    서버가 Google에 코드를 보내 Gmail 읽기용 refresh token과 Gmail 주소를 받아 암호화 저장한다.
+    로그인 계정과 별개 계정이어도 된다.
+  user_story: >
+    As a 로그인한 회원, I want to 내 Gmail을 연결하기를,
+    so that 결제 메일에서 구독 정보를 불러올 수 있다.
+  goals:
+    - 인증 코드 → Google 토큰 교환 (웹 OAuth 클라이언트 ID · 시크릿)
+    - gmail.readonly 권한에 동의하지 않았으면 연동하지 않음 (A-11 5-2)
+    - refresh token 암호화 저장, Gmail 주소 · Google 계정 ID(sub) 저장
+    - 이미 연동돼 있으면 새 계정으로 교체
+
+technical_spec:
+  api:
+    method: POST
+    path: /api/v1/gmail/connection
+    auth: "Bearer access token (@CurrentUserId)"
+    request: |
+      ConnectGmailRequest {
+        authCode: String (필수, @NotBlank) — 앱의 Google 로그인 SDK가 웹 클라이언트 ID로 받은 서버용 인증 코드 (한 번만 사용 가능, 몇 분 안에 만료)
+      }
+    response: |
+      CommonResponse<GmailConnectionResponse> — 201 GMAIL_CONNECTED "Gmail을 연동했습니다."
+      GmailConnectionResponse {
+        status: GmailConnectionStatus (CONNECTED)
+        connected: Boolean (true)
+        email: String — 연동된 Gmail 주소 (E-03 표시)
+      }
+    response_note: "응답 형태는 GMAIL-002(상태 조회)와 같음 — 성공하면 앱은 E-03(연결됨) 또는 A-12(결제 메일 확인 중)로 이동"
+
+  google_oauth:
+    token_exchange: >
+      POST https://oauth2.googleapis.com/token (form) —
+      code, client_id, client_secret, redirect_uri, grant_type=authorization_code
+    redirect_uri: "모바일 서버용 인증 코드는 빈 값('') — 설정값 google.gmail.redirect-uri (기본 빈 값)으로 둬서 프론트 방식에 맞춰 바꿀 수 있게 함"
+    scope_check: "응답 scope에 https://www.googleapis.com/auth/gmail.readonly가 없으면 GMAIL_PERMISSION_REQUIRED"
+    refresh_token_check: "응답에 refresh_token이 없으면 GMAIL_PERMISSION_REQUIRED (앱이 동의 화면을 다시 띄워 코드를 받아야 함 — 프론트 전달 사항)"
+    account: >
+      응답 id_token(JWT)의 payload에서 sub · email을 읽음 — Google 토큰 엔드포인트에서 TLS로 직접 받은 값이라 서명 검증은 생략.
+      id_token이 없거나 email이 없으면 GMAIL_PERMISSION_REQUIRED (앱이 openid · email 범위도 함께 요청해야 함)
+    errors:
+      - "Google 400 invalid_grant (만료 · 이미 사용 · 잘못된 코드) → INVALID_GMAIL_AUTH_CODE"
+      - "그 밖의 Google 오류 · 타임아웃 → GOOGLE_OAUTH_SERVER_ERROR"
+    timeout: "connect 3s / read 5s (Apple 클라이언트와 같은 값)"
+
+  credentials:
+    env:
+      - "GOOGLE_GMAIL_CLIENT_ID — 웹 애플리케이션 OAuth 클라이언트 ID (로그인용 GOOGLE_CLIENT_IDS에 포함된 웹 클라이언트와 같은 값)"
+      - "GOOGLE_GMAIL_CLIENT_SECRET — 그 클라이언트의 보안 비밀번호"
+    property: "application.yaml google.gmail.client-id · client-secret (기본값 없음 → check-env.sh 필수 항목), redirect-uri: ${GOOGLE_GMAIL_REDIRECT_URI:}"
+    files: ".env.example 키 추가, application-test.yaml 테스트 값, GitHub Secret DEV_ENV_FILE · PROD_ENV_FILE 갱신 (값은 커밋하지 않음)"
+
+  business_rules:
+    reconnect: >
+      [결정 2026-11-22] 이미 활성 연결이 있으면 기존 연결을 soft delete한 뒤 새 연결 저장.
+      다른 Google 계정으로 바꿀 때만 기존 refresh token을 revoke(실패해도 계속).
+      같은 계정(googleSub 같음)이면 revoke하지 않음 — Google revoke는 그 계정이 앱에 준 권한 전체를 끊어 새 토큰까지 무효가 됨 (CodeRabbit 리뷰 반영)
+    order: "Google 토큰 교환 · 검증이 모두 성공한 뒤에만 기존 연결 정리 · 새 연결 저장 — 실패하면 DB 변경 없음 (E-04 예외 처리: 성공 응답 전에는 연결 완료로 처리하지 않음)"
+
+  data_flow:
+    - step: 1
+      layer: Controller (GmailController)
+      action: "POST /api/v1/gmail/connection — @CurrentUserId, @Valid ConnectGmailRequest"
+    - step: 2
+      layer: UseCase (GmailUseCase.connectGmail)
+      action: >
+        UserGetService.findUserById → GmailOAuthClient.exchangeAuthCode(authCode) → GmailTokens(refreshToken, googleSub, email)
+        → GmailConnectionGetService.findGmailConnection(user) 있으면 (다른 계정이면) GmailOAuthClient.revokeToken(기존 refreshToken) (예외 무시, 로그) + softDelete
+        → GmailConnection.create(user, sub, email, refreshToken) → GmailConnectionCreateService.saveGmailConnection
+        → GmailConnectionResponse.connected(email)
+      transaction: "@Transactional"
+    - step: 3
+      layer: External (GoogleGmailOAuthClientAdapter implements GmailOAuthClient)
+      action: "RestClient로 토큰 교환 · revoke (AppleAuthClientAdapter와 같은 방식)"
+
+  error_codes:
+    range: "408xx (gmail) — 신규"
+    codes:
+      - "40801 INVALID_GMAIL_AUTH_CODE (400) — 인증 코드가 만료 · 이미 사용 · 잘못됨"
+      - "40802 GMAIL_PERMISSION_REQUIRED (400) — Gmail 읽기 권한 미동의 또는 refresh token · 계정 정보 없음"
+      - "40804 GOOGLE_OAUTH_SERVER_ERROR (502) — Google 서버 오류 · 타임아웃"
+      - "40201 USER_NOT_FOUND (404) — 기존"
+    screen: "앱은 이 오류들을 모두 E-04 'Gmail을 연결하지 못했어요' (A-11에서는 A-12e)로 표시. 사용자가 동의를 취소하면 앱에서 끝나고 API를 호출하지 않음"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/gmail/presentation/GmailController.java (신규)"
+    - "domain/gmail/presentation/response/GmailResponseCode.java (신규)"
+    - "domain/gmail/application/usecase/GmailUseCase.java (신규)"
+    - "domain/gmail/application/dto/request/ConnectGmailRequest.java (신규)"
+    - "domain/gmail/application/dto/response/GmailConnectionResponse.java (신규)"
+    - "domain/gmail/application/exception/GmailErrorCode.java + 예외 클래스 (신규)"
+    - "domain/gmail/domain/entity/GmailConnectionStatus.java (신규 enum)"
+    - "domain/gmail/domain/GmailOAuthClient.java · GmailTokens.java (신규 — 외부 연동 인터페이스)"
+    - "domain/gmail/domain/service/GmailConnectionCreateService.java (신규)"
+    - "domain/gmail/external/GoogleGmailOAuthClientAdapter.java (신규)"
+    - "src/main/resources/application.yaml, src/test/resources/application-test.yaml, .env.example (수정)"
+
+testing_strategy:
+  # GmailUseCaseTest @Nested ConnectGmail — Mock: UserGetService, GmailConnectionGetService, GmailConnectionCreateService, GmailOAuthClient
+  happy_path:
+    - "인증 코드로 받은 refresh token · Gmail 주소 · 계정 ID로 연결을 저장하고 CONNECTED와 주소를 반환한다"
+  edge_cases:
+    - "다른 Google 계정으로 연결돼 있으면 기존 토큰을 revoke하고 기존 연결을 삭제한 뒤 새 연결을 저장한다"
+    - "같은 Google 계정으로 다시 연결하면 revoke하지 않고 기존 연결만 새 연결로 교체한다"
+    - "기존 계정 토큰 revoke가 실패해도 기존 연결을 삭제하고 새 연결을 저장한다"
+  error_cases:
+    - "인증 코드가 잘못되면 INVALID_GMAIL_AUTH_CODE를 던지고 기존 연결을 건드리지 않는다"
+    - "Gmail 읽기 권한이 없으면 GMAIL_PERMISSION_REQUIRED를 던진다"
+    - "회원이 없으면 USER_NOT_FOUND를 던진다"
+  note: "GoogleGmailOAuthClientAdapter는 UseCase 테스트 규칙상 테스트하지 않음 — 테스트 사용자 계정 · 실기기 코드로 수동 확인"
+
+notes:
+  - "[결정] 이미 연동돼 있을 때 POST → 새 연결로 교체 (2026-11-22)"
+  - "[프론트 전달] Google 로그인 SDK에서 웹 클라이언트 ID(serverClientId)로 gmail.readonly + email 범위의 서버용 인증 코드를 받고, refresh token이 오도록 매번 동의(forceCodeForRefreshToken)를 요청"
+  - "[제한] gmail.readonly는 Google 제한 범위 — 앱 심사 전까지 Google Cloud 테스트 사용자만 연동 가능"

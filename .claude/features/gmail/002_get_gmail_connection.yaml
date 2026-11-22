@@ -1,0 +1,70 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-22
+
+meta:
+  id: GMAIL-002
+  title: Gmail 연동 상태 조회
+  type: Feature
+  author: parkdo0918
+  issue: "#48"
+  depends_on:
+    - GMAIL-001   # GmailConnectionResponse, GmailConnectionStatus
+  sources:
+    - "화면설계서 MYP-001 E-01 설명 3-1 (미연동이면 E-02, 연동이면 E-03), E-03 설명 2 · 5 (최우선 기준)"
+    - "노션 API 명세서 'Gmail 연동 상태 조회' (GET /api/v1/gmail/connection)"
+
+overview:
+  summary: >
+    회원의 Gmail 연동 여부와 연동된 Gmail 주소를 조회한다. 마이페이지에서 Gmail 연동 메뉴를 누르면
+    E-02(미연동) / E-03(연결됨, 주소 표시) 중 어디로 갈지 정하는 데 쓴다.
+  goals:
+    - 활성 연결이 있으면 CONNECTED + 주소, 없으면 NOT_CONNECTED + null
+
+technical_spec:
+  api:
+    method: GET
+    path: /api/v1/gmail/connection
+    auth: "Bearer access token (@CurrentUserId)"
+    request: "없음"
+    response: |
+      CommonResponse<GmailConnectionResponse> — 200 GMAIL_CONNECTION_FOUND "Gmail 연동 상태를 조회했습니다."
+      GmailConnectionResponse {
+        status: GmailConnectionStatus — NOT_CONNECTED / CONNECTED
+        connected: Boolean — status가 CONNECTED일 때 true
+        email: String (nullable) — 연동된 Gmail 주소, 미연동이면 null
+      }
+
+  status_rule:
+    connected: "GmailConnectionGetService.findGmailConnection(user)가 있으면 CONNECTED"
+    not_connected: "없으면 NOT_CONNECTED"
+    failed: >
+      [결정 2026-11-22] 노션의 FAILED는 뺌. 화면설계서에 '연결이 깨진 상태'를 보여 주는 화면이 없고,
+      E-04 '연동 실패'는 연동 요청(GMAIL-001)이 실패했을 때 앱이 띄우는 화면이에요(상태가 아니라 오류 응답).
+      E-03 예외 처리 '계정 정보 조회 실패 시 E-04'도 이 API 호출 자체가 실패한 경우예요.
+      토큰이 무효가 된 경우는 결제 메일 분석(GMAIL-004)에서 오류로 알려 주고 다시 연결하게 함
+
+  data_flow:
+    - step: 1
+      layer: Controller (GmailController)
+      action: "GET /api/v1/gmail/connection — @CurrentUserId"
+    - step: 2
+      layer: UseCase (GmailUseCase.getGmailConnection)
+      action: "UserGetService.findUserById → GmailConnectionGetService.findGmailConnection(user) → GmailConnectionResponse.from(Optional)"
+      transaction: "readOnly (클래스 기본)"
+
+  error_codes:
+    - "40201 USER_NOT_FOUND (404) — 기존"
+
+testing_strategy:
+  # GmailUseCaseTest @Nested GetGmailConnection
+  happy_path:
+    - "연결이 있으면 CONNECTED, connected true, Gmail 주소를 반환한다"
+  edge_cases:
+    - "연결이 없으면 NOT_CONNECTED, connected false, email null을 반환한다"
+  error_cases:
+    - "회원이 없으면 USER_NOT_FOUND를 던진다"
+
+notes:
+  - "[결정] status에서 FAILED 제외 (2026-11-22) — 노션 응답 표 수정 필요"
+  - "내 정보 조회(USER-002)의 gmailLinked · gmailEmail과 같은 연결을 봄"

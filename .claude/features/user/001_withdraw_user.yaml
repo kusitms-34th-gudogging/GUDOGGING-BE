@@ -44,7 +44,7 @@ technical_spec:
       action: "@CurrentUserId UUID userId → UserUseCase.withdrawUser(userId) → CommonResponse.success(UserResponseCode.USER_WITHDRAWN)"
     - step: 2
       layer: UseCase (UserUseCase)
-      action: "회원 조회 → (Apple이면) revoke → user.withdraw() → Refresh Token 삭제"
+      action: "회원 조회 → (Apple이면) revoke → (Gmail 연결이 있으면) Gmail revoke · 연결 삭제 → user.withdraw() → Refresh Token 삭제"
       transaction: true
     - step: 3
       layer: Domain Service (UserGetService)
@@ -55,6 +55,11 @@ technical_spec:
         user.getSocialProvider() == APPLE이고 appleRefreshToken != null이면
         AppleAuthClient.revokeRefreshToken(appleRefreshToken) → POST https://appleid.apple.com/auth/revoke
         (token_type_hint = refresh_token). 실패 시 AppleServerException → 탈퇴 중단 (DB·Redis 변경 없음)
+    - step: 4-1
+      layer: External (GmailOAuthClient, GMAIL-003) · Domain (GmailConnection)
+      action: >
+        GmailConnectionGetService.findGmailConnection(user)가 있으면 GmailOAuthClient.revokeToken(refreshToken) →
+        connection.softDelete(). revoke 실패는 WARN 로그만 남기고 계속 (Gmail 때문에 탈퇴가 막히지 않음, 2026-11-22 이슈 #48)
     - step: 5
       layer: Domain (User)
       action: "user.withdraw() — softDelete() + socialId = 'withdrawn_{id}', email = null, name = null, appleRefreshToken = null (Dirty Checking)"
@@ -135,6 +140,8 @@ testing_strategy:
     - "withdrawUser: 회원이 없거나 이미 탈퇴했으면 USER_NOT_FOUND 예외를 던지고 revoke·Refresh Token 삭제를 하지 않는다"
     - "withdrawUser: Apple revoke가 APPLE_SERVER_ERROR로 실패하면 회원은 탈퇴되지 않고(deleted = false) Refresh Token도 삭제하지 않는다"
     - "withdrawUser: Apple 회원인데 appleRefreshToken이 null이면 revoke 없이 탈퇴 처리한다"
+    - "withdrawUser: Gmail 연결이 있으면 Gmail 토큰을 revoke하고 연결을 삭제한 뒤 탈퇴 처리한다"
+    - "withdrawUser: Gmail 토큰 revoke가 실패해도 연결을 삭제하고 탈퇴를 진행한다"
   test_files:
     - "test/.../domain/user/application/usecase/UserUseCaseTest.java (신규)"
 

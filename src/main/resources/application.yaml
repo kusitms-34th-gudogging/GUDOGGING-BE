@@ -52,12 +52,21 @@ ocr:
 
 google:
   client-ids: ${GOOGLE_CLIENT_IDS}
+  # Gmail 연동용 웹 애플리케이션 OAuth 클라이언트. 모바일 서버용 인증 코드는 redirect-uri가 빈 값
+  gmail:
+    client-id: ${GOOGLE_GMAIL_CLIENT_ID}
+    client-secret: ${GOOGLE_GMAIL_CLIENT_SECRET}
+    redirect-uri: ${GOOGLE_GMAIL_REDIRECT_URI:}
 
 apple:
   client-id: ${APPLE_CLIENT_ID}
   team-id: ${APPLE_TEAM_ID}
   key-id: ${APPLE_KEY_ID}
   private-key: ${APPLE_PRIVATE_KEY}
+
+# Gmail 결제 메일 분석 LLM. 비어 있으면 분석 API가 40806으로 실패한다 (배포는 가능)
+anthropic:
+  api-key: ${ANTHROPIC_API_KEY:}
 
 # FCM 서비스 계정 키 JSON을 Base64로 인코딩한 값. 비어 있으면 푸시를 실제로 보내지 않고 로그만 남긴다
 firebase:
