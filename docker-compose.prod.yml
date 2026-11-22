@@ -5,8 +5,16 @@
 #   docker run --rm -p 80:80 -v ./certbot/conf:/etc/letsencrypt certbot/certbot \
 #     certonly --standalone -d api.gudogging.com --agree-tos --register-unsafely-without-email --non-interactive
 
+# 컨테이너 로그 자동 정리: 파일 20MB × 최대 5개, 넘으면 오래된 것부터 삭제 (기본값은 무제한으로 쌓임)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   app:
+    logging: *default-logging
     image: ${APP_IMAGE:-ghcr.io/kusitms-34th-gudogging/gudogging-be:prod}
     container_name: gudogging-app
     restart: unless-stopped
@@ -16,6 +24,7 @@ services:
       - "8080"
 
   nginx:
+    logging: *default-logging
     image: nginx:1.27-alpine
     container_name: gudogging-nginx
     restart: unless-stopped
@@ -30,6 +39,7 @@ services:
     command: ["/bin/sh", "-c", "while :; do sleep 6h; nginx -s reload; done & exec nginx -g 'daemon off;'"]
 
   certbot:
+    logging: *default-logging
     image: certbot/certbot
     container_name: gudogging-certbot
     restart: unless-stopped
