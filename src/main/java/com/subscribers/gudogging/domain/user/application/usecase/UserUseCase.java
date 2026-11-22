@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.user.application.usecase;
 
 import com.subscribers.gudogging.domain.auth.domain.AppleAuthClient;
 import com.subscribers.gudogging.domain.auth.domain.service.RefreshTokenService;
+import com.subscribers.gudogging.domain.gmail.domain.GmailOAuthClient;
 import com.subscribers.gudogging.domain.gmail.domain.entity.GmailConnection;
 import com.subscribers.gudogging.domain.gmail.domain.service.GmailConnectionGetService;
 import com.subscribers.gudogging.domain.user.application.dto.response.UserAccountResponse;
@@ -26,6 +27,7 @@ public class UserUseCase {
     private final AppleAuthClient appleAuthClient;
     private final RefreshTokenService refreshTokenService;
     private final GmailConnectionGetService gmailConnectionGetService;
+    private final GmailOAuthClient gmailOAuthClient;
 
     /**
      * 마이페이지(E-01)에 표시할 로그인 계정(이메일 · 로그인 방식)과, 로그인 계정과 별개인 Gmail 연동 여부 · 연동 계정을 조회한다.
@@ -39,7 +41,7 @@ public class UserUseCase {
 
     /**
      * Apple 회원이면 Apple 토큰을 먼저 revoke한 뒤 회원을 Soft Delete·익명화하고 Refresh Token을 삭제한다. revoke가 실패하면 DB·Redis를 바꾸지 않고 예외를
-     * 던지므로 그대로 재시도할 수 있다.
+     * 던지므로 그대로 재시도할 수 있다. Gmail 연결이 있으면 Google 토큰을 revoke(실패해도 계속)하고 연결을 삭제한다.
      */
     @Transactional
     public void withdrawUser(UUID userId) {
@@ -47,6 +49,7 @@ public class UserUseCase {
             .orElseThrow(UserNotFoundException::new);
 
         revokeAppleToken(user);
+        disconnectGmail(user);
         user.withdraw();
         refreshTokenService.deleteRefreshToken(userId);
     }
@@ -60,5 +63,16 @@ public class UserUseCase {
             return;
         }
         appleAuthClient.revokeRefreshToken(user.getAppleRefreshToken());
+    }
+
+    private void disconnectGmail(User user) {
+        gmailConnectionGetService.findGmailConnection(user).ifPresent(connection -> {
+            try {
+                gmailOAuthClient.revokeToken(connection.getRefreshToken());
+            } catch (RuntimeException e) {
+                log.warn("탈퇴 중 Gmail 토큰 revoke 실패, 연결은 삭제합니다: userId={}", user.getId());
+            }
+            connection.softDelete();
+        });
     }
 }
