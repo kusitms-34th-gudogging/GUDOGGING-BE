@@ -2,15 +2,18 @@ package com.subscribers.gudogging.domain.auth.presentation;
 
 import com.subscribers.gudogging.domain.auth.application.dto.request.AppleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.GoogleLoginRequest;
+import com.subscribers.gudogging.domain.auth.application.dto.request.LogoutRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.ReissueTokenRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.response.LoginResponse;
 import com.subscribers.gudogging.domain.auth.application.dto.response.TokenResponse;
 import com.subscribers.gudogging.domain.auth.application.usecase.AuthUseCase;
 import com.subscribers.gudogging.domain.auth.presentation.response.AuthResponseCode;
 import com.subscribers.gudogging.global.common.response.CommonResponse;
+import com.subscribers.gudogging.global.security.annotation.CurrentUserId;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -99,5 +102,31 @@ public class AuthController {
     public CommonResponse<TokenResponse> reissueToken(@RequestBody @Valid ReissueTokenRequest request) {
         TokenResponse response = authUseCase.reissueToken(request);
         return CommonResponse.success(AuthResponseCode.TOKEN_REISSUED, response);
+    }
+
+    @Operation(
+        summary = "로그아웃",
+        description = """
+            **기능**
+            현재 로그인 세션을 종료합니다. 로그아웃 확인 팝업(E-06)에서 '로그아웃 하기'를 누르면 호출합니다.
+            요청한 refreshToken이 서버에 저장된 토큰과 같으면 무효화해, 이 토큰으로는 더 이상 재발급할 수 없습니다.
+            이미 만료됐거나 다른 기기 로그인·재발급으로 교체된 토큰이어도 이미 무효이므로 성공(200)을 반환합니다.
+            Access Token은 서버에 저장하지 않으므로, 성공하면 앱에서 accessToken·refreshToken을 모두 삭제하고 로그인 화면으로 이동합니다.
+            Authorization 헤더(Bearer accessToken)가 필요하며, Access Token이 만료됐으면 40103 에러를 반환합니다.
+
+            **요청값**
+            - refreshToken (String, 필수): 무효화할 Refresh Token (이 기기에 저장된 값)
+
+            **응답값**
+            - 없음 (data = null)
+            """
+    )
+    @PostMapping("/logout")
+    public CommonResponse<Void> logoutUser(
+        @CurrentUserId UUID userId,
+        @RequestBody @Valid LogoutRequest request
+    ) {
+        authUseCase.logoutUser(userId, request);
+        return CommonResponse.success(AuthResponseCode.LOGOUT_SUCCESS);
     }
 }
