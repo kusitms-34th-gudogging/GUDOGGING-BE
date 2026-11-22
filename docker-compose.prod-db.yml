@@ -4,8 +4,16 @@
 #
 # 서버 .env 필요 항목: MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD, REDIS_PASSWORD, TZ
 
+# 컨테이너 로그 자동 정리: 파일 20MB × 최대 5개, 넘으면 오래된 것부터 삭제 (기본값은 무제한으로 쌓임)
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 services:
   mysql:
+    logging: *default-logging
     image: mysql:8.4
     container_name: gudogging-mysql
     restart: unless-stopped
@@ -32,6 +40,7 @@ services:
       start_period: 30s
 
   redis:
+    logging: *default-logging
     image: redis:7-alpine
     container_name: gudogging-redis
     restart: unless-stopped
