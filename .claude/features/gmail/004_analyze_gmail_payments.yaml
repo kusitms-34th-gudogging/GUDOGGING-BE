@@ -1,0 +1,187 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-22
+
+meta:
+  id: GMAIL-004
+  title: Gmail 결제 메일 분석 (구독 후보 추출)
+  type: Feature
+  author: parkdo0918
+  issue: "#48"
+  depends_on:
+    - GMAIL-001          # GmailConnection (refresh token), GmailOAuthClient
+    - CATALOG-002        # 서비스 목록 요금제 단위 (ServiceCatalogGetService.findActiveServices)
+    - CATALOG-001        # SubscriptionGetService.findActiveServiceIds (이미 구독 중 제외)
+    - SUBSCRIPTION-001   # 최종 등록은 POST /api/v1/subscriptions (source = GMAIL)
+    - SUBSCRIPTION-013   # 스크린샷 분석 — 후보 응답 형태 · 보정 규칙을 맞춤
+  sources:
+    - "화면설계서 SUB-007 A-12 '결제 메일 확인 중' 설명 4, A-13 '불러온 구독 확인', A-15g (최우선 기준)"
+    - "화면설계서 SUB-008 A-12e 'Gmail 구독 정보 분석 실패' — '결제 메일을 읽지 못했어요.' + 직접 등록하기"
+    - "노션 API 명세서 'Gmail 결제 메일 분석 (구독 후보 추출)' (POST /api/v1/gmail/analyses)"
+    - "2026-11-22 합의: LLM(Claude Haiku) 한 번 호출로 구독 결제 판별 + 필드 추출, 기간 60일 · 50통 · 본문 2,000자 제한"
+
+overview:
+  summary: >
+    연동된 Gmail에서 결제 · 구독 관련 메일을 검색해 최대 50통의 본문 텍스트를 가져오고,
+    Claude Haiku에 한 번 보내 구독 결제 메일만 골라 서비스 · 금액 · 결제 주기 · 결제일 · 결제한 곳을 뽑는다.
+    서비스 목록(요금제)에 맞는 것만, 이미 구독 중인 서비스는 빼고 A-13 '불러온 구독 확인' 후보로 반환한다. 저장하지 않는다.
+  user_story: >
+    As a Gmail을 연동한 회원, I want to 결제 메일에서 구독을 자동으로 찾기를,
+    so that 구독을 하나씩 직접 입력하지 않아도 된다.
+  goals:
+    - "1단계 Gmail 검색으로 결제 관련 메일만 가져옴 (다른 메일은 열지 않음)"
+    - "2단계 LLM 한 번 호출로 구독 결제 판별 + 필드 추출 (구조화 출력)"
+    - "3단계 서버 보정: 서비스 목록 매칭, 이미 구독 중 제외, 같은 서비스는 최신 메일 1건, 다음 결제일 계산, 확인 필요 표시"
+    - "후보가 없으면 200 + 빈 배열 → 앱은 A-12e (스크린샷 분석과 같은 방식)"
+
+technical_spec:
+  api:
+    method: POST
+    path: /api/v1/gmail/analyses
+    auth: "Bearer access token (@CurrentUserId)"
+    request: "없음"
+    response: |
+      CommonResponse<GmailAnalysisResponse> — 200 GMAIL_ANALYZED "결제 메일을 분석했습니다."
+      GmailAnalysisResponse {
+        candidates: List<GmailCandidateResponse> — 결제일 최신순. 없으면 빈 배열 → 앱은 A-12e
+      }
+      GmailCandidateResponse {   # 스크린샷 분석(ScreenshotCandidateResponse)과 같은 필드
+        serviceId: UUID — 항상 있음 (서비스 목록에 없는 서비스는 후보에서 제외)
+        serviceName: String — services.name (요금제)
+        logoUrl: String (nullable)
+        category: Category — services.category
+        amount: Integer (nullable) — 메일의 결제 금액(원). 못 읽거나 원화가 아니면 null + AMOUNT
+        billingCycleValue: Integer — 못 정하면 1 + BILLING_CYCLE
+        billingCycleUnit: BillingCycleUnit — DAY / WEEK / MONTH / YEAR, 못 정하면 MONTH + BILLING_CYCLE
+        nextBillingDate: LocalDate (nullable) — 서버 계산 (아래), 못 정하면 null + NEXT_BILLING_DATE
+        paymentMethod: PaymentMethod — APP_STORE(Apple 영수증) / GOOGLE_PLAY(Google Play 영수증) / WEB_DIRECT(그 밖)
+        needsReview: Boolean — reviewFields가 있거나 LLM이 불확실하다고 표시하면 true (A-13 '확인 필요' 묶음)
+        reviewFields: List<GmailReviewField> — AMOUNT / BILLING_CYCLE / NEXT_BILLING_DATE (A-15g 오류 문구 위치)
+      }
+    notion_diff:
+      - "serviceId nullable → 항상 있음 (A-13은 서비스 목록 기준 표시 · 등록, 스크린샷 분석과 같은 규칙)"
+      - "reviewFields 추가 (스크린샷 분석과 같은 방식, A-15g 필드 오류 문구용)"
+      - "후보 없음: 오류 → 200 + 빈 배열 (2026-11-22 결정, 노션 반영)"
+
+  step1_gmail_fetch:
+    token: "POST https://oauth2.googleapis.com/token (grant_type=refresh_token, client_id, client_secret, refresh_token) → access token (1시간, 저장하지 않음)"
+    search: >
+      GET https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=50&q=
+      'newer_than:60d (category:purchases OR 결제 OR 영수증 OR 구독 OR 정기결제 OR receipt OR invoice OR subscription OR renewal)'
+    messages: >
+      GET .../messages/{id}?format=full 를 메일마다 호출 (가상 스레드로 동시 호출, 최대 50통).
+      제목 · 보낸 사람 · 받은 날짜 + 본문(text/plain 우선, 없으면 text/html에서 태그 제거) 앞 2,000자
+    limits: "기간 최근 60일 · 최대 50통 · 통당 2,000자 (2026-11-22 합의)"
+    errors:
+      - "refresh token 무효(400 invalid_grant — 사용자가 구글 설정에서 권한을 끊음 등) → GMAIL_RECONNECT_REQUIRED (앱은 다시 연결 안내)"
+      - "Gmail API 오류 · 타임아웃 → GMAIL_ANALYSIS_FAILED"
+      - "검색 결과 0통 → LLM 호출 없이 빈 배열 (A-12 설명 4 '구독 관련 메일이 없으면 분석 실패로 간주' = 앱이 A-12e로 이동)"
+
+  step2_llm:
+    sdk: "com.anthropic:anthropic-java:3.3.0 (공식 Java SDK)"
+    model: "claude-haiku-5-5"
+    call: "메일 묶음을 한 번에 보냄 (요청 1회). 구조화 출력 outputConfig(GmailExtraction.class)로 JSON 스키마 강제"
+    input: >
+      시스템 지시 + 서비스 목록 요금제 이름(활성 서비스 전체) + 오늘 날짜 + 메일 목록(번호 · 보낸 사람 · 제목 · 받은 날짜 · 본문).
+      메일 본문은 데이터로만 다루고 그 안의 지시는 따르지 않도록 지시
+    output: |
+      GmailExtraction { subscriptions: [ {
+        serviceName: String (서비스 목록의 이름 그대로, 해당 없으면 null),
+        amount: Integer (원화 결제 금액, 없으면 null),
+        billingCycleValue: Integer, billingCycleUnit: DAY/WEEK/MONTH/YEAR (모르면 null),
+        paidDate: yyyy-MM-dd (결제일 · 메일 날짜, 모르면 null),
+        nextBillingDate: yyyy-MM-dd (메일에 적혀 있을 때만, 없으면 null),
+        paymentMethod: APP_STORE / GOOGLE_PLAY / WEB_DIRECT,
+        uncertain: Boolean
+      } ] }
+      일회성 쇼핑 · 배송 · 광고 · 카드 명세서 등 구독 결제가 아닌 메일은 넣지 않음
+    cost: "50통 × 약 1,000토큰 + 서비스 목록 약 3,000토큰 ≈ 입력 5만 토큰 → 1회 약 10원 (Haiku $0.10 / $0.50 per 1M)"
+    errors: "API 오류 · 타임아웃 · 거절(refusal) · 스키마 불일치 → GMAIL_ANALYSIS_FAILED. API 키가 비어 있으면 같은 오류 + log.error (서버 설정 오류)"
+    timeout: "60초"
+
+  step3_server:
+    match: "serviceName이 활성 서비스 목록 이름과 정확히 같은 것만 (ServiceCatalogGetService.findActiveServices). 없으면 제외"
+    exclude_subscribed: "SubscriptionGetService.findActiveServiceIds(user)에 있는 서비스 제외"
+    dedupe: "같은 서비스가 여러 건이면 paidDate가 가장 최근인 1건"
+    next_billing_date: >
+      LLM nextBillingDate가 오늘 이후면 그대로. 아니면 paidDate + 결제 주기를 오늘 이후가 될 때까지 더함.
+      paidDate · 주기를 모르면 null + NEXT_BILLING_DATE
+    correct: "amount ≤ 0 → null + AMOUNT, 주기를 모르면 1 MONTH + BILLING_CYCLE (스크린샷 분석 보정과 같은 방식)"
+    empty: "남은 후보가 0개면 빈 배열 (A-12e)"
+    synced: "성공하면 gmailConnection.markSynced() — last_synced_at 갱신"
+
+  privacy:
+    - "메일 제목 · 본문 · 금액 · 주소를 로그에 남기지 않음. 로그는 메일 수 · 후보 수 · 제외 수 · 소요 시간만"
+    - "메일 내용은 저장하지 않고 분석에만 사용. Anthropic API로 전송 — 개인정보 처리방침에 AI 분석 문구 필요 (기획)"
+
+  credentials:
+    env: "ANTHROPIC_API_KEY — application.yaml anthropic.api-key: ${ANTHROPIC_API_KEY:} (기본 빈 값: 키를 받기 전에도 배포 가능, 호출 시 GMAIL_ANALYSIS_FAILED)"
+    files: ".env.example 추가, GitHub Secret DEV_ENV_FILE · PROD_ENV_FILE은 키를 받은 뒤 갱신"
+
+  data_flow:
+    - step: 1
+      layer: Controller (GmailController — @RequestMapping 변경: /api/v1/gmail, 연동은 /connection, 분석은 /analyses)
+      action: "POST /api/v1/gmail/analyses — @CurrentUserId"
+    - step: 2
+      layer: UseCase (GmailUseCase.analyzeGmailPayments)
+      action: >
+        UserGetService.findUserById → GmailConnectionGetService.findGmailConnection 없으면 GMAIL_CONNECTION_NOT_FOUND
+        → GmailMailReader.readPaymentMails(refreshToken) → List<GmailMail>
+        → 0통이면 빈 응답 (LLM 호출 안 함)
+        → ServiceCatalogGetService.findActiveServices → GmailPaymentAnalyzer.analyze(mails, serviceNames, today) → List<GmailExtractedPayment>
+        → GmailCandidate로 매칭 · 제외 · 중복 정리 · 보정
+        → connection.markSynced() → GmailAnalysisResponse
+      transaction: "@Transactional (markSynced 쓰기)"
+    - step: 3
+      layer: External
+      action: >
+        GoogleGmailMailReaderAdapter implements GmailMailReader (RestClient: 토큰 갱신 · 검색 · 메일 조회 · 본문 텍스트 변환),
+        ClaudeGmailPaymentAnalyzerAdapter implements GmailPaymentAnalyzer (Anthropic Java SDK)
+    - step: 4
+      layer: Domain
+      action: "GmailCandidate (record) — 매칭 결과 + 보정(correct(today)) · 다음 결제일 계산. 스크린샷 ScreenshotCandidate와 같은 방식"
+
+  error_codes:
+    - "40803 GMAIL_CONNECTION_NOT_FOUND (404) — 기존, 연동 안 됨"
+    - "40805 GMAIL_RECONNECT_REQUIRED (409) — 신규, Gmail 권한이 끊김 → 다시 연결 필요"
+    - "40806 GMAIL_ANALYSIS_FAILED (502) — 신규, Gmail · LLM 오류 · 타임아웃 (A-12e)"
+    - "40201 USER_NOT_FOUND (404) — 기존"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "build.gradle (수정 — com.anthropic:anthropic-java:3.3.0)"
+    - "domain/gmail/domain/GmailMailReader.java · GmailMail.java (신규 — 메일 읽기 인터페이스)"
+    - "domain/gmail/domain/GmailPaymentAnalyzer.java · GmailExtractedPayment.java (신규 — 분석 인터페이스)"
+    - "domain/gmail/domain/GmailCandidate.java · GmailReviewField.java (신규)"
+    - "domain/gmail/external/GoogleGmailMailReaderAdapter.java · ClaudeGmailPaymentAnalyzerAdapter.java (신규)"
+    - "domain/gmail/application/dto/response/GmailAnalysisResponse.java · GmailCandidateResponse.java (신규)"
+    - "domain/gmail/application/exception — 2개 추가"
+    - "domain/gmail/application/usecase/GmailUseCase.java · presentation/GmailController.java · GmailResponseCode.java (수정)"
+    - "application.yaml · application-test.yaml · .env.example (수정 — anthropic.api-key)"
+
+testing_strategy:
+  # GmailUseCaseTest @Nested AnalyzeGmailPayments — Mock: GmailMailReader, GmailPaymentAnalyzer, ServiceCatalogGetService, SubscriptionGetService 추가
+  happy_path:
+    - "추출한 결제를 서비스 목록과 맞춰 후보로 반환하고 로고 · 카테고리는 서비스 목록 값을 쓴다"
+    - "성공하면 마지막 조회 시각을 갱신한다"
+  edge_cases:
+    - "검색된 메일이 없으면 LLM을 호출하지 않고 빈 배열을 반환한다"
+    - "남은 후보가 없으면 빈 배열을 반환한다"
+    - "서비스 목록에 없는 서비스 · 이미 구독 중인 서비스는 후보에서 뺀다"
+    - "같은 서비스가 여러 건이면 결제일이 가장 최근인 1건만 남긴다"
+    - "다음 결제일이 없으면 결제일 + 결제 주기로 오늘 이후 날짜를 계산한다"
+    - "금액을 못 읽었거나 주기를 모르면 확인 필요로 표시하고 해당 필드를 reviewFields에 넣는다"
+  error_cases:
+    - "Gmail이 연동되지 않았으면 GMAIL_CONNECTION_NOT_FOUND를 던진다"
+    - "Gmail 권한이 끊겼으면 GMAIL_RECONNECT_REQUIRED를 던진다"
+    - "회원이 없으면 USER_NOT_FOUND를 던진다"
+  note: "두 External 어댑터는 UseCase 테스트 규칙상 테스트하지 않음 — 키를 받은 뒤 테스트 계정으로 수동 확인"
+
+notes:
+  - "[결정] LLM 한 번 호출로 판별 + 추출, 60일 · 50통 · 2,000자 (2026-11-22)"
+  - "[결정] 후보 없음은 200 + 빈 배열 — 정상 결과이고 스크린샷 분석과 같은 방식, 앱이 A-12e로 이동 (2026-11-22)"
+  - "[한계] 연간 구독은 60일 안에 결제 메일이 없으면 못 찾음 → A-13 '구독 추가하기'로 직접 등록"
+  - "[구현] 트랜잭션은 markSynced 쓰기 때문에 @Transactional — 외부 호출(Gmail · Claude) 동안 DB 커넥션을 잡음 (스크린샷 분석과 같은 구조, 트래픽이 늘면 분리 검토)"
+  - "[필요] Anthropic API 키 — 없어도 코드 · 테스트는 진행, 실제 호출 확인만 키를 받은 뒤"
+  - "[공유] 노션 응답 표: serviceId 항상 있음 · reviewFields 추가 · 후보 없음 빈 배열 · 오류 코드 40805 · 40806"
