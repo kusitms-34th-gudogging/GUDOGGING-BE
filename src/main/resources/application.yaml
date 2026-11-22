@@ -52,6 +52,11 @@ ocr:
 
 google:
   client-ids: ${GOOGLE_CLIENT_IDS}
+  # Gmail 연동용 웹 애플리케이션 OAuth 클라이언트. 모바일 서버용 인증 코드는 redirect-uri가 빈 값
+  gmail:
+    client-id: ${GOOGLE_GMAIL_CLIENT_ID}
+    client-secret: ${GOOGLE_GMAIL_CLIENT_SECRET}
+    redirect-uri: ${GOOGLE_GMAIL_REDIRECT_URI:}
 
 apple:
   client-id: ${APPLE_CLIENT_ID}
