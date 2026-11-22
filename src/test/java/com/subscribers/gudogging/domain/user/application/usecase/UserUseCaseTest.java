@@ -13,6 +13,8 @@ import com.subscribers.gudogging.domain.auth.application.exception.AppleServerEx
 import com.subscribers.gudogging.domain.auth.application.exception.AuthErrorCode;
 import com.subscribers.gudogging.domain.auth.domain.AppleAuthClient;
 import com.subscribers.gudogging.domain.auth.domain.service.RefreshTokenService;
+import com.subscribers.gudogging.domain.gmail.application.exception.GoogleOAuthServerException;
+import com.subscribers.gudogging.domain.gmail.domain.GmailOAuthClient;
 import com.subscribers.gudogging.domain.gmail.domain.entity.GmailConnection;
 import com.subscribers.gudogging.domain.gmail.domain.service.GmailConnectionGetService;
 import com.subscribers.gudogging.domain.user.application.dto.response.UserAccountResponse;
@@ -54,6 +56,9 @@ class UserUseCaseTest {
 
     @Mock
     private GmailConnectionGetService gmailConnectionGetService;
+
+    @Mock
+    private GmailOAuthClient gmailOAuthClient;
 
     @InjectMocks
     private UserUseCase userUseCase;
@@ -255,6 +260,43 @@ class UserUseCaseTest {
 
             // then
             verify(appleAuthClient, never()).revokeRefreshToken(any());
+            assertWithdrawn(user);
+            verify(refreshTokenService).deleteRefreshToken(userId);
+        }
+
+        @Test
+        @DisplayName("Gmail 연결이 있으면 Gmail 토큰을 revoke하고 연결을 삭제한 뒤 탈퇴 처리한다")
+        void revokesAndDeletesGmailConnection() {
+            // given
+            User user = givenUser(SocialProvider.GOOGLE, null);
+            GmailConnection gmailConnection = GmailConnection.create(user, "google-sub-456", "payments@gmail.com",
+                "gmail-refresh-token");
+            given(gmailConnectionGetService.findGmailConnection(user)).willReturn(Optional.of(gmailConnection));
+
+            // when
+            userUseCase.withdrawUser(userId);
+
+            // then
+            verify(gmailOAuthClient).revokeToken("gmail-refresh-token");
+            assertThat(gmailConnection.isDeleted()).isTrue();
+            assertWithdrawn(user);
+        }
+
+        @Test
+        @DisplayName("Gmail 토큰 revoke가 실패해도 연결을 삭제하고 탈퇴를 진행한다")
+        void deletesGmailConnectionWhenRevokeFails() {
+            // given
+            User user = givenUser(SocialProvider.GOOGLE, null);
+            GmailConnection gmailConnection = GmailConnection.create(user, "google-sub-456", "payments@gmail.com",
+                "gmail-refresh-token");
+            given(gmailConnectionGetService.findGmailConnection(user)).willReturn(Optional.of(gmailConnection));
+            willThrow(new GoogleOAuthServerException()).given(gmailOAuthClient).revokeToken("gmail-refresh-token");
+
+            // when
+            userUseCase.withdrawUser(userId);
+
+            // then
+            assertThat(gmailConnection.isDeleted()).isTrue();
             assertWithdrawn(user);
             verify(refreshTokenService).deleteRefreshToken(userId);
         }
