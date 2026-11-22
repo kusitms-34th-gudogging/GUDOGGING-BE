@@ -1,6 +1,7 @@
 package com.subscribers.gudogging.domain.auth.application.usecase;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -10,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.subscribers.gudogging.domain.auth.application.dto.request.AppleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.GoogleLoginRequest;
+import com.subscribers.gudogging.domain.auth.application.dto.request.LogoutRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.ReissueTokenRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.response.LoginResponse;
 import com.subscribers.gudogging.domain.auth.application.dto.response.TokenResponse;
@@ -552,6 +554,52 @@ class AuthUseCaseTest {
 
             // when & then
             assertInvalidRefreshToken();
+        }
+    }
+
+    @Nested
+    @DisplayName("logoutUser")
+    class LogoutUser {
+
+        private final UUID userId = UUID.randomUUID();
+        private final LogoutRequest request = new LogoutRequest(REFRESH_TOKEN);
+
+        @Test
+        @DisplayName("요청 토큰이 저장된 Refresh Token과 같으면 로그인한 회원의 Refresh Token을 삭제한다")
+        void deletesRefreshTokenWhenMatched() {
+            // given
+            given(refreshTokenService.matchesRefreshToken(userId, REFRESH_TOKEN)).willReturn(true);
+
+            // when
+            authUseCase.logoutUser(userId, request);
+
+            // then
+            verify(refreshTokenService).matchesRefreshToken(userId, REFRESH_TOKEN);
+            verify(refreshTokenService).deleteRefreshToken(userId);
+        }
+
+        @Test
+        @DisplayName("저장된 Refresh Token이 없거나 요청 토큰과 다르면 예외 없이 끝나고 삭제하지 않는다")
+        void doesNotDeleteWhenNotMatched() {
+            // given
+            given(refreshTokenService.matchesRefreshToken(userId, REFRESH_TOKEN)).willReturn(false);
+
+            // when & then
+            assertThatCode(() -> authUseCase.logoutUser(userId, request)).doesNotThrowAnyException();
+            verify(refreshTokenService, never()).deleteRefreshToken(any());
+        }
+
+        @Test
+        @DisplayName("회원 조회 없이 Refresh Token만 처리한다")
+        void doesNotFindUser() {
+            // given
+            given(refreshTokenService.matchesRefreshToken(userId, REFRESH_TOKEN)).willReturn(true);
+
+            // when
+            authUseCase.logoutUser(userId, request);
+
+            // then
+            verify(userGetService, never()).findUserById(any());
         }
     }
 }
