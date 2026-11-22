@@ -9,26 +9,43 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
+import com.subscribers.gudogging.domain.catalog.domain.entity.Category;
+import com.subscribers.gudogging.domain.catalog.domain.entity.ServiceCatalog;
+import com.subscribers.gudogging.domain.catalog.domain.service.ServiceCatalogGetService;
 import com.subscribers.gudogging.domain.gmail.application.dto.request.ConnectGmailRequest;
+import com.subscribers.gudogging.domain.gmail.application.dto.response.GmailAnalysisResponse;
+import com.subscribers.gudogging.domain.gmail.application.dto.response.GmailCandidateResponse;
 import com.subscribers.gudogging.domain.gmail.application.dto.response.GmailConnectionResponse;
 import com.subscribers.gudogging.domain.gmail.application.exception.GmailConnectionNotFoundException;
 import com.subscribers.gudogging.domain.gmail.application.exception.GmailErrorCode;
 import com.subscribers.gudogging.domain.gmail.application.exception.GmailPermissionRequiredException;
+import com.subscribers.gudogging.domain.gmail.application.exception.GmailReconnectRequiredException;
 import com.subscribers.gudogging.domain.gmail.application.exception.GoogleOAuthServerException;
 import com.subscribers.gudogging.domain.gmail.application.exception.InvalidGmailAuthCodeException;
+import com.subscribers.gudogging.domain.gmail.domain.GmailExtractedPayment;
+import com.subscribers.gudogging.domain.gmail.domain.GmailMail;
+import com.subscribers.gudogging.domain.gmail.domain.GmailMailReader;
 import com.subscribers.gudogging.domain.gmail.domain.GmailOAuthClient;
+import com.subscribers.gudogging.domain.gmail.domain.GmailPaymentAnalyzer;
+import com.subscribers.gudogging.domain.gmail.domain.GmailReviewField;
 import com.subscribers.gudogging.domain.gmail.domain.GmailTokens;
 import com.subscribers.gudogging.domain.gmail.domain.entity.GmailConnection;
 import com.subscribers.gudogging.domain.gmail.domain.entity.GmailConnectionStatus;
 import com.subscribers.gudogging.domain.gmail.domain.service.GmailConnectionCreateService;
 import com.subscribers.gudogging.domain.gmail.domain.service.GmailConnectionGetService;
+import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleUnit;
+import com.subscribers.gudogging.domain.subscription.domain.entity.PaymentMethod;
+import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserErrorCode;
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
 import com.subscribers.gudogging.domain.user.domain.entity.SocialProvider;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
 import com.subscribers.gudogging.domain.user.domain.service.UserGetService;
 import com.subscribers.gudogging.global.common.exception.ApplicationException;
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -38,6 +55,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("GmailUseCase")
@@ -60,6 +78,18 @@ class GmailUseCaseTest {
 
     @Mock
     private GmailOAuthClient gmailOAuthClient;
+
+    @Mock
+    private GmailMailReader gmailMailReader;
+
+    @Mock
+    private GmailPaymentAnalyzer gmailPaymentAnalyzer;
+
+    @Mock
+    private ServiceCatalogGetService serviceCatalogGetService;
+
+    @Mock
+    private SubscriptionGetService subscriptionGetService;
 
     @InjectMocks
     private GmailUseCase gmailUseCase;
@@ -314,6 +344,231 @@ class GmailUseCaseTest {
                 .isInstanceOf(UserNotFoundException.class)
                 .satisfies(e -> assertErrorCode(e, UserErrorCode.USER_NOT_FOUND));
             verifyNoInteractions(gmailOAuthClient);
+        }
+    }
+
+    @Nested
+    @DisplayName("analyzeGmailPayments")
+    class AnalyzeGmailPayments {
+
+        private final LocalDate today = LocalDate.now();
+        private final GmailMail mail = new GmailMail("receipt@example.com", "결제 완료", today, "본문");
+        private final ServiceCatalog netflix = service("Netflix 스탠다드", Category.VIDEO_OTT, "netflix.png");
+        private final ServiceCatalog youtube = service("YouTube Premium", Category.VIDEO_OTT, null);
+
+        private ServiceCatalog service(String name, Category category, String logoUrl) {
+            ServiceCatalog service = ServiceCatalog.create(name, null, null, category, logoUrl, null, 1);
+            ReflectionTestUtils.setField(service, "id", UUID.randomUUID());
+            return service;
+        }
+
+        private GmailConnection givenConnected() {
+            User user = givenUser();
+            GmailConnection connection = givenConnection(user, REFRESH_TOKEN);
+            given(gmailMailReader.readPaymentMails(REFRESH_TOKEN)).willReturn(List.of(mail));
+            given(serviceCatalogGetService.findActiveServices()).willReturn(List.of(netflix, youtube));
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+            return connection;
+        }
+
+        private void givenPayments(GmailExtractedPayment... payments) {
+            given(gmailPaymentAnalyzer.analyze(any(), any(), any())).willReturn(List.of(payments));
+        }
+
+        private GmailExtractedPayment payment(String serviceName, Integer amount, LocalDate paidDate) {
+            return new GmailExtractedPayment(serviceName, amount, 1, BillingCycleUnit.MONTH, paidDate, null,
+                PaymentMethod.GOOGLE_PLAY, false);
+        }
+
+        @Test
+        @DisplayName("추출한 결제를 서비스 목록과 맞춰 후보로 반환하고 로고 · 카테고리는 서비스 목록 값을 쓴다")
+        void returnsMatchedCandidates() {
+            // given
+            givenConnected();
+            givenPayments(new GmailExtractedPayment("Netflix 스탠다드", 13_500, 1, BillingCycleUnit.MONTH,
+                today.minusDays(5), today.plusDays(25), PaymentMethod.WEB_DIRECT, false));
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            assertThat(response.candidates()).hasSize(1);
+            GmailCandidateResponse candidate = response.candidates().getFirst();
+            assertThat(candidate.serviceId()).isEqualTo(netflix.getId());
+            assertThat(candidate.serviceName()).isEqualTo("Netflix 스탠다드");
+            assertThat(candidate.logoUrl()).isEqualTo("netflix.png");
+            assertThat(candidate.category()).isEqualTo(Category.VIDEO_OTT);
+            assertThat(candidate.amount()).isEqualTo(13_500);
+            assertThat(candidate.nextBillingDate()).isEqualTo(today.plusDays(25));
+            assertThat(candidate.paymentMethod()).isEqualTo(PaymentMethod.WEB_DIRECT);
+            assertThat(candidate.needsReview()).isFalse();
+            assertThat(candidate.reviewFields()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("성공하면 마지막 조회 시각을 갱신한다")
+        void marksSynced() {
+            // given
+            GmailConnection connection = givenConnected();
+            givenPayments();
+
+            // when
+            gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            assertThat(connection.getLastSyncedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("서비스 목록에 없는 서비스 · 이미 구독 중인 서비스는 후보에서 뺀다")
+        void excludesUnknownAndSubscribedServices() {
+            // given
+            User user = givenUser();
+            givenConnection(user, REFRESH_TOKEN);
+            given(gmailMailReader.readPaymentMails(REFRESH_TOKEN)).willReturn(List.of(mail));
+            given(serviceCatalogGetService.findActiveServices()).willReturn(List.of(netflix, youtube));
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of(youtube.getId()));
+            givenPayments(
+                payment("Netflix 스탠다드", 13_500, today),
+                payment("YouTube Premium", 14_900, today),
+                payment("없는 서비스", 9_900, today),
+                payment(null, 5_000, today));
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            assertThat(response.candidates()).extracting(GmailCandidateResponse::serviceName)
+                .containsExactly("Netflix 스탠다드");
+        }
+
+        @Test
+        @DisplayName("같은 서비스가 여러 건이면 결제일이 가장 최근인 1건만 남기고 결제일 최신순으로 반환한다")
+        void keepsLatestPaymentPerService() {
+            // given
+            givenConnected();
+            givenPayments(
+                payment("Netflix 스탠다드", 13_500, today.minusDays(40)),
+                payment("YouTube Premium", 14_900, today.minusDays(3)),
+                payment("Netflix 스탠다드", 17_000, today.minusDays(10)));
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            assertThat(response.candidates()).extracting(GmailCandidateResponse::serviceName)
+                .containsExactly("YouTube Premium", "Netflix 스탠다드");
+            assertThat(response.candidates().get(1).amount()).isEqualTo(17_000);
+        }
+
+        @Test
+        @DisplayName("다음 결제일이 없으면 결제일 + 결제 주기로 오늘 이후 첫 날짜를 계산한다")
+        void calculatesNextBillingDate() {
+            // given
+            givenConnected();
+            LocalDate paidDate = today.minusDays(10);
+            givenPayments(payment("Netflix 스탠다드", 13_500, paidDate));
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            GmailCandidateResponse candidate = response.candidates().getFirst();
+            assertThat(candidate.nextBillingDate()).isEqualTo(paidDate.plusMonths(1));
+            assertThat(candidate.reviewFields()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("금액을 못 읽었거나 주기를 모르면 확인 필요로 표시하고 해당 필드를 reviewFields에 넣는다")
+        void marksReviewFields() {
+            // given
+            givenConnected();
+            givenPayments(new GmailExtractedPayment("Netflix 스탠다드", null, null, null, null, null, null, false));
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            GmailCandidateResponse candidate = response.candidates().getFirst();
+            assertThat(candidate.needsReview()).isTrue();
+            assertThat(candidate.amount()).isNull();
+            assertThat(candidate.billingCycleValue()).isEqualTo(1);
+            assertThat(candidate.billingCycleUnit()).isEqualTo(BillingCycleUnit.MONTH);
+            assertThat(candidate.nextBillingDate()).isNull();
+            assertThat(candidate.paymentMethod()).isEqualTo(PaymentMethod.WEB_DIRECT);
+            assertThat(candidate.reviewFields()).containsExactlyInAnyOrder(
+                GmailReviewField.AMOUNT, GmailReviewField.BILLING_CYCLE, GmailReviewField.NEXT_BILLING_DATE);
+        }
+
+        @Test
+        @DisplayName("검색된 메일이 없으면 LLM을 호출하지 않고 빈 배열을 반환한다")
+        void returnsEmptyWithoutMails() {
+            // given
+            User user = givenUser();
+            givenConnection(user, REFRESH_TOKEN);
+            given(gmailMailReader.readPaymentMails(REFRESH_TOKEN)).willReturn(List.of());
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            assertThat(response.candidates()).isEmpty();
+            verifyNoInteractions(gmailPaymentAnalyzer);
+        }
+
+        @Test
+        @DisplayName("남은 후보가 없으면 빈 배열을 반환한다")
+        void returnsEmptyWithoutCandidates() {
+            // given
+            givenConnected();
+            givenPayments(payment("없는 서비스", 9_900, today));
+
+            // when
+            GmailAnalysisResponse response = gmailUseCase.analyzeGmailPayments(userId);
+
+            // then
+            assertThat(response.candidates()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("Gmail이 연동되지 않았으면 GMAIL_CONNECTION_NOT_FOUND를 던진다")
+        void throwsWhenNotConnected() {
+            // given
+            User user = givenUser();
+            given(gmailConnectionGetService.findGmailConnection(user)).willReturn(Optional.empty());
+
+            // when & then
+            assertThatThrownBy(() -> gmailUseCase.analyzeGmailPayments(userId))
+                .isInstanceOf(GmailConnectionNotFoundException.class)
+                .satisfies(e -> assertErrorCode(e, GmailErrorCode.GMAIL_CONNECTION_NOT_FOUND));
+            verifyNoInteractions(gmailMailReader, gmailPaymentAnalyzer);
+        }
+
+        @Test
+        @DisplayName("Gmail 권한이 끊겼으면 GMAIL_RECONNECT_REQUIRED를 던진다")
+        void throwsWhenReconnectRequired() {
+            // given
+            User user = givenUser();
+            givenConnection(user, REFRESH_TOKEN);
+            given(gmailMailReader.readPaymentMails(REFRESH_TOKEN)).willThrow(new GmailReconnectRequiredException());
+
+            // when & then
+            assertThatThrownBy(() -> gmailUseCase.analyzeGmailPayments(userId))
+                .isInstanceOf(GmailReconnectRequiredException.class)
+                .satisfies(e -> assertErrorCode(e, GmailErrorCode.GMAIL_RECONNECT_REQUIRED));
+            verifyNoInteractions(gmailPaymentAnalyzer);
+        }
+
+        @Test
+        @DisplayName("회원이 없으면 USER_NOT_FOUND를 던진다")
+        void throwsWhenUserNotFound() {
+            // given
+            givenUserNotFound();
+
+            // when & then
+            assertThatThrownBy(() -> gmailUseCase.analyzeGmailPayments(userId))
+                .isInstanceOf(UserNotFoundException.class)
+                .satisfies(e -> assertErrorCode(e, UserErrorCode.USER_NOT_FOUND));
         }
     }
 }
