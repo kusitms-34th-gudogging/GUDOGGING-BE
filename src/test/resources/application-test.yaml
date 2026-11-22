@@ -19,6 +19,10 @@ google:
     client-id: test-dummy-gmail-client-id
     client-secret: test-dummy-gmail-client-secret
 
+# 테스트는 실제 Claude API를 호출하지 않음
+anthropic:
+  api-key: ""
+
 # 테스트는 로컬 .env에 키가 있어도 실제 FCM을 쓰지 않음 (LoggingPushSender)
 firebase:
   credentials: ""
