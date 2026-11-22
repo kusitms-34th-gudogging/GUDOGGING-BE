@@ -1,0 +1,176 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-22
+
+meta:
+  id: AUTH-004
+  title: 로그아웃
+  type: Feature
+  author: 1winhyun
+  depends_on:
+    - AUTH-001   # JWT 인증 필터, RefreshTokenService, Redis refresh:{userId}
+    - AUTH-002   # Refresh Token Rotation (회원당 1개 저장)
+  sources:
+    figma: >
+      디자인 작업소(9cBKdlwBBUqHndoKPsrDfX) › 화면 설계서 › 마이페이지 —
+      MYP-001 E-01 마이페이지(1854:14428, 계정 관리 영역 1854:14455, Description 1854:15289 '5-1. 로그아웃 메뉴 클릭 시'),
+      MYP-003 E-06 로그아웃 확인 팝업(1854:14461, modal 1854:14493, Description 1854:15857 항목 2)
+    notion: "API 명세서 — 로그아웃 (사용자 제공, 2026-11-22)"
+    priority: "Figma → 코딩 규칙 → Notion"
+
+overview:
+  summary: >
+    마이페이지(E-01)에서 로그아웃 메뉴를 누르면 확인 팝업(E-06)이 뜨고, '로그아웃 하기'를 누르면 앱이 이 API를 호출한다.
+    서버는 요청한 refreshToken이 지금 저장된 토큰과 같으면 Redis에서 삭제해 무효화한다. 응답은 200 + data = null.
+    성공하면 앱이 accessToken·refreshToken을 지우고 로그인 화면으로 이동한다.
+  user_story: >
+    As a 로그인한 회원, I want to 마이페이지에서 로그아웃하기를,
+    so that 이 기기의 로그인 세션이 끝나고 다시 로그인해야 서비스를 이용할 수 있다.
+  goals:
+    - 요청한 Refresh Token 무효화 (Redis refresh:{userId} 삭제) → 이 토큰으로 재발급(AUTH-002) 불가
+    - 이미 무효인 토큰(만료·교체됨)이어도 로그아웃은 성공 → 앱이 로그인 화면으로 이동 가능
+    - 다른 기기에서 새로 로그인해 바뀐 토큰은 삭제하지 않음
+
+figma_flow:
+  # Figma Description 원문 기준 (1:1)
+  E-01_마이페이지:
+    - "5. 계정 관리 영역: 섹션 내 '로그아웃', '회원 탈퇴' 메뉴 표시, 메뉴 전체 영역 터치 가능"
+    - "5-1. 로그아웃 메뉴 클릭 시: 현재 화면 위에 로그아웃 확인 팝업(E-06) 노출"
+  E-06_로그아웃_확인_팝업:
+    - "2. 메인 텍스트: '로그아웃 할까요?' / 서브 텍스트: '다시 로그인해야 서비스를 이용할 수 있어요.'"
+    - "3-1. 취소 버튼 클릭 시: 팝업 닫기, 현재 로그인 상태 유지, 마이페이지(E-01) 유지 → API 호출 없음"
+    - "4-1. 로그아웃 하기 버튼 클릭 시: 현재 로그인 세션 종료 요청 → 이 API 호출"
+    - "4-1. 로그아웃 처리 성공 시 로그인 화면으로 이동"
+    - "5. 예외 처리: 로그아웃 실패 시 기존 로그인 세션 유지"
+  toast: "토스트 목록(TST-001 S-1~S-6)에 로그아웃 토스트 없음 → 응답 message는 화면에 표시하지 않음"
+
+technical_spec:
+  api:
+    - method: POST
+      path: /api/v1/auth/logout
+      summary: 로그아웃
+      auth: Required (Authorization Bearer Access Token — @CurrentUserId UUID userId)
+      request:
+        dto: LogoutRequest
+        fields:
+          - name: refreshToken
+            type: String
+            required: true
+            validation: "@NotBlank"
+            description: "무효화할 리프레시 토큰 (이 기기에 저장된 값)"
+      response:
+        http_status: 200 OK
+        wrapper: CommonResponse<Void>
+        response_code: "AuthResponseCode.LOGOUT_SUCCESS (200, HttpStatus.OK, \"로그아웃했습니다.\")"
+        body: "{ code: 200, message: \"로그아웃했습니다.\", data: null }"
+        note: "응답 데이터 없음 — UserController.withdrawUser와 같은 형식 (CommonResponse.success(code))"
+
+  data_flow:
+    - step: 1
+      layer: Presentation (AuthController)
+      action: >
+        @CurrentUserId UUID userId + @RequestBody @Valid LogoutRequest request
+        → AuthUseCase.logoutUser(userId, request) → CommonResponse.success(AuthResponseCode.LOGOUT_SUCCESS)
+    - step: 2
+      layer: UseCase (AuthUseCase)
+      action: >
+        refreshTokenService.matchesRefreshToken(userId, request.refreshToken())이 true면
+        refreshTokenService.deleteRefreshToken(userId). false면 아무것도 지우지 않고 정상 종료 (예외 없음)
+      transaction: true   # @Transactional — 쓰기 메서드 규칙 (reissueToken · deleteSubscriptionDraft와 같음)
+    - step: 3
+      layer: Domain Service (RefreshTokenService)
+      action: >
+        [신규] matchesRefreshToken(UUID userId, String token): refreshTokenRepository.findByUserId(userId)
+        → 저장값이 있고 token과 같으면 true, 없거나 다르면 false.
+        [재사용] deleteRefreshToken(UUID userId) (USER-001 회원 탈퇴에서 사용 중)
+    - step: 4
+      layer: Infrastructure (RedisRefreshTokenRepository)
+      action: "GET refresh:{userId} → (일치 시) DEL refresh:{userId}. Repository 변경 없음"
+
+  token_handling:
+    refresh_token: "서버 Redis에서 삭제 (요청 토큰과 저장값이 같을 때만)"
+    access_token: >
+      서버에 저장하지 않으므로 서버에서 무효화하지 않음 (블랙리스트 없음, Notion '앱에서 삭제'와 같음).
+      앱이 삭제하며, 탈취되지 않았다면 남은 유효기간(최대 1시간)은 영향 없음
+    mismatch_cases:
+      # 사용자 결정 (2026-11-22): 모두 200 성공, 아무것도 지우지 않음
+      - "저장값 없음 — 14일 만료(TTL), 이미 로그아웃, 탈퇴로 삭제됨"
+      - "저장값과 다름 — 다른 기기에서 새로 로그인해 교체됨(회원당 1개), 이미 재발급(Rotation)으로 교체된 옛 토큰"
+      - "형식이 틀리거나 다른 회원의 토큰 — 내 저장값(refresh:{userId})과 비교만 하므로 다른 회원 토큰은 절대 지워지지 않음"
+    reason: >
+      위 경우는 요청한 토큰이 이미 무효라 '무효화' 목적이 달성된 상태. 에러를 반환하면 Figma E-06 '로그아웃 실패 시 기존 로그인 세션 유지'에 따라
+      앱이 로그인 화면으로 가지 못해 로그아웃할 수 없게 됨. 저장값이 다르면 삭제하지 않아 다른 기기의 새 세션은 유지
+
+  database:
+    entities: []   # DB 조회·변경 없음
+    redis:
+      - key: "refresh:{userId}"
+        action: Read / Delete (요청 토큰과 같을 때만)
+
+  error_codes:
+    domain_range: "401xx (auth)"
+    new_codes: []   # 신규 에러 코드 없음
+    reused_global:
+      - "40001 INVALID_ARGUMENT — refreshToken 누락·blank (@Valid)"
+      - "40002 JSON_PARSE_ERROR — 요청 본문 JSON 형식 오류"
+    reused_auth_filter:
+      # JwtAuthenticationFilter / EntryPoint에서 처리 (UseCase 도달 전)
+      - "40103 EXPIRED_ACCESS_TOKEN — Access Token 만료"
+      - "40104 INVALID_ACCESS_TOKEN — Access Token 위조·형식 오류"
+      - "40005 UNAUTHORIZED — Authorization 헤더 없음"
+
+  security_config:
+    permit_urls_add: []   # 인증 필요 → PUBLIC_URLS에 추가하지 않음 (anyRequest().authenticated()로 보호됨)
+
+  validation_rules:
+    - "refreshToken: blank 불가 (@NotBlank)"
+    - "로그인한 회원(Access Token의 userId)의 저장값과만 비교 — 다른 회원의 Refresh Token은 삭제 불가"
+    - "요청 토큰과 저장값이 같을 때만 삭제 (다른 기기의 새 세션 보호)"
+    - "토큰이 이미 없거나 달라도 200 성공 (멱등)"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  auth:
+    - "domain/auth/presentation/AuthController.java (logoutUser 메서드 + @Operation 추가)"
+    - "domain/auth/presentation/response/AuthResponseCode.java (LOGOUT_SUCCESS 추가)"
+    - "domain/auth/application/usecase/AuthUseCase.java (logoutUser 추가)"
+    - "domain/auth/application/dto/request/LogoutRequest.java (신규, record — ReissueTokenRequest와 같은 형식)"
+    - "domain/auth/domain/service/RefreshTokenService.java (matchesRefreshToken 추가)"
+  unchanged:
+    - "RefreshTokenRepository / RedisRefreshTokenRepository — findByUserId · deleteByUserId 재사용"
+    - "SecurityConfig — PUBLIC_URLS 변경 없음"
+    - "AuthErrorCode — 변경 없음"
+
+testing_strategy:
+  # AuthUseCaseTest only (JUnit5 + Mockito) — @Nested LogoutUser
+  # Mock: RefreshTokenService
+  happy_path:
+    - "logoutUser: 요청 토큰이 저장된 Refresh Token과 같으면 refresh:{userId}를 삭제한다 (deleteRefreshToken(userId) 호출)"
+  edge_cases:
+    - "logoutUser: 저장된 Refresh Token이 없거나 요청 토큰과 다르면 예외 없이 끝나고 삭제하지 않는다 (deleteRefreshToken never)"
+    - "logoutUser: 로그인한 회원의 userId로 비교한다 (matchesRefreshToken(userId, refreshToken) 인자 검증)"
+  test_files:
+    - "test/.../domain/auth/application/usecase/AuthUseCaseTest.java (@Nested LogoutUser 추가)"
+
+notes:
+  - "[결정 2026-11-22, 사용자] 요청 refreshToken이 저장값과 다르거나 없으면 200 성공 + 삭제 안 함 (위 token_handling.reason)"
+  - >
+    [결정 2026-11-22, 사용자 위임 → Figma 기준] 회원 확인(UserGetService.findUserById, 40201)은 하지 않음.
+    로그아웃은 회원 데이터가 필요 없고 Redis 키만 다룸. 탈퇴 회원은 탈퇴 때 refresh:{userId}가 이미 삭제됐으므로
+    성공(삭제할 것 없음)이 맞고, 40201로 실패시키면 Figma E-06 '실패 시 세션 유지'로 로그인 화면에 가지 못함.
+    다른 UseCase(reissueToken · deleteSubscriptionDraft 등)의 '회원 확인 먼저' 방식과 다르지만 규칙 위반은 아님 (essential-rules에 회원 확인 의무 없음)
+  - >
+    [설계] 비교를 Domain Service의 boolean(matchesRefreshToken)으로 두고 삭제 여부는 UseCase가 결정 —
+    UseCase 테스트만 작성하는 규칙상 '일치 → 삭제 / 불일치 → 삭제 안 함' 분기를 AuthUseCaseTest에서 검증하기 위함.
+    기존 validateRefreshToken(불일치 시 예외)은 재발급용으로 그대로 유지
+  - >
+    [가정] 조회(GET)와 삭제(DEL) 사이에 같은 회원의 재발급(Rotation)이 끼면 새 토큰이 삭제될 수 있음.
+    로그아웃을 누른 앱이 동시에 재발급할 일은 거의 없고, 결과도 '로그아웃됨'이라 사용자 의도와 같으므로 원자적 비교 삭제(Lua 등)는 도입하지 않음
+  - >
+    [앱 참고] Access Token이 만료된 상태면 필터가 40103을 반환 → 앱은 기존 흐름대로 재발급(AUTH-002) 후 다시 호출.
+    재발급도 실패(40102)하면 Refresh Token이 이미 무효이므로 로컬 토큰만 지우고 로그인 화면으로 이동해도 됨 (앱 판단)
+  - "[가정] HTTP 200 — 리소스 생성이 아니므로 POST 기본값 201 대신 200 (AUTH-002 재발급과 같음). 메시지는 Notion대로 '로그아웃했습니다.'"
+  - >
+    [Notion 수정 필요] API 설명 '마이페이지의 로그아웃에서 호출한다. (E-01)' → Figma 기준 호출 시점은
+    로그아웃 확인 팝업(E-06)의 '로그아웃 하기' 버튼 (E-01 메뉴는 팝업만 띄우고, E-06 취소 시 호출 없음)
+  - "[Notion 보완 제안] refreshToken이 이미 만료·교체됐어도 200을 반환한다는 동작과 에러 응답(40001 · 40103 · 40104) 명시"
