@@ -73,8 +73,9 @@ technical_spec:
 
   business_rules:
     reconnect: >
-      [결정 2026-11-22] 이미 활성 연결이 있으면 기존 연결의 refresh token을 Google에 revoke(실패해도 계속)하고 soft delete한 뒤 새 연결 저장.
-      같은 계정을 다시 연결해도 같은 방식 (토큰이 깨진 경우 다시 연결로 복구)
+      [결정 2026-11-22] 이미 활성 연결이 있으면 기존 연결을 soft delete한 뒤 새 연결 저장.
+      다른 Google 계정으로 바꿀 때만 기존 refresh token을 revoke(실패해도 계속).
+      같은 계정(googleSub 같음)이면 revoke하지 않음 — Google revoke는 그 계정이 앱에 준 권한 전체를 끊어 새 토큰까지 무효가 됨 (CodeRabbit 리뷰 반영)
     order: "Google 토큰 교환 · 검증이 모두 성공한 뒤에만 기존 연결 정리 · 새 연결 저장 — 실패하면 DB 변경 없음 (E-04 예외 처리: 성공 응답 전에는 연결 완료로 처리하지 않음)"
 
   data_flow:
@@ -85,7 +86,7 @@ technical_spec:
       layer: UseCase (GmailUseCase.connectGmail)
       action: >
         UserGetService.findUserById → GmailOAuthClient.exchangeAuthCode(authCode) → GmailTokens(refreshToken, googleSub, email)
-        → GmailConnectionGetService.findGmailConnection(user) 있으면 GmailOAuthClient.revokeToken(기존 refreshToken) (예외 무시, 로그) + softDelete
+        → GmailConnectionGetService.findGmailConnection(user) 있으면 (다른 계정이면) GmailOAuthClient.revokeToken(기존 refreshToken) (예외 무시, 로그) + softDelete
         → GmailConnection.create(user, sub, email, refreshToken) → GmailConnectionCreateService.saveGmailConnection
         → GmailConnectionResponse.connected(email)
       transaction: "@Transactional"
@@ -122,8 +123,9 @@ testing_strategy:
   happy_path:
     - "인증 코드로 받은 refresh token · Gmail 주소 · 계정 ID로 연결을 저장하고 CONNECTED와 주소를 반환한다"
   edge_cases:
-    - "이미 연결이 있으면 기존 토큰을 revoke하고 기존 연결을 삭제한 뒤 새 연결을 저장한다"
-    - "기존 토큰 revoke가 실패해도 새 연결을 저장한다"
+    - "다른 Google 계정으로 연결돼 있으면 기존 토큰을 revoke하고 기존 연결을 삭제한 뒤 새 연결을 저장한다"
+    - "같은 Google 계정으로 다시 연결하면 revoke하지 않고 기존 연결만 새 연결로 교체한다"
+    - "기존 계정 토큰 revoke가 실패해도 기존 연결을 삭제하고 새 연결을 저장한다"
   error_cases:
     - "인증 코드가 잘못되면 INVALID_GMAIL_AUTH_CODE를 던지고 기존 연결을 건드리지 않는다"
     - "Gmail 읽기 권한이 없으면 GMAIL_PERMISSION_REQUIRED를 던진다"

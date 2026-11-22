@@ -66,6 +66,7 @@ class GmailUseCaseTest {
     private static final String GMAIL_ADDRESS = "payments@gmail.com";
     private static final String REFRESH_TOKEN = "gmail-refresh-token";
     private static final String OLD_REFRESH_TOKEN = "old-gmail-refresh-token";
+    private static final String OTHER_GOOGLE_SUB = "other-google-sub-789";
 
     @Mock
     private UserGetService userGetService;
@@ -107,7 +108,11 @@ class GmailUseCaseTest {
     }
 
     private GmailConnection givenConnection(User user, String refreshToken) {
-        GmailConnection connection = GmailConnection.create(user, GOOGLE_SUB, GMAIL_ADDRESS, refreshToken);
+        return givenConnection(user, GOOGLE_SUB, refreshToken);
+    }
+
+    private GmailConnection givenConnection(User user, String googleSub, String refreshToken) {
+        GmailConnection connection = GmailConnection.create(user, googleSub, GMAIL_ADDRESS, refreshToken);
         given(gmailConnectionGetService.findGmailConnection(user)).willReturn(Optional.of(connection));
         return connection;
     }
@@ -159,12 +164,12 @@ class GmailUseCaseTest {
         }
 
         @Test
-        @DisplayName("이미 연결이 있으면 기존 토큰을 revoke하고 기존 연결을 삭제한 뒤 새 연결을 저장한다")
-        void replacesExistingConnection() {
+        @DisplayName("다른 Google 계정으로 연결돼 있으면 기존 토큰을 revoke하고 기존 연결을 삭제한 뒤 새 연결을 저장한다")
+        void replacesConnectionOfOtherAccount() {
             // given
             User user = givenUser();
             givenTokens();
-            GmailConnection old = givenConnection(user, OLD_REFRESH_TOKEN);
+            GmailConnection old = givenConnection(user, OTHER_GOOGLE_SUB, OLD_REFRESH_TOKEN);
             givenSaved();
 
             // when
@@ -177,12 +182,30 @@ class GmailUseCaseTest {
         }
 
         @Test
-        @DisplayName("기존 토큰 revoke가 실패해도 기존 연결을 삭제하고 새 연결을 저장한다")
+        @DisplayName("같은 Google 계정으로 다시 연결하면 revoke하지 않고 기존 연결만 새 연결로 교체한다")
+        void replacesSameAccountWithoutRevoke() {
+            // given
+            User user = givenUser();
+            givenTokens();
+            GmailConnection old = givenConnection(user, GOOGLE_SUB, OLD_REFRESH_TOKEN);
+            givenSaved();
+
+            // when
+            gmailUseCase.connectGmail(userId, request);
+
+            // then
+            verify(gmailOAuthClient, never()).revokeToken(any());
+            assertThat(old.isDeleted()).isTrue();
+            verify(gmailConnectionCreateService).saveGmailConnection(any());
+        }
+
+        @Test
+        @DisplayName("기존 계정 토큰 revoke가 실패해도 기존 연결을 삭제하고 새 연결을 저장한다")
         void replacesEvenWhenRevokeFails() {
             // given
             User user = givenUser();
             givenTokens();
-            GmailConnection old = givenConnection(user, OLD_REFRESH_TOKEN);
+            GmailConnection old = givenConnection(user, OTHER_GOOGLE_SUB, OLD_REFRESH_TOKEN);
             willThrow(new GoogleOAuthServerException()).given(gmailOAuthClient).revokeToken(OLD_REFRESH_TOKEN);
             givenSaved();
 

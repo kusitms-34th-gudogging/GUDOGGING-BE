@@ -120,7 +120,7 @@ technical_spec:
 
   data_flow:
     - step: 1
-      layer: Controller (GmailController — @RequestMapping 변경: /api/v1/gmail, 연동은 /connection, 분석은 /analyses)
+      layer: "Controller (GmailController — @RequestMapping 변경: /api/v1/gmail, 연동은 /connection, 분석은 /analyses)"
       action: "POST /api/v1/gmail/analyses — @CurrentUserId"
     - step: 2
       layer: UseCase (GmailUseCase.analyzeGmailPayments)

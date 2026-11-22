@@ -87,19 +87,33 @@ public class ClaudeGmailPaymentAnalyzerAdapter implements GmailPaymentAnalyzer {
             throw new GmailAnalysisFailedException();
         }
 
-        List<ExtractedSubscription> subscriptions = response.content().stream()
-            .flatMap(block -> block.text().stream())
-            .map(textBlock -> textBlock.text().subscriptions())
-            .filter(list -> list != null)
-            .findFirst()
-            .orElseThrow(() -> {
-                log.warn("Claude 결제 메일 분석 응답에 결과가 없습니다.");
-                return new GmailAnalysisFailedException();
-            });
+        List<ExtractedSubscription> subscriptions = extractSubscriptions(response);
         log.info("Claude 결제 메일 분석 완료: mails={}, extracted={}", mails.size(), subscriptions.size());
         return subscriptions.stream()
             .map(this::toPayment)
             .toList();
+    }
+
+    /**
+     * 구조화 응답을 역직렬화한다. 형식이 예상과 다르면 SDK 예외 대신 분석 실패로 바꾼다 (응답 내용은 로그에 남기지 않음).
+     */
+    private List<ExtractedSubscription> extractSubscriptions(StructuredMessage<Extraction> response) {
+        try {
+            return response.content().stream()
+                .flatMap(block -> block.text().stream())
+                .map(textBlock -> textBlock.text().subscriptions())
+                .filter(list -> list != null)
+                .findFirst()
+                .orElseThrow(() -> {
+                    log.warn("Claude 결제 메일 분석 응답에 결과가 없습니다.");
+                    return new GmailAnalysisFailedException();
+                });
+        } catch (GmailAnalysisFailedException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.warn("Claude 결제 메일 분석 응답을 해석하지 못했습니다: {}", e.getClass().getSimpleName());
+            throw new GmailAnalysisFailedException();
+        }
     }
 
     private AnthropicClient client() {

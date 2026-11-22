@@ -50,7 +50,8 @@ public class GmailUseCase {
     private final SubscriptionGetService subscriptionGetService;
 
     /**
-     * 인증 코드를 Google 토큰으로 바꾼 뒤 연결을 저장한다. 이미 연결이 있으면 기존 토큰을 revoke하고 새 연결로 교체한다.
+     * 인증 코드를 Google 토큰으로 바꾼 뒤 연결을 저장한다. 이미 연결이 있으면 새 연결로 교체한다.
+     * Google revoke는 그 계정이 앱에 준 권한 전체를 끊으므로, 같은 Google 계정이면 revoke하지 않고 다른 계정으로 바꿀 때만 기존 계정을 revoke한다.
      */
     @Transactional
     public GmailConnectionResponse connectGmail(UUID userId, ConnectGmailRequest request) {
@@ -58,7 +59,7 @@ public class GmailUseCase {
         GmailTokens tokens = gmailOAuthClient.exchangeAuthCode(request.authCode());
 
         gmailConnectionGetService.findGmailConnection(user)
-            .ifPresent(this::replaceConnection);
+            .ifPresent(existing -> replaceConnection(existing, tokens.googleSub()));
 
         GmailConnection saved = gmailConnectionCreateService.saveGmailConnection(
             GmailConnection.create(user, tokens.googleSub(), tokens.email(), tokens.refreshToken())
@@ -132,13 +133,19 @@ public class GmailUseCase {
         return second.paidDate().isAfter(first.paidDate()) ? second : first;
     }
 
-    private void replaceConnection(GmailConnection connection) {
+    private void replaceConnection(GmailConnection connection, String newGoogleSub) {
+        if (!connection.getGoogleSub().equals(newGoogleSub)) {
+            revokeQuietly(connection);
+        }
+        connection.softDelete();
+    }
+
+    private void revokeQuietly(GmailConnection connection) {
         try {
             gmailOAuthClient.revokeToken(connection.getRefreshToken());
         } catch (RuntimeException e) {
             log.warn("재연동 중 기존 Gmail 토큰 revoke 실패, 연결은 교체합니다: connectionId={}", connection.getId());
         }
-        connection.softDelete();
     }
 
     private User findUser(UUID userId) {
