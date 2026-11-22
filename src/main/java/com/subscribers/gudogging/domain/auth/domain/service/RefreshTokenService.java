@@ -29,6 +29,15 @@ public class RefreshTokenService {
         }
     }
 
+    /**
+     * 저장된 Refresh Token이 있고 요청 토큰과 같으면 true, 없거나(만료·로그아웃) 다르면(교체됨) false를 반환한다.
+     */
+    public boolean matchesRefreshToken(UUID userId, String token) {
+        return refreshTokenRepository.findByUserId(userId)
+            .map(savedToken -> savedToken.equals(token))
+            .orElse(false);
+    }
+
     public void deleteRefreshToken(UUID userId) {
         refreshTokenRepository.deleteByUserId(userId);
     }

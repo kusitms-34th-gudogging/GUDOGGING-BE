@@ -2,6 +2,7 @@ package com.subscribers.gudogging.domain.auth.application.usecase;
 
 import com.subscribers.gudogging.domain.auth.application.dto.request.AppleLoginRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.GoogleLoginRequest;
+import com.subscribers.gudogging.domain.auth.application.dto.request.LogoutRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.request.ReissueTokenRequest;
 import com.subscribers.gudogging.domain.auth.application.dto.response.LoginResponse;
 import com.subscribers.gudogging.domain.auth.application.dto.response.TokenResponse;
@@ -75,6 +76,16 @@ public class AuthUseCase {
             .orElseThrow(InvalidRefreshTokenException::new);
 
         return issueTokens(userId);
+    }
+
+    /**
+     * 요청한 Refresh Token이 저장된 토큰과 같을 때만 삭제한다. 이미 없거나(만료·로그아웃·탈퇴) 다르면(다른 기기 로그인·재발급으로 교체됨) 이미 무효이므로 삭제 없이 성공한다.
+     */
+    @Transactional
+    public void logoutUser(UUID userId, LogoutRequest request) {
+        if (refreshTokenService.matchesRefreshToken(userId, request.refreshToken())) {
+            refreshTokenService.deleteRefreshToken(userId);
+        }
     }
 
     /**
