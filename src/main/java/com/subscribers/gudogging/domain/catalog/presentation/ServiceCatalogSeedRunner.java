@@ -9,17 +9,17 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
- * 앱 시작 시 services_seed.csv를 읽어 서비스 초기 데이터를 적재한다. 적재 여부 판단(테이블이 비어 있을 때만)은 CatalogUseCase가 한다.
+ * 앱 시작 시 services_seed.csv를 읽어 services 테이블과 동기화한다(새 서비스 추가 · 기존 서비스 갱신 · 빠진 서비스 비활성화는 CatalogUseCase).
+ * logo_url이 '/'로 시작하면 우리 서버가 제공하는 정적 파일(static/logos)이므로 server-uri를 앞에 붙여 전체 URL로 저장한다.
  */
 @Component
-@RequiredArgsConstructor
 public class ServiceCatalogSeedRunner implements ApplicationRunner {
 
     private static final String SEED_FILE = "seed/services_seed.csv";
@@ -28,6 +28,12 @@ public class ServiceCatalogSeedRunner implements ApplicationRunner {
     private static final int COLUMN_COUNT = 6;
 
     private final CatalogUseCase catalogUseCase;
+    private final String serverUri;
+
+    public ServiceCatalogSeedRunner(CatalogUseCase catalogUseCase, @Value("${server-uri}") String serverUri) {
+        this.catalogUseCase = catalogUseCase;
+        this.serverUri = serverUri.endsWith("/") ? serverUri.substring(0, serverUri.length() - 1) : serverUri;
+    }
 
     @Override
     public void run(ApplicationArguments args) throws IOException {
@@ -64,7 +70,7 @@ public class ServiceCatalogSeedRunner implements ApplicationRunner {
             return new ServiceSeedRow(
                 columns[0],
                 Category.valueOf(columns[1]),
-                emptyToNull(columns[2]),
+                toLogoUrl(columns[2]),
                 emptyToNull(columns[3]),
                 columns[4].isEmpty() ? null : Integer.valueOf(columns[4]),
                 Integer.parseInt(columns[5])
@@ -76,6 +82,10 @@ public class ServiceCatalogSeedRunner implements ApplicationRunner {
 
     private String stripBom(String text) {
         return text.startsWith(BOM) ? text.substring(BOM.length()) : text;
+    }
+
+    private String toLogoUrl(String value) {
+        return value.startsWith("/") ? serverUri + value : emptyToNull(value);
     }
 
     private String emptyToNull(String value) {

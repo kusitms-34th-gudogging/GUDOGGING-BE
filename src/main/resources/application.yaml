@@ -22,6 +22,13 @@ spring:
       # 스크린샷 구독 분석 (A-07): 1장당 10MB, 최대 5장. 기본값(1MB / 10MB)이면 여러 장 업로드가 실패한다
       max-file-size: 10MB
       max-request-size: 55MB
+  # 서비스 로고(static/logos) 등 정적 파일: 앱이 7일간 캐시
+  web:
+    resources:
+      cache:
+        cachecontrol:
+          max-age: 7d
+          cache-public: true
   data:
     redis:
       host: ${REDIS_HOST:localhost}
