@@ -1,6 +1,5 @@
 package com.subscribers.gudogging.domain.home.application.usecase;
 
-import com.subscribers.gudogging.domain.check.domain.entity.CheckDecision;
 import com.subscribers.gudogging.domain.check.domain.entity.SubscriptionCheck;
 import com.subscribers.gudogging.domain.check.domain.service.SubscriptionCheckGetService;
 import com.subscribers.gudogging.domain.home.application.dto.response.HomeResponse;
@@ -125,7 +124,7 @@ public class HomeUseCase {
     }
 
     /**
-     * 잘 안 쓰는 구독: 가장 최근 점검 활용도 60% 미만이고 그 점검에서 유지하기를 고르지 않은 구독.
+     * 잘 안 쓰는 구독: 가장 최근 점검 활용도 60% 미만인 구독 (유지하기 · 해지하기 · 결정 안 함 상관없이).
      */
     private HomeUsageResponse usageOf(List<Subscription> checkTargets, Map<UUID, BillingSchedule> schedules,
                                       Map<UUID, SubscriptionCheck> latestChecks, LocalDate today) {
@@ -153,8 +152,7 @@ public class HomeUseCase {
 
     private boolean isUnused(SubscriptionCheck latestCheck) {
         return latestCheck != null
-            && latestCheck.getScorePercent() < UNUSED_SCORE_PERCENT_UNDER
-            && latestCheck.getDecision() != CheckDecision.KEEP;
+            && latestCheck.getScorePercent() < UNUSED_SCORE_PERCENT_UNDER;
     }
 
     private List<String> logosOf(List<Subscription> activeSubscriptions, Comparator<Subscription> order) {
