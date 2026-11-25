@@ -204,7 +204,7 @@ class HomeUseCaseTest {
         }
 
         @Test
-        @DisplayName("usage: 최근 점검 활용도 60% 미만 · 유지하기 안 고른 구독의 개수 · 이번 달 결제 합계 · 연 금액과 활용도 낮은 순 3개를 반환한다")
+        @DisplayName("usage: 최근 점검 활용도 60% 미만 구독(유지하기 · 해지하기 · 결정 안 함 포함)의 개수 · 이번 달 결제 합계 · 연 금액과 활용도 낮은 순 3개를 반환한다")
         void returnsUnusedSubscriptions() {
             // given
             Subscription score59 = monthly("넷플릭스", 13500, today);
@@ -229,15 +229,15 @@ class HomeUseCaseTest {
             HomeResponse response = homeUseCase.getHome(userId);
 
             // then
-            int targetsAmount = 13500 + 7900 + 13900 + 10900;
+            int targetsAmount = 13500 + 7900 + 13900 + 10900 + 7890;
             assertThat(response.usage().hasCheckup()).isTrue();
-            assertThat(response.usage().unusedCount()).isEqualTo(4);
+            assertThat(response.usage().unusedCount()).isEqualTo(5);
             assertThat(response.usage().monthlyAmount()).isEqualTo(targetsAmount);
             assertThat(response.usage().yearlyAmount()).isEqualTo(targetsAmount * 12);
             assertThat(response.usage().items())
                 .extracting(HomeUsageItemResponse::serviceName, HomeUsageItemResponse::scorePercent,
                     HomeUsageItemResponse::amount)
-                .containsExactly(tuple("웨이브", 10, 10900), tuple("티빙", 20, 13900), tuple("왓챠", 45, 7900));
+                .containsExactly(tuple("웨이브", 10, 10900), tuple("티빙", 20, 13900), tuple("쿠팡플레이", 30, 7890));
         }
 
         @Test
