@@ -62,6 +62,7 @@ import com.subscribers.gudogging.domain.subscription.application.exception.Inval
 import com.subscribers.gudogging.domain.subscription.application.exception.ScreenshotAnalysisFailedException;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionErrorCode;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotActiveException;
+import com.subscribers.gudogging.domain.subscription.domain.event.SubscriptionBillingChangedEvent;
 import com.subscribers.gudogging.domain.subscription.application.exception.SubscriptionNotFoundException;
 import com.subscribers.gudogging.domain.subscription.domain.draft.SubscriptionDraft;
 import com.subscribers.gudogging.domain.subscription.domain.draft.SubscriptionDraftItem;
@@ -105,6 +106,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -152,6 +154,9 @@ class SubscriptionUseCaseTest {
 
     @Mock
     private SubscriptionScreenshotAnalyzer subscriptionScreenshotAnalyzer;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private SubscriptionUseCase subscriptionUseCase;
@@ -498,6 +503,33 @@ class SubscriptionUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(serviceCatalogGetService, subscriptionGetService, subscriptionCreateService);
+        }
+
+        @Test
+        @DisplayName("등록하면 회원 ID와 등록한 구독 ID로 결제일 변경 이벤트를 발행한다 (알림 즉시 발송)")
+        void publishesBillingChangedEvent() {
+            // given
+            givenUser();
+            given(serviceCatalogGetService.findActiveServicesByIds(Set.of(netflix.getId())))
+                .willReturn(List.of(netflix));
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+            given(subscriptionCreateService.createSubscriptions(any())).willAnswer(invocation -> {
+                List<Subscription> subscriptions = invocation.getArgument(0);
+                subscriptions.forEach(subscription -> ReflectionTestUtils.setField(subscription, "id",
+                    UUID.randomUUID()));
+                return subscriptions;
+            });
+
+            // when
+            subscriptionUseCase.createSubscriptions(userId,
+                request(catalogItem(netflix, null), customItem("동네 헬스장")));
+
+            // then
+            ArgumentCaptor<SubscriptionBillingChangedEvent> captor =
+                ArgumentCaptor.forClass(SubscriptionBillingChangedEvent.class);
+            verify(eventPublisher).publishEvent(captor.capture());
+            assertThat(captor.getValue().userId()).isEqualTo(userId);
+            assertThat(captor.getValue().subscriptionIds()).hasSize(2).doesNotContainNull();
         }
     }
 
@@ -2043,6 +2075,36 @@ class SubscriptionUseCaseTest {
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService);
         }
+
+        @Test
+        @DisplayName("수정하면 회원 ID와 구독 ID로 결제일 변경 이벤트를 발행한다 (알림 즉시 발송)")
+        void publishesBillingChangedEvent() {
+            // given
+            Subscription subscription = catalogSubscription();
+            givenSubscription(subscription);
+
+            // when
+            subscriptionUseCase.updateSubscription(userId, subscription.getId(), request(null));
+
+            // then
+            verify(eventPublisher).publishEvent(
+                new SubscriptionBillingChangedEvent(userId, List.of(subscription.getId())));
+        }
+
+        @Test
+        @DisplayName("구독 종료된 구독이라 수정하지 못하면 이벤트를 발행하지 않는다")
+        void doesNotPublishEventWhenNotActive() {
+            // given
+            Subscription subscription = customSubscription("헬스장");
+            subscription.cancel(today.minusDays(1));
+            givenSubscription(subscription);
+
+            // when & then
+            assertThatThrownBy(() -> subscriptionUseCase.updateSubscription(userId, subscription.getId(),
+                request(null)))
+                .isInstanceOf(SubscriptionNotActiveException.class);
+            verify(eventPublisher, never()).publishEvent(any(SubscriptionBillingChangedEvent.class));
+        }
     }
 
     @Nested
@@ -2816,6 +2878,22 @@ class SubscriptionUseCaseTest {
                 .extracting(e -> ((ApplicationException) e).getErrorCode())
                 .isEqualTo(UserErrorCode.USER_NOT_FOUND);
             verifyNoInteractions(subscriptionGetService);
+        }
+
+        @Test
+        @DisplayName("재등록하면 회원 ID와 구독 ID로 결제일 변경 이벤트를 발행한다 (알림 즉시 발송)")
+        void publishesBillingChangedEvent() {
+            // given
+            Subscription subscription = endedFromCatalog();
+            givenSubscription(subscription);
+            given(subscriptionGetService.findActiveServiceIds(user)).willReturn(Set.of());
+
+            // when
+            reactivate(subscription);
+
+            // then
+            verify(eventPublisher).publishEvent(
+                new SubscriptionBillingChangedEvent(userId, List.of(subscription.getId())));
         }
     }
 

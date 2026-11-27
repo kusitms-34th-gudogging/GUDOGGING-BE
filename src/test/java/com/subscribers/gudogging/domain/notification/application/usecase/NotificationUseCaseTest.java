@@ -33,6 +33,7 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.BillingCycleU
 import com.subscribers.gudogging.domain.subscription.domain.entity.PaymentMethod;
 import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationSource;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.event.SubscriptionBillingChangedEvent;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserErrorCode;
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
@@ -401,71 +402,71 @@ class NotificationUseCaseTest {
         }
     }
 
+    // 11/4(수) 09:00 배치 — D-3 = 11/7, 내일 ~ 7일 뒤 = 11/5 ~ 11/11, D-1 = 11/5
+    private final LocalDate today = LocalDate.of(2026, 11, 4);
+
+    private User pushUser(boolean checkNotificationEnabled) {
+        User user = User.create(SocialProvider.GOOGLE, UUID.randomUUID().toString(), null, null);
+        ReflectionTestUtils.setField(user, "id", UUID.randomUUID());
+        user.updatePushToken("fcm-token-" + user.getId(), Platform.IOS);
+        user.changeCheckNotification(checkNotificationEnabled);
+        return user;
+    }
+
+    private Subscription subscription(User user, String name, int amount, LocalDate billingOn) {
+        return subscription(user, name, amount, 1, BillingCycleUnit.MONTH, billingOn);
+    }
+
+    private Subscription subscription(User user, String name, int amount, int cycleValue,
+                                      BillingCycleUnit cycleUnit, LocalDate billingAnchorOn) {
+        ServiceCatalog service = ServiceCatalog.create(name, null, null, Category.VIDEO_OTT, null, null, 1);
+        Subscription subscription = Subscription.createFromCatalog(user, service, Category.VIDEO_OTT, amount,
+            cycleValue, cycleUnit, billingAnchorOn, PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
+        ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
+        return subscription;
+    }
+
+    private SubscriptionCheck check(Subscription subscription, LocalDate targetBillingOn) {
+        SubscriptionCheck check = SubscriptionCheck.create(subscription, targetBillingOn,
+            subscription.getCategory(), 1, 1, 1, 30, CheckResultStage.of(30), null);
+        ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
+        ReflectionTestUtils.setField(check, "createdAt", today.atStartOfDay().minusDays(1));
+        return check;
+    }
+
+    private void givenSaved() {
+        given(notificationCreateService.createNotifications(anyList()))
+            .willAnswer(invocation -> {
+                List<Notification> notifications = invocation.getArgument(0);
+                notifications.forEach(n -> ReflectionTestUtils.setField(n, "id", UUID.randomUUID()));
+                return notifications;
+            });
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Notification> savedNotifications() {
+        ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
+        verify(notificationCreateService).createNotifications(captor.capture());
+        return captor.getValue();
+    }
+
+    private Notification sent(Subscription subscription, NotificationType type, LocalDate targetBillingOn) {
+        return Notification.create(subscription.getUser(), subscription, type, targetBillingOn, "제목", "본문",
+            today.minusDays(1).atTime(9, 0));
+    }
+
     @Nested
     @DisplayName("sendScheduledNotifications")
     class SendScheduledNotifications {
 
-        // 11/4(수) 09:00 배치 — D-3 = 11/7, 내일 ~ 7일 뒤 = 11/5 ~ 11/11, D-1 = 11/5
-        private final LocalDate today = LocalDate.of(2026, 11, 4);
-
-        private User pushUser(boolean checkNotificationEnabled) {
-            User user = User.create(SocialProvider.GOOGLE, UUID.randomUUID().toString(), null, null);
-            ReflectionTestUtils.setField(user, "id", UUID.randomUUID());
-            user.updatePushToken("fcm-token-" + user.getId(), Platform.IOS);
-            user.changeCheckNotification(checkNotificationEnabled);
-            return user;
-        }
-
-        private Subscription subscription(User user, String name, int amount, LocalDate billingOn) {
-            return subscription(user, name, amount, 1, BillingCycleUnit.MONTH, billingOn);
-        }
-
-        private Subscription subscription(User user, String name, int amount, int cycleValue,
-                                          BillingCycleUnit cycleUnit, LocalDate billingAnchorOn) {
-            ServiceCatalog service = ServiceCatalog.create(name, null, null, Category.VIDEO_OTT, null, null, 1);
-            Subscription subscription = Subscription.createFromCatalog(user, service, Category.VIDEO_OTT, amount,
-                cycleValue, cycleUnit, billingAnchorOn, PaymentMethod.APP_STORE, RegistrationSource.MANUAL);
-            ReflectionTestUtils.setField(subscription, "id", UUID.randomUUID());
-            return subscription;
-        }
-
-        private SubscriptionCheck check(Subscription subscription, LocalDate targetBillingOn) {
-            SubscriptionCheck check = SubscriptionCheck.create(subscription, targetBillingOn,
-                subscription.getCategory(), 1, 1, 1, 30, CheckResultStage.of(30), null);
-            ReflectionTestUtils.setField(check, "id", UUID.randomUUID());
-            ReflectionTestUtils.setField(check, "createdAt", today.atStartOfDay().minusDays(1));
-            return check;
-        }
-
         private void givenBatch(List<Subscription> subscriptions, List<SubscriptionCheck> checks,
-                           List<Notification> sentNotifications) {
+                                List<Notification> sentNotifications) {
             given(subscriptionGetService.findActiveSubscriptionsOfPushUsers())
                 .willReturn(subscriptions);
             given(subscriptionCheckGetService.findChecksBySubscriptions(subscriptions))
                 .willReturn(checks);
             given(notificationGetService.findNotificationsFrom(subscriptions, today))
                 .willReturn(sentNotifications);
-        }
-
-        private void givenSaved() {
-            given(notificationCreateService.createNotifications(anyList()))
-                .willAnswer(invocation -> {
-                    List<Notification> notifications = invocation.getArgument(0);
-                    notifications.forEach(n -> ReflectionTestUtils.setField(n, "id", UUID.randomUUID()));
-                    return notifications;
-                });
-        }
-
-        @SuppressWarnings("unchecked")
-        private List<Notification> savedNotifications() {
-            ArgumentCaptor<List<Notification>> captor = ArgumentCaptor.forClass(List.class);
-            verify(notificationCreateService).createNotifications(captor.capture());
-            return captor.getValue();
-        }
-
-        private Notification sent(Subscription subscription, NotificationType type, LocalDate targetBillingOn) {
-            return Notification.create(subscription.getUser(), subscription, type, targetBillingOn, "제목", "본문",
-                today.minusDays(1).atTime(9, 0));
         }
 
         @Test
@@ -778,6 +779,152 @@ class NotificationUseCaseTest {
 
             // when
             notificationUseCase.sendScheduledNotifications(today);
+
+            // then
+            verify(notificationCreateService, never()).createNotifications(anyList());
+            verify(pushSender, never()).send(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("sendInstantNotifications")
+    class SendInstantNotifications {
+
+        private void givenUserSubscriptions(User user, List<Subscription> subscriptions,
+                                            List<SubscriptionCheck> checks, List<Notification> sentNotifications) {
+            given(userGetService.findUserById(userId)).willReturn(Optional.of(user));
+            given(subscriptionGetService.findActiveSubscriptionsOfPushUser(user)).willReturn(subscriptions);
+            given(subscriptionCheckGetService.findChecksBySubscriptions(subscriptions)).willReturn(checks);
+            given(notificationGetService.findNotificationsFrom(subscriptions, today)).willReturn(sentNotifications);
+        }
+
+        private SubscriptionBillingChangedEvent changed(Subscription... subscriptions) {
+            return SubscriptionBillingChangedEvent.of(userId, List.of(subscriptions));
+        }
+
+        @Test
+        @DisplayName("D-3: 등록한 구독이 결제 3일 전이면 회원의 7일 안 결제 구독을 묶어 1건 보낸다")
+        void sendsBundledCheckReminderWhenChangedSubscriptionIsDue() {
+            // given — 새로 등록한 웨이브가 11/7(3일 뒤), 기존 넷플릭스가 11/10
+            User user = pushUser(true);
+            Subscription wavve = subscription(user, "웨이브", 7900, LocalDate.of(2026, 10, 7));
+            Subscription netflix = subscription(user, "넷플릭스", 17000, LocalDate.of(2026, 10, 10));
+            givenUserSubscriptions(user, List.of(wavve, netflix), List.of(), List.of());
+            givenSaved();
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(wavve), today);
+
+            // then
+            assertThat(savedNotifications()).singleElement().satisfies(notification -> {
+                assertThat(notification.getType()).isEqualTo(NotificationType.CHECK_REMINDER);
+                assertThat(notification.getSubscription()).isEqualTo(netflix);
+                assertThat(notification.getTargetBillingOn()).isEqualTo(LocalDate.of(2026, 11, 10));
+                assertThat(notification.getTitle()).isEqualTo("넷플릭스 외 1건, 24,900원 결제 예정");
+            });
+            verify(pushSender).send(any());
+        }
+
+        @Test
+        @DisplayName("D-3: 등록한 구독이 결제 3일 전이 아니면 다른 구독이 3일 전이어도 보내지 않는다")
+        void skipsCheckReminderWhenChangedSubscriptionIsNotDue() {
+            // given — 결제 3일 전인 웨이브는 이번에 바뀐 구독이 아님
+            User user = pushUser(true);
+            Subscription wavve = subscription(user, "웨이브", 7900, LocalDate.of(2026, 10, 7));
+            Subscription tving = subscription(user, "티빙", 9500, LocalDate.of(2026, 10, 8));
+            givenUserSubscriptions(user, List.of(wavve, tving), List.of(), List.of());
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(tving), today);
+
+            // then
+            verify(notificationCreateService, never()).createNotifications(anyList());
+            verify(pushSender, never()).send(any());
+        }
+
+        @Test
+        @DisplayName("D-3: 알림 설정이 OFF면 등록한 구독이 결제 3일 전이어도 보내지 않는다")
+        void skipsCheckReminderWhenSettingOff() {
+            // given
+            User user = pushUser(false);
+            Subscription wavve = subscription(user, "웨이브", 7900, LocalDate.of(2026, 10, 7));
+            givenUserSubscriptions(user, List.of(wavve), List.of(), List.of());
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(wavve), today);
+
+            // then
+            verify(notificationCreateService, never()).createNotifications(anyList());
+        }
+
+        @Test
+        @DisplayName("D-1: 수정한 구독이 내일 결제면 점검하지 않았어도 결제 알림을 보내고, 바뀌지 않은 구독은 보내지 않는다")
+        void sendsBillingReminderOnlyForChangedSubscription() {
+            // given — 넷플릭스 · 티빙 모두 내일(11/5) 결제, 이번에 바뀐 구독은 넷플릭스
+            User user = pushUser(true);
+            Subscription netflix = subscription(user, "넷플릭스", 13500, LocalDate.of(2026, 10, 5));
+            Subscription tving = subscription(user, "티빙", 9500, LocalDate.of(2026, 10, 5));
+            givenUserSubscriptions(user, List.of(netflix, tving), List.of(), List.of());
+            givenSaved();
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(netflix), today);
+
+            // then
+            assertThat(savedNotifications()).singleElement().satisfies(notification -> {
+                assertThat(notification.getType()).isEqualTo(NotificationType.BILLING_REMINDER);
+                assertThat(notification.getSubscription()).isEqualTo(netflix);
+                assertThat(notification.getTargetBillingOn()).isEqualTo(LocalDate.of(2026, 11, 5));
+                assertThat(notification.getTitle()).isEqualTo("내일 넷플릭스 13,500원이 결제돼요");
+            });
+        }
+
+        @Test
+        @DisplayName("D-1: 이번 주기 점검에서 해지를 고른 구독이 내일 결제면 해지 확인을 보낸다")
+        void sendsCancelConfirm() {
+            // given
+            User user = pushUser(true);
+            Subscription tving = subscription(user, "티빙", 13500, LocalDate.of(2026, 10, 5));
+            SubscriptionCheck check = check(tving, LocalDate.of(2026, 11, 5));
+            check.cancel(null, today.atStartOfDay());
+            givenUserSubscriptions(user, List.of(tving), List.of(check), List.of());
+            givenSaved();
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(tving), today);
+
+            // then
+            assertThat(savedNotifications()).singleElement()
+                .extracting(Notification::getType)
+                .isEqualTo(NotificationType.CANCEL_CONFIRM);
+        }
+
+        @Test
+        @DisplayName("같은 구독 · 결제일 알림이 이미 있으면 보내지 않는다")
+        void skipsWhenAlreadySent() {
+            // given
+            User user = pushUser(true);
+            Subscription netflix = subscription(user, "넷플릭스", 13500, LocalDate.of(2026, 10, 5));
+            givenUserSubscriptions(user, List.of(netflix), List.of(),
+                List.of(sent(netflix, NotificationType.BILLING_REMINDER, LocalDate.of(2026, 11, 5))));
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(netflix), today);
+
+            // then
+            verify(notificationCreateService, never()).createNotifications(anyList());
+        }
+
+        @Test
+        @DisplayName("푸시 토큰이 없는 회원이면 저장 · 발송하지 않는다")
+        void doesNothingWithoutPushToken() {
+            // given — 푸시 토큰이 없으면 푸시 대상 구독 조회가 빈 목록
+            User user = givenUser();
+            Subscription netflix = subscription(user, "넷플릭스", 13500, LocalDate.of(2026, 10, 5));
+            given(subscriptionGetService.findActiveSubscriptionsOfPushUser(user)).willReturn(List.of());
+
+            // when
+            notificationUseCase.sendInstantNotifications(changed(netflix), today);
 
             // then
             verify(notificationCreateService, never()).createNotifications(anyList());
