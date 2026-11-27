@@ -17,6 +17,7 @@ import com.subscribers.gudogging.domain.notification.domain.entity.NotificationT
 import com.subscribers.gudogging.domain.notification.domain.service.NotificationCreateService;
 import com.subscribers.gudogging.domain.notification.domain.service.NotificationGetService;
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
+import com.subscribers.gudogging.domain.subscription.domain.event.SubscriptionBillingChangedEvent;
 import com.subscribers.gudogging.domain.subscription.domain.service.SubscriptionGetService;
 import com.subscribers.gudogging.domain.user.application.exception.UserNotFoundException;
 import com.subscribers.gudogging.domain.user.domain.entity.User;
@@ -25,6 +26,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +39,7 @@ import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Slf4j
@@ -102,21 +105,53 @@ public class NotificationUseCase {
     @Transactional
     public void sendScheduledNotifications(LocalDate today) {
         List<Subscription> subscriptions = subscriptionGetService.findActiveSubscriptionsOfPushUsers();
-        if (subscriptions.isEmpty()) {
+        createAndSendNotifications(subscriptions, subscriptions, today);
+    }
+
+    /**
+     * 구독 등록 · 수정 · 재등록 커밋 뒤 즉시 발송 — 배치와 같은 규칙으로 판단하되, 이벤트의 구독이 D-3 · D-1 조건에 해당할 때만 보낸다. 구독 쪽 트랜잭션이 이미 커밋된 뒤 호출되므로 새
+     * 트랜잭션에서 저장한다.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void sendInstantNotifications(SubscriptionBillingChangedEvent event, LocalDate today) {
+        User user = findUser(event.userId());
+        List<Subscription> subscriptions = subscriptionGetService.findActiveSubscriptionsOfPushUser(user);
+        Set<UUID> changedIds = new HashSet<>(event.subscriptionIds());
+        List<Subscription> changedSubscriptions = subscriptions.stream()
+            .filter(subscription -> changedIds.contains(subscription.getId()))
+            .toList();
+        createAndSendNotifications(subscriptions, changedSubscriptions, today);
+    }
+
+    private User findUser(UUID userId) {
+        return userGetService.findUserById(userId)
+            .orElseThrow(UserNotFoundException::new);
+    }
+
+    /**
+     * subscriptions = 판단에 쓰는 회원들의 구독 중 구독 전체 (D-3 묶음 · 대표 구독 계산), triggers = 알림을 일으킬 수 있는 구독. D-3은 triggers 중 결제 3일 전
+     * 구독이 있는 회원만, D-1은 triggers 구독만 보낸다. 배치는 두 목록이 같다.
+     */
+    private void createAndSendNotifications(List<Subscription> subscriptions, List<Subscription> triggers,
+                                            LocalDate today) {
+        if (triggers.isEmpty()) {
             return;
         }
         Map<UUID, SubscriptionCheck> latestChecks = findLatestChecks(subscriptions);
         Set<SentKey> sentKeys = notificationGetService.findNotificationsFrom(subscriptions, today).stream()
             .map(SentKey::of)
             .collect(Collectors.toSet());
+        Set<UUID> triggerIds = triggers.stream()
+            .map(Subscription::getId)
+            .collect(Collectors.toSet());
         LocalDateTime sentAt = LocalDateTime.now();
 
         List<Notification> notifications = new ArrayList<>();
         subscriptions.stream()
             .collect(Collectors.groupingBy(Subscription::getUser, LinkedHashMap::new, Collectors.toList()))
-            .forEach((user, userSubscriptions) -> checkReminderOf(user, userSubscriptions, latestChecks, sentKeys,
-                today, sentAt).ifPresent(notifications::add));
-        subscriptions.stream()
+            .forEach((user, userSubscriptions) -> checkReminderOf(user, userSubscriptions, triggerIds, latestChecks,
+                sentKeys, today, sentAt).ifPresent(notifications::add));
+        triggers.stream()
             .map(subscription -> billingReminderOf(subscription, latestChecks.get(subscription.getId()), sentKeys,
                 today, sentAt))
             .flatMap(Optional::stream)
@@ -125,11 +160,6 @@ public class NotificationUseCase {
             return;
         }
         notificationCreateService.createNotifications(notifications).forEach(this::send);
-    }
-
-    private User findUser(UUID userId) {
-        return userGetService.findUserById(userId)
-            .orElseThrow(UserNotFoundException::new);
     }
 
     /**
@@ -143,12 +173,12 @@ public class NotificationUseCase {
     }
 
     /**
-     * D-3 점검 알림 — 알림 설정 ON 회원의 '꾸준히 쓰는 구독 아님 · 이번 주기 점검 안 함' 구독 중 결제 3일 전 구독이 있으면, 내일 ~ 7일 뒤 결제될 대상 구독을 묶어
-     * 1건. 대표 구독(금액이 가장 큰 구독) · 결제일 알림이 이미 있으면 보내지 않는다 (앞 묶음에 이미 들어간 구독).
+     * D-3 점검 알림 — 알림 설정 ON 회원의 '꾸준히 쓰는 구독 아님 · 이번 주기 점검 안 함' 구독 중 결제 3일 전 구독(triggerIds 안)이 있으면, 내일 ~ 7일 뒤 결제될 대상 구독을
+     * 묶어 1건. 대표 구독(금액이 가장 큰 구독) · 결제일 알림이 이미 있으면 보내지 않는다 (앞 묶음에 이미 들어간 구독).
      */
     private Optional<Notification> checkReminderOf(User user, List<Subscription> userSubscriptions,
-                                                   Map<UUID, SubscriptionCheck> latestChecks, Set<SentKey> sentKeys,
-                                                   LocalDate today, LocalDateTime sentAt) {
+                                                   Set<UUID> triggerIds, Map<UUID, SubscriptionCheck> latestChecks,
+                                                   Set<SentKey> sentKeys, LocalDate today, LocalDateTime sentAt) {
         if (!user.isCheckNotificationEnabled()) {
             return Optional.empty();
         }
@@ -159,6 +189,7 @@ public class NotificationUseCase {
             .filter(subscription -> !isCheckedThisCycle(subscription, latestChecks.get(subscription.getId()), today))
             .toList();
         boolean hasDueSubscription = targets.stream()
+            .filter(subscription -> triggerIds.contains(subscription.getId()))
             .anyMatch(subscription -> subscription.nextBillingOn(today)
                 .equals(today.plusDays(CHECK_REMINDER_DAYS_BEFORE)));
         if (!hasDueSubscription) {
@@ -185,8 +216,7 @@ public class NotificationUseCase {
     }
 
     /**
-     * D-1 — 내일 결제되는 모든 구독(꾸준히 쓰는 구독 포함, 알림 설정과 무관). 이번 주기 점검에서 해지를 골랐으면 해지 확인. 같은 구독 · 결제일 D-1 알림이 이미 있으면
-     * 보내지 않는다.
+     * D-1 — 내일 결제되는 모든 구독(꾸준히 쓰는 구독 포함, 알림 설정과 무관). 이번 주기 점검에서 해지를 골랐으면 해지 확인. 같은 구독 · 결제일 D-1 알림이 이미 있으면 보내지 않는다.
      */
     private Optional<Notification> billingReminderOf(Subscription subscription, SubscriptionCheck latestCheck,
                                                      Set<SentKey> sentKeys, LocalDate today, LocalDateTime sentAt) {
@@ -217,7 +247,8 @@ public class NotificationUseCase {
     }
 
     /**
-     * 한 건 발송이 실패해도 나머지는 계속 보낸다. 저장한 알림은 그대로 둔다 (알림 목록에는 보임). FCM이 없는 토큰이라고 하면 회원 토큰 · 기기 종류를 비우고, 같은 회원의 다음 알림은 보내지 않는다.
+     * 한 건 발송이 실패해도 나머지는 계속 보낸다. 저장한 알림은 그대로 둔다 (알림 목록에는 보임). FCM이 없는 토큰이라고 하면 회원 토큰 · 기기 종류를 비우고, 같은 회원의 다음 알림은 보내지
+     * 않는다.
      */
     private void send(Notification notification) {
         if (notification.getUser().getPushToken() == null) {

@@ -43,6 +43,7 @@ import com.subscribers.gudogging.domain.subscription.domain.entity.RegistrationS
 import com.subscribers.gudogging.domain.subscription.domain.entity.Subscription;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionBillingHistory;
 import com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus;
+import com.subscribers.gudogging.domain.subscription.domain.event.SubscriptionBillingChangedEvent;
 import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotCandidate;
 import com.subscribers.gudogging.domain.subscription.domain.screenshot.ScreenshotImage;
 import com.subscribers.gudogging.domain.subscription.domain.screenshot.SubscriptionScreenshotAnalyzer;
@@ -72,6 +73,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -95,6 +97,7 @@ public class SubscriptionUseCase {
     private final NotificationGetService notificationGetService;
     private final SubscriptionDraftService subscriptionDraftService;
     private final SubscriptionScreenshotAnalyzer subscriptionScreenshotAnalyzer;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 선택한 탭(status)의 구독을 정렬 기준(sort)대로 조회하고, 두 탭 개수와 탭의 월 환산 합계를 함께 반환한다.
@@ -200,6 +203,7 @@ public class SubscriptionUseCase {
         if (serviceCatalog == null && request.serviceName() != null) {
             subscription.updateCustomName(request.serviceName().strip());
         }
+        eventPublisher.publishEvent(SubscriptionBillingChangedEvent.of(userId, List.of(subscription)));
         return SubscriptionReactivationResponse.from(subscription);
     }
 
@@ -252,6 +256,7 @@ public class SubscriptionUseCase {
 
         List<Subscription> createdSubscriptions = subscriptionCreateService.createSubscriptions(subscriptions);
         deleteDraftAfterCommit(userId);
+        eventPublisher.publishEvent(SubscriptionBillingChangedEvent.of(userId, createdSubscriptions));
         return SubscriptionCreationResponse.from(createdSubscriptions);
     }
 
@@ -396,6 +401,7 @@ public class SubscriptionUseCase {
             subscription.updateCustomName(request.serviceName().strip());
         }
 
+        eventPublisher.publishEvent(SubscriptionBillingChangedEvent.of(userId, List.of(subscription)));
         return SubscriptionBillingResponse.from(subscription, today);
     }
 
