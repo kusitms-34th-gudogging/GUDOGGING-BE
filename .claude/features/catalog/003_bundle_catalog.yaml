@@ -41,7 +41,7 @@ technical_spec:
     conversion_rules:
       fixed_max: "고정 포함 · 택1 A/B 칸을 그대로 사용"
       benefit: "통신 요금제는 그룹 칸이 비어 있으므로 '포함된 서비스' 칸의 이름 중 서비스 목록에 있는 것을 fixed_services로 사용 (146개 중 130개 연결, 16개는 연결 서비스 없음 → 추천 후보가 되지 않음)"
-      name_alias: "'Claude Max' → 'Claude Max 5x|Claude Max 20x' (시트 서비스 목록은 요금제로 나뉨)"
+      name_alias: "'Claude Max' → 'Claude Max|Claude Ultra' (시트 서비스 목록은 요금제로 나뉨. 2026-11-27 Anthropic 이름 변경 반영: Max 5x → Max, Max 20x → Ultra)"
       card_discount: >
         '30%' · '10,000원' → ALL, 'A 50% / B 3,000원' → A · B 그룹, '고정 10% / A 50%' → FIXED · A,
         'AI 10% / 멤버십 50%' → 카테고리 PRODUCTIVITY_AI · SHOPPING_DELIVERY

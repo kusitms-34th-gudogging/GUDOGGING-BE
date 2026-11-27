@@ -61,8 +61,8 @@ T 우주 우주패스 all,SHOPPING_DELIVERY,/logos/t-universe.png,,9900,59
 T 우주 우주패스 mini,SHOPPING_DELIVERY,/logos/t-universe.png,,4900,60
 T 우주 우주패스 life,SHOPPING_DELIVERY,/logos/t-universe.png,,9900,61
 스타벅스 버디 패스,SHOPPING_DELIVERY,/logos/starbucks-buddy-pass.png,,7900,62
-쏘카 패스포트,SHOPPING_DELIVERY,/logos/socar-passport.png,,,63
-Super Duolingo,EDUCATION,/logos/duolingo.png,,,64
+쏘카 패스포트,SHOPPING_DELIVERY,/logos/socar-passport.png,,9900,63
+Super Duolingo,EDUCATION,/logos/duolingo.png,,17000,64
 스픽 프리미엄,EDUCATION,/logos/speak.png,,29000,65
 스픽 프리미엄 플러스,EDUCATION,/logos/speak.png,,69000,66
 말해보카 1인 멤버십,EDUCATION,/logos/malhaevoca.png,,19500,67
@@ -84,8 +84,8 @@ Cambly 매일 30분,EDUCATION,/logos/cambly.png,,295650,80
 ChatGPT Go,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,13000,83
 ChatGPT Plus,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,29000,84
 ChatGPT Pro 100,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,159000,85
-ChatGPT Pro 200,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,,86
-ChatGPT Pro 500,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,,87
+ChatGPT Pro 200,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,299000,86
+ChatGPT Pro 500,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,790000,87
 Google AI Plus,PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,7500,88
 Google AI Pro,PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,29000,89
 Google AI Ultra(한도 5배),PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,119000,90
@@ -99,9 +99,9 @@ Microsoft 365 Premium,PRODUCTIVITY_AI,/logos/microsoft-365.png,https://account.m
 미리캔버스 Pro,PRODUCTIVITY_AI,/logos/miricanvas.png,,14900,98
 Perplexity Pro,PRODUCTIVITY_AI,/logos/perplexity.png,https://www.perplexity.ai/settings/account,27000,99
 Perplexity Max,PRODUCTIVITY_AI,/logos/perplexity.png,https://www.perplexity.ai/settings/account,270000,100
-Claude Pro,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,29700,101
-Claude Max 5x,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,,102
-Claude Max 20x,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,,103
+Claude Pro,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,33000,101
+Claude Max,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,199000,102
+Claude Ultra,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,449000,103
 Adobe Creative Cloud CC Pro(모든 앱),PRODUCTIVITY_AI,/logos/adobe-creative-cloud.png,https://account.adobe.com/plans,87900,104
 Adobe Creative Cloud 포토그래피(1TB),PRODUCTIVITY_AI,/logos/adobe-creative-cloud.png,https://account.adobe.com/plans,30300,105
 Adobe Creative Cloud Lightroom(1TB),PRODUCTIVITY_AI,/logos/adobe-creative-cloud.png,https://account.adobe.com/plans,15200,106
@@ -189,7 +189,7 @@ Dropbox Standard,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,243
 Dropbox Advanced,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,40500,188
 LinkedIn Premium Career,ETC,/logos/linkedin.png,,53987,189
 LinkedIn Premium Business,ETC,/logos/linkedin.png,,94487,190
-Calm Premium,ETC,/logos/calm.png,,,191
+Calm Premium,ETC,/logos/calm.png,,19000,191
 마보,ETC,/logos/mabo.png,,5900,192
 스노우 VIP,ETC,/logos/snow.png,,11900,193
 에픽 PRO,ETC,/logos/epik.png,,10900,194

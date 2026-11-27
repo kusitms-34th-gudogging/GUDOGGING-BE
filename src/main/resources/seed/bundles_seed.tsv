@@ -18,7 +18,7 @@ T우주 멜론 스트리밍 + 유튜브 프리미엄 라이트	FIXED	TELECOM	139
 티빙 x 웨이브 더블 프리미엄	FIXED	PLATFORM	19500		티빙 · 웨이브	결합 상품	티빙 프리미엄|웨이브 프리미엄				
 웨이브 x 멜론 플레이 패스	FIXED	PLATFORM	9000		웨이브	결합 상품	웨이브 광고형 스탠다드|멜론 모바일 스트리밍 클럽				
 카드의정석2 ROUTINE	MAX	CARD			우리카드	30% 할인	YouTube Premium|Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|ChatGPT Go|ChatGPT Plus|쿠팡 와우 멤버십|네이버플러스 멤버십|배달의민족 배민클럽				ALL=30%
-카카오뱅크 착붙 신한카드	MAX	CARD			신한카드	멤버십 50% 할인	ChatGPT Go|ChatGPT Plus|Claude Pro|Claude Max 5x|Claude Max 20x|네이버플러스 멤버십|쿠팡 와우 멤버십				PRODUCTIVITY_AI=10%|SHOPPING_DELIVERY=50%
+카카오뱅크 착붙 신한카드	MAX	CARD			신한카드	멤버십 50% 할인	ChatGPT Go|ChatGPT Plus|Claude Pro|Claude Max|Claude Ultra|네이버플러스 멤버십|쿠팡 와우 멤버십				PRODUCTIVITY_AI=10%|SHOPPING_DELIVERY=50%
 신한카드 국민행복	MAX	CARD			신한카드	50% 할인		Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|YouTube Premium	네이버플러스 멤버십|쿠팡 와우 멤버십		A=50%|B=3000
 zgm.streaming카드	MAX	CARD			NH농협카드	50% 할인		Netflix 광고형 스탠다드|Netflix 스탠다드|Netflix 프리미엄|YouTube Premium|티빙 광고형 스탠다드|티빙 베이직|티빙 스탠다드|티빙 프리미엄|웨이브 광고형 스탠다드|웨이브 베이직|웨이브 스탠다드|웨이브 프리미엄|Disney+ 스탠다드|Disney+ 프리미엄|멜론 스트리밍 클럽	쿠팡 와우 멤버십|네이버플러스 멤버십|컬리멤버스|요기요 요기패스X		A=50%|B=7000
 별다줄카드	MAX	CARD			NH농협카드	5% 할인		쿠팡 와우 멤버십|네이버플러스 멤버십			ALL=5%

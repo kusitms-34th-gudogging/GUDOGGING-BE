@@ -26,7 +26,7 @@ columns:
 
 conversion_rules:
   - "통신 요금제(BENEFIT)는 그룹 칸이 비어 있어 '포함된 서비스' 칸으로 연결 (146개 중 130개, 나머지 16개는 연결 서비스 없음 → 후보 아님)"
-  - "'Claude Max' → 'Claude Max 5x', 'Claude Max 20x' (서비스 목록이 요금제로 나뉨)"
+  - "'Claude Max' → 'Claude Max', 'Claude Ultra' (서비스 목록이 요금제로 나뉨. 2026-11-27 Anthropic 이름 변경 반영: Max 5x → Max, Max 20x → Ultra)"
   - "카드 할인 'AI 10% / 멤버십 50%' → PRODUCTIVITY_AI=10%, SHOPPING_DELIVERY=50%"
   - "서비스 목록에 없는 포함 서비스(모아진 · 교보문고 sam · 라이너 등)는 그대로 두고 계산에서 0원"
 
