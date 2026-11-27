@@ -39,4 +39,11 @@ public class SubscriptionGetService {
     public List<Subscription> findActiveSubscriptionsOfPushUsers() {
         return subscriptionRepository.findAllActiveWithUserAndServiceOfPushUsers();
     }
+
+    /**
+     * 한 회원의 구독 중 구독 — 푸시 토큰이 없거나 탈퇴했으면 빈 목록. 알림 즉시 발송 대상. 회원 · 서비스를 함께 조회한다.
+     */
+    public List<Subscription> findActiveSubscriptionsOfPushUser(User user) {
+        return subscriptionRepository.findAllActiveWithUserAndServiceOfPushUser(user);
+    }
 }

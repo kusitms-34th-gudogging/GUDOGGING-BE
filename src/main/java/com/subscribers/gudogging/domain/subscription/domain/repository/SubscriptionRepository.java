@@ -54,4 +54,17 @@ public interface SubscriptionRepository extends JpaRepository<Subscription, UUID
           and u.pushToken is not null
         """)
     List<Subscription> findAllActiveWithUserAndServiceOfPushUsers();
+
+    @Query("""
+        select s
+        from Subscription s
+        join fetch s.user u
+        left join fetch s.serviceCatalog
+        where s.user = :user
+          and s.status = com.subscribers.gudogging.domain.subscription.domain.entity.SubscriptionStatus.ACTIVE
+          and s.deleted = false
+          and u.deleted = false
+          and u.pushToken is not null
+        """)
+    List<Subscription> findAllActiveWithUserAndServiceOfPushUser(@Param("user") User user);
 }
