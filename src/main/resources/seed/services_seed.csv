@@ -12,8 +12,8 @@ YouTube Premium Lite,VIDEO_OTT,/logos/youtube-premium.png,https://www.youtube.co
 티빙 베이직,VIDEO_OTT,/logos/tving.png,https://www.tving.com/account/membership,9500,11
 티빙 스탠다드,VIDEO_OTT,/logos/tving.png,https://www.tving.com/account/membership,13500,12
 티빙 프리미엄,VIDEO_OTT,/logos/tving.png,https://www.tving.com/account/membership,17000,13
-Disney+ 스탠다드,VIDEO_OTT,/logos/disney-plus.png,https://www.disneyplus.com/account/subscription,9900,14
-Disney+ 프리미엄,VIDEO_OTT,/logos/disney-plus.png,https://www.disneyplus.com/account/subscription,13900,15
+Disney+ 스탠다드,VIDEO_OTT,/logos/disney-plus.png,https://www.disneyplus.com/account/subscription,11500,14
+Disney+ 프리미엄,VIDEO_OTT,/logos/disney-plus.png,https://www.disneyplus.com/account/subscription,16500,15
 웨이브 광고형 스탠다드,VIDEO_OTT,/logos/wavve.png,https://www.wavve.com/voucher/?voucher-type=wavve,5500,16
 웨이브 베이직,VIDEO_OTT,/logos/wavve.png,https://www.wavve.com/voucher/?voucher-type=wavve,7900,17
 웨이브 스탠다드,VIDEO_OTT,/logos/wavve.png,https://www.wavve.com/voucher/?voucher-type=wavve,10900,18
@@ -26,7 +26,7 @@ Disney+ 프리미엄,VIDEO_OTT,/logos/disney-plus.png,https://www.disneyplus.com
 스포티비 나우 프리미엄,VIDEO_OTT,/logos/spotv.png,,19900,25
 스포티비 나우 KBO 월간권,VIDEO_OTT,/logos/spotv.png,,14900,26
 Apple TV+,VIDEO_OTT,/logos/apple-tv.png,https://apps.apple.com/account/subscriptions,6500,27
-Prime Video,VIDEO_OTT,/logos/prime-video.png,https://www.primevideo.com/settings,,28
+Prime Video,VIDEO_OTT,/logos/prime-video.png,https://www.primevideo.com/settings,8087,28
 YouTube Music Premium,MUSIC,/logos/youtube-music.png,https://www.youtube.com/paid_memberships,11990,29
 Spotify Individual,MUSIC,/logos/spotify.png,https://www.spotify.com/account/subscription/,11990,30
 Spotify Basic,MUSIC,/logos/spotify.png,https://www.spotify.com/account/subscription/,8690,31
@@ -41,9 +41,9 @@ Spotify Duo,MUSIC,/logos/spotify.png,https://www.spotify.com/account/subscriptio
 지니뮤직 음악감상,MUSIC,/logos/genie-music.png,,9240,40
 지니뮤직 스마트 음악감상(모바일),MUSIC,/logos/genie-music.png,,8140,41
 지니뮤직 초고음질 무제한 음악감상,MUSIC,/logos/genie-music.png,,15400,42
-플로 모바일 무제한 듣기,MUSIC,/logos/flo.png,,6900,43
-플로 무제한 듣기,MUSIC,/logos/flo.png,,7900,44
-플로 무제한 듣기+오프라인,MUSIC,/logos/flo.png,,10900,45
+플로 모바일 무제한 듣기,MUSIC,/logos/flo.png,,7590,43
+플로 무제한 듣기,MUSIC,/logos/flo.png,,8690,44
+플로 무제한 듣기+오프라인,MUSIC,/logos/flo.png,,11990,45
 벅스 무제한 듣기,MUSIC,/logos/bugs.png,,8690,46
 벅스 모바일 무제한 듣기,MUSIC,/logos/bugs.png,,7590,47
 벅스 무제한 듣기+오프라인,MUSIC,/logos/bugs.png,,11990,48
@@ -55,7 +55,7 @@ V컬러링플러스,MUSIC,/logos/v-coloring.png,,4400,52
 네이버플러스 멤버십,SHOPPING_DELIVERY,/logos/naver-plus.png,https://nid.naver.com/membership/my,4900,54
 배달의민족 배민클럽,SHOPPING_DELIVERY,/logos/baemin.png,,3990,55
 컬리멤버스,SHOPPING_DELIVERY,/logos/kurly-members.png,,1900,56
-신세계 유니버스 클럽,SHOPPING_DELIVERY,/logos/shinsegae-universe-club.png,,,57
+신세계 유니버스 클럽,SHOPPING_DELIVERY,/logos/shinsegae-universe-club.png,,30000,57
 요기요 요기패스X,SHOPPING_DELIVERY,/logos/yogiyo.png,,2900,58
 T 우주 우주패스 all,SHOPPING_DELIVERY,/logos/t-universe.png,,9900,59
 T 우주 우주패스 mini,SHOPPING_DELIVERY,/logos/t-universe.png,,4900,60
@@ -66,7 +66,7 @@ Super Duolingo,EDUCATION,/logos/duolingo.png,,,64
 스픽 프리미엄,EDUCATION,/logos/speak.png,,29000,65
 스픽 프리미엄 플러스,EDUCATION,/logos/speak.png,,69000,66
 말해보카 1인 멤버십,EDUCATION,/logos/malhaevoca.png,,19500,67
-밀리의 서재 전자책,EDUCATION,/logos/millie.png,,9900,68
+밀리의 서재 전자책,EDUCATION,/logos/millie.png,,11900,68
 밀리의 서재 종이책 포함,EDUCATION,/logos/millie.png,,19800,69
 윌라 베이직,EDUCATION,/logos/welaaa.png,,12500,70
 윌라 패밀리,EDUCATION,/logos/welaaa.png,,16900,71
@@ -77,8 +77,8 @@ Super Duolingo,EDUCATION,/logos/duolingo.png,,,64
 링글 올인원,EDUCATION,/logos/ringle.png,,79000,76
 링글 AI 전화,EDUCATION,/logos/ringle.png,,29000,77
 케이크 플러스,EDUCATION,/logos/cake-plus.png,,16000,78
-Cambly 매일 15분,EDUCATION,/logos/cambly.png,,,79
-Cambly 매일 30분,EDUCATION,/logos/cambly.png,,,80
+Cambly 매일 15분,EDUCATION,/logos/cambly.png,,174150,79
+Cambly 매일 30분,EDUCATION,/logos/cambly.png,,295650,80
 롱블랙 멤버십,EDUCATION,/logos/longblack.png,,5900,81
 열품타 프리미엄,EDUCATION,/logos/yeolpumta.png,,5900,82
 ChatGPT Go,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,13000,83
@@ -86,60 +86,60 @@ ChatGPT Plus,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Ac
 ChatGPT Pro 100,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,159000,85
 ChatGPT Pro 200,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,,86
 ChatGPT Pro 500,PRODUCTIVITY_AI,/logos/chatgpt.png,https://chatgpt.com/#settings/Account,,87
-Google AI Plus,PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,11900,88
+Google AI Plus,PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,7500,88
 Google AI Pro,PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,29000,89
 Google AI Ultra(한도 5배),PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,119000,90
 Google AI Ultra(한도 20배),PRODUCTIVITY_AI,/logos/google-ai.png,https://one.google.com/settings,300000,91
-Canva Pro,PRODUCTIVITY_AI,/logos/canva.png,https://www.canva.com/settings/billing-and-plans,,92
-Notion Plus,PRODUCTIVITY_AI,/logos/notion.png,,14000,93
-Notion Business,PRODUCTIVITY_AI,/logos/notion.png,,30000,94
+Canva Pro,PRODUCTIVITY_AI,/logos/canva.png,https://www.canva.com/settings/billing-and-plans,9900,92
+Notion Plus,PRODUCTIVITY_AI,/logos/notion.png,,16800,93
+Notion Business,PRODUCTIVITY_AI,/logos/notion.png,,36000,94
 Microsoft 365 Personal,PRODUCTIVITY_AI,/logos/microsoft-365.png,https://account.microsoft.com/services,12500,95
 Microsoft 365 Family,PRODUCTIVITY_AI,/logos/microsoft-365.png,https://account.microsoft.com/services,15500,96
 Microsoft 365 Premium,PRODUCTIVITY_AI,/logos/microsoft-365.png,https://account.microsoft.com/services,29000,97
 미리캔버스 Pro,PRODUCTIVITY_AI,/logos/miricanvas.png,,14900,98
-Perplexity Pro,PRODUCTIVITY_AI,/logos/perplexity.png,https://www.perplexity.ai/settings/account,,99
-Perplexity Max,PRODUCTIVITY_AI,/logos/perplexity.png,https://www.perplexity.ai/settings/account,,100
-Claude Pro,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,,101
+Perplexity Pro,PRODUCTIVITY_AI,/logos/perplexity.png,https://www.perplexity.ai/settings/account,27000,99
+Perplexity Max,PRODUCTIVITY_AI,/logos/perplexity.png,https://www.perplexity.ai/settings/account,270000,100
+Claude Pro,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,29700,101
 Claude Max 5x,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,,102
 Claude Max 20x,PRODUCTIVITY_AI,/logos/claude.png,https://claude.ai/settings/billing,,103
 Adobe Creative Cloud CC Pro(모든 앱),PRODUCTIVITY_AI,/logos/adobe-creative-cloud.png,https://account.adobe.com/plans,87900,104
 Adobe Creative Cloud 포토그래피(1TB),PRODUCTIVITY_AI,/logos/adobe-creative-cloud.png,https://account.adobe.com/plans,30300,105
 Adobe Creative Cloud Lightroom(1TB),PRODUCTIVITY_AI,/logos/adobe-creative-cloud.png,https://account.adobe.com/plans,15200,106
-Grammarly Pro,PRODUCTIVITY_AI,/logos/grammarly.png,https://account.grammarly.com/subscription,,107
-DeepL Individual,PRODUCTIVITY_AI,/logos/deepl.png,,,108
-Midjourney Basic,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,,109
-Midjourney Standard,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,,110
-Midjourney Pro,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,,111
-Midjourney Mega,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,,112
-Cursor Plus,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,,113
-Cursor Premium,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,,114
-Cursor Super,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,,115
-Cursor Ultra,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,,116
-GitHub Copilot Pro,PRODUCTIVITY_AI,/logos/github-copilot.png,https://github.com/settings/copilot,,117
-GitHub Copilot Pro+,PRODUCTIVITY_AI,/logos/github-copilot.png,https://github.com/settings/copilot,,118
-Figma Professional Full,PRODUCTIVITY_AI,/logos/figma.png,,,119
-Figma Professional Dev,PRODUCTIVITY_AI,/logos/figma.png,,,120
-Figma Professional Collab,PRODUCTIVITY_AI,/logos/figma.png,,,121
-Zoom Pro,PRODUCTIVITY_AI,/logos/zoom.png,https://zoom.us/billing,,122
-Zoom Business,PRODUCTIVITY_AI,/logos/zoom.png,https://zoom.us/billing,,123
-Slack Pro,PRODUCTIVITY_AI,/logos/slack.png,,,124
-Slack Business+,PRODUCTIVITY_AI,/logos/slack.png,,,125
+Grammarly Pro,PRODUCTIVITY_AI,/logos/grammarly.png,https://account.grammarly.com/subscription,40500,107
+DeepL Individual,PRODUCTIVITY_AI,/logos/deepl.png,,14162,108
+Midjourney Basic,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,13500,109
+Midjourney Standard,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,40500,110
+Midjourney Pro,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,81000,111
+Midjourney Mega,PRODUCTIVITY_AI,/logos/midjourney.png,https://www.midjourney.com/account,162000,112
+Cursor Plus,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,11880,113
+Cursor Premium,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,44550,114
+Cursor Super,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,148500,115
+Cursor Ultra,PRODUCTIVITY_AI,/logos/cursor.png,https://cursor.com/dashboard,297000,116
+GitHub Copilot Pro,PRODUCTIVITY_AI,/logos/github-copilot.png,https://github.com/settings/copilot,13500,117
+GitHub Copilot Pro+,PRODUCTIVITY_AI,/logos/github-copilot.png,https://github.com/settings/copilot,52650,118
+Figma Professional Full,PRODUCTIVITY_AI,/logos/figma.png,,27000,119
+Figma Professional Dev,PRODUCTIVITY_AI,/logos/figma.png,,20250,120
+Figma Professional Collab,PRODUCTIVITY_AI,/logos/figma.png,,6750,121
+Zoom Pro,PRODUCTIVITY_AI,/logos/zoom.png,https://zoom.us/billing,22937,122
+Zoom Business,PRODUCTIVITY_AI,/logos/zoom.png,https://zoom.us/billing,29687,123
+Slack Pro,PRODUCTIVITY_AI,/logos/slack.png,,11813,124
+Slack Business+,PRODUCTIVITY_AI,/logos/slack.png,,24300,125
 Goodnotes 베이직,PRODUCTIVITY_AI,/logos/goodnotes.png,,2200,126
-Gamma Plus,PRODUCTIVITY_AI,/logos/gamma.png,,,127
-Gamma Pro,PRODUCTIVITY_AI,/logos/gamma.png,,,128
-Gamma Ultra,PRODUCTIVITY_AI,/logos/gamma.png,,,129
+Gamma Plus,PRODUCTIVITY_AI,/logos/gamma.png,,16200,127
+Gamma Pro,PRODUCTIVITY_AI,/logos/gamma.png,,33750,128
+Gamma Ultra,PRODUCTIVITY_AI,/logos/gamma.png,,135000,129
 CapCut Pro(웹),PRODUCTIVITY_AI,/logos/capcut.png,,25000,130
 CapCut Ultra(웹),PRODUCTIVITY_AI,/logos/capcut.png,,112000,131
 CapCut Standard(앱),PRODUCTIVITY_AI,/logos/capcut.png,,9900,132
 CapCut Pro(앱),PRODUCTIVITY_AI,/logos/capcut.png,,19800,133
-Grok X Plus,PRODUCTIVITY_AI,/logos/grok.png,,,134
-Grok X Premium,PRODUCTIVITY_AI,/logos/grok.png,,,135
-Grok X Super,PRODUCTIVITY_AI,/logos/grok.png,,,136
-Grok X Ultra,PRODUCTIVITY_AI,/logos/grok.png,,,137
-SuperGrok(기존),PRODUCTIVITY_AI,/logos/grok.png,,,138
-SuperGrok Heavy(기존),PRODUCTIVITY_AI,/logos/grok.png,,,139
-Genspark Plus,PRODUCTIVITY_AI,/logos/genspark.png,,,140
-Genspark Pro,PRODUCTIVITY_AI,/logos/genspark.png,,,141
+Grok X Plus,PRODUCTIVITY_AI,/logos/grok.png,,11880,134
+Grok X Premium,PRODUCTIVITY_AI,/logos/grok.png,,44550,135
+Grok X Super,PRODUCTIVITY_AI,/logos/grok.png,,148500,136
+Grok X Ultra,PRODUCTIVITY_AI,/logos/grok.png,,297000,137
+SuperGrok(기존),PRODUCTIVITY_AI,/logos/grok.png,,40500,138
+SuperGrok Heavy(기존),PRODUCTIVITY_AI,/logos/grok.png,,405000,139
+Genspark Plus,PRODUCTIVITY_AI,/logos/genspark.png,,33737,140
+Genspark Pro,PRODUCTIVITY_AI,/logos/genspark.png,,337487,141
 VLLO 프리미엄,PRODUCTIVITY_AI,/logos/vllo.png,,4900,142
 VLLO Premium PLUS,PRODUCTIVITY_AI,/logos/vllo.png,,6900,143
 투두메이트 프리미엄,PRODUCTIVITY_AI,/logos/todomate.png,,2500,144
@@ -153,8 +153,8 @@ Xbox Game Pass Premium,ENTERTAINMENT,/logos/xbox-game-pass.png,https://account.m
 Xbox Game Pass Ultimate,ENTERTAINMENT,/logos/xbox-game-pass.png,https://account.microsoft.com/services,19000,152
 PC Game Pass,ENTERTAINMENT,/logos/xbox-game-pass.png,https://account.microsoft.com/services,15500,153
 PlayStation Plus 에센셜,ENTERTAINMENT,/logos/playstation-plus.png,,10800,154
-PlayStation Plus 스페셜,ENTERTAINMENT,/logos/playstation-plus.png,,16200,155
-PlayStation Plus 디럭스,ENTERTAINMENT,/logos/playstation-plus.png,,19000,156
+PlayStation Plus 스페셜,ENTERTAINMENT,/logos/playstation-plus.png,,18000,155
+PlayStation Plus 디럭스,ENTERTAINMENT,/logos/playstation-plus.png,,21000,156
 Nintendo Switch Online 개인,ENTERTAINMENT,/logos/nintendo-switch-online.png,,5900,157
 리디셀렉트,ENTERTAINMENT,/logos/ridiselect.png,,4900,158
 치지직 티어1(팬),ENTERTAINMENT,/logos/chzzk.png,,4900,159
@@ -166,7 +166,7 @@ Discord Nitro,ENTERTAINMENT,/logos/discord.png,,9800,164
 Apple Arcade,ENTERTAINMENT,/logos/apple-arcade.png,https://apps.apple.com/account/subscriptions,6500,165
 Google Play Pass,ENTERTAINMENT,/logos/google-play-pass.png,https://play.google.com/store/account/subscriptions,6500,166
 노벨피아 PLUS 멤버십,ENTERTAINMENT,/logos/novelpia.png,,14900,167
-제타패스,ENTERTAINMENT,/logos/zeta.png,,14900,168
+제타패스,ENTERTAINMENT,/logos/zeta.png,,10900,168
 Google One Basic 100GB,ETC,/logos/google-one.png,https://one.google.com/settings,2400,169
 iCloud+ 50GB,ETC,/logos/icloud-plus.png,https://apps.apple.com/account/subscriptions,1100,170
 iCloud+ 200GB,ETC,/logos/icloud-plus.png,https://apps.apple.com/account/subscriptions,4400,171
@@ -184,13 +184,13 @@ Apple One 가족,ETC,/logos/apple-one.png,https://apps.apple.com/account/subscri
 톡클라우드 200GB,ETC,/logos/talk-cloud.png,,5100,183
 톡클라우드 2TB,ETC,/logos/talk-cloud.png,,12000,184
 이모티콘 플러스,ETC,/logos/emoticon-plus.png,,3900,185
-Dropbox Plus,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,,186
-Dropbox Standard,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,,187
-Dropbox Advanced,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,,188
-LinkedIn Premium Career,ETC,/logos/linkedin.png,,,189
-LinkedIn Premium Business,ETC,/logos/linkedin.png,,,190
+Dropbox Plus,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,16187,186
+Dropbox Standard,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,24300,187
+Dropbox Advanced,ETC,/logos/dropbox.png,https://www.dropbox.com/account/plan,40500,188
+LinkedIn Premium Career,ETC,/logos/linkedin.png,,53987,189
+LinkedIn Premium Business,ETC,/logos/linkedin.png,,94487,190
 Calm Premium,ETC,/logos/calm.png,,,191
 마보,ETC,/logos/mabo.png,,5900,192
 스노우 VIP,ETC,/logos/snow.png,,11900,193
 에픽 PRO,ETC,/logos/epik.png,,10900,194
-콰트,ETC,/logos/quat.png,,39000,195
+콰트,ETC,/logos/quat.png,,34000,195
