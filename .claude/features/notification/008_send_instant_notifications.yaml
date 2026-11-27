@@ -1,0 +1,104 @@
+# Feature Specification
+# Status: Implemented
+# Last Updated: 2026-11-27
+
+meta:
+  id: NOTIFICATION-008
+  title: 구독 등록 · 수정 · 재등록 시 알림 즉시 발송 (D-3 점검 · D-1 결제 · 해지 확인)
+  type: Feature (Event)
+  author: 1winhyun
+  depends_on:
+    - NOTIFICATION-006   # 배치 판단 규칙 · 문구 · 중복 방지를 그대로 사용
+    - SUBSCRIPTION-001   # 구독 일괄 등록
+    - SUBSCRIPTION-005   # 구독 수정
+    - SUBSCRIPTION-008   # 구독 재등록
+  sources:
+    - "프론트 요청 (2026-11-27): 구독 등록 · 수정 · 재등록 시 다음 결제일을 확인해 알림 조건에 해당하면 배치를 기다리지 않고 바로 푸시"
+
+overview:
+  summary: >
+    구독을 등록 · 수정 · 재등록하면 커밋 뒤 그 구독의 다음 결제일을 확인해, 09:00 배치와 같은 규칙에 해당하면 바로 알림을 저장하고 푸시를 보낸다.
+    결제일을 3일 뒤로 등록했는데 다음 날 09:00 배치는 이미 '3일 뒤'를 지나쳐 D-3을 영영 못 받는 문제를 없앤다.
+  goals:
+    - 등록 · 수정 · 재등록한 구독이 결제 3일 전이면 D-3 점검 알림 (배치와 같은 회원별 7일 묶음)
+    - 등록 · 수정 · 재등록한 구독이 내일 결제면 D-1 결제 알림 또는 해지 확인 (배치와 같은 규칙)
+    - 판단 로직은 배치와 한 곳에서 공유 (규칙이 갈라지지 않게)
+
+technical_spec:
+  trigger:
+    events: "SubscriptionUseCase.createSubscriptions · updateSubscription · reactivateSubscription 성공"
+    publish: "SubscriptionUseCase가 ApplicationEventPublisher로 SubscriptionBillingChangedEvent(userId, subscriptionIds) 발행"
+    listen: >
+      notification/application/listener/NotificationEventListener (@Component) —
+      @TransactionalEventListener(phase = AFTER_COMMIT) → NotificationUseCase.sendInstantNotifications(event, LocalDate.now()).
+      구독 등록이 롤백되면 보내지 않는다. 스케줄러처럼 진입점 역할만 하고 UseCase → UseCase 의존은 없다
+    transaction: >
+      sendInstantNotifications는 @Transactional(propagation = REQUIRES_NEW) — AFTER_COMMIT 시점에는 기존 트랜잭션 리소스가 남아 있어
+      REQUIRED면 저장이 커밋되지 않는다 (Spring TransactionSynchronization.afterCommit 문서)
+    failure: "리스너에서 예외를 잡아 로그만 남긴다 — 구독 등록 · 수정 · 재등록 응답은 항상 성공 (이미 커밋됨)"
+    sync: "동기 실행 (별도 @Async 없음). FCM 호출 시간만큼 해당 API 응답이 늦어질 수 있음"
+
+  receiver: "회원이 탈퇴하지 않았고 push_token이 있을 때만. 없으면 저장 · 발송 모두 하지 않는다 (배치와 동일)"
+  scope: >
+    판단 대상은 이벤트의 구독(changed) 중 구독 중(ACTIVE) · 삭제 안 된 구독. D-3 묶음 합계 · 대표 구독은 그 회원의 구독 중 구독 전체로 계산한다 (배치와 동일).
+
+  d3_check_reminder:
+    rule: "NOTIFICATION-006 d3_check_reminder와 동일 (알림 설정 ON · 꾸준히 쓰는 구독 아님 · 이번 주기 점검 안 함, 7일 묶음, 대표 = 금액 가장 큰 구독)"
+    trigger: "changed 구독 중 D-3 대상이면서 nextBillingOn(today) == today + 3인 구독이 하나라도 있을 때만 (다른 구독 때문에 D-3이 나가지 않게)"
+    duplicate: "같은 (대표 구독, CHECK_REMINDER, 결제일) 알림이 이미 있으면 보내지 않음 (배치와 동일)"
+
+  d1_billing_reminder:
+    rule: "NOTIFICATION-006 d1_billing_reminder와 동일 — 내일 결제면 점검 여부 무관 BILLING_REMINDER, 이번 주기 점검에서 해지(CANCEL)를 골랐으면 CANCEL_CONFIRM"
+    target: "changed 구독만"
+    duplicate: "같은 구독 · 결제일에 BILLING_REMINDER 또는 CANCEL_CONFIRM이 있으면 보내지 않음"
+
+  refactor:
+    - "NotificationUseCase의 D-3 · D-1 판단(checkReminderOf · billingReminderOf)은 그대로 두고, 트리거 대상 구독(triggerSubscriptions)만 인자로 받게 한다. 배치는 전체 구독을 넘긴다"
+
+  data_flow:
+    - step: 1
+      layer: UseCase (SubscriptionUseCase)
+      action: "등록 · 수정 · 재등록 처리 뒤 SubscriptionBillingChangedEvent 발행"
+    - step: 2
+      layer: Listener (NotificationEventListener)
+      action: "AFTER_COMMIT → NotificationUseCase.sendInstantNotifications(event, LocalDate.now()), 예외는 로그"
+    - step: 3
+      layer: UseCase (NotificationUseCase)
+      action: >
+        회원의 푸시 대상 구독 조회 → 비었으면 종료 → 점검 · 기존 알림 조회 → D-3(트리거 = changed 구독) + D-1(changed 구독) 생성 → saveAll → PushSender.send
+      transaction: "@Transactional(propagation = REQUIRES_NEW)"
+    - step: 4
+      layer: Domain Service / Repository
+      action: >
+        SubscriptionGetService.findActiveSubscriptionsOfPushUser(User) — 신규, 배치 쿼리와 같은 조건 + s.user = :user /
+        UserGetService.findUserById · SubscriptionCheckGetService.findChecksBySubscriptions · NotificationGetService.findNotificationsFrom · NotificationCreateService.createNotifications — 기존 재사용
+
+  performance:
+    - "쿼리 5번 고정 (회원 · 구독 · 점검 IN · 알림 IN · saveAll)"
+
+package_structure:
+  base: "com.subscribers.gudogging"
+  files:
+    - "domain/subscription/domain/event/SubscriptionBillingChangedEvent.java (신규 — record(UUID userId, List<UUID> subscriptionIds))"
+    - "domain/subscription/application/usecase/SubscriptionUseCase.java (수정 — 이벤트 발행 3곳)"
+    - "domain/subscription/domain/service/SubscriptionGetService.java · repository/SubscriptionRepository.java (수정 — findActiveSubscriptionsOfPushUser)"
+    - "domain/notification/application/listener/NotificationEventListener.java (신규)"
+    - "domain/notification/application/usecase/NotificationUseCase.java (수정 — sendInstantNotifications, 판단 로직 공유)"
+
+testing_strategy:
+  notification_usecase:
+    - "등록한 구독이 결제 3일 전이면 7일 묶음 D-3을 보낸다"
+    - "등록한 구독이 결제 3일 전이 아니면 다른 구독이 3일 전이어도 D-3을 보내지 않는다"
+    - "등록한 구독이 내일 결제면 D-1 결제 알림을 보낸다 (점검 안 한 구독 포함)"
+    - "이번 주기 점검에서 해지를 고른 구독이 내일 결제면 해지 확인을 보낸다"
+    - "같은 구독 · 결제일 알림이 이미 있으면 보내지 않는다"
+    - "푸시 토큰이 없는 회원이면 저장 · 발송하지 않는다"
+  subscription_usecase:
+    - "등록 · 수정 · 재등록하면 회원 ID와 구독 ID로 SubscriptionBillingChangedEvent를 발행한다"
+
+notes:
+  - "[결정] D-1 조건은 배치와 동일 — 요청 문구의 '점검 완료(유지하기)만'이 아니라 내일 결제 구독 전부 (2026-11-27 1winhyun)"
+  - "[결정] D-3은 배치와 같은 회원별 묶음 (2026-11-27 1winhyun)"
+  - "[한계] 결제일을 바꾸면 이전 점검의 target_billing_on과 달라져 '이번 주기 점검'이 아니게 된다 → 수정으로 해지 확인이 나가는 경우는 결제일을 그대로 둔 수정 · 재등록뿐"
+  - "[한계] 같은 날 이미 보낸 D-3 묶음의 대표 구독이 그대로 대표면(새 구독 금액이 더 작음) 중복 방지 키가 같아 새 구독으로 D-3이 다시 나가지 않는다 (배치 규칙과 동일)"
+  - "[범위 밖] 꾸준히 쓰는 구독 토글 · 알림 설정 ON · 점검 결정 시 즉시 발송"
